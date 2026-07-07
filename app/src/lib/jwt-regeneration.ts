@@ -59,6 +59,7 @@ export async function regenerateToken(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Airo-Source': 'client-ui',
       },
       body: JSON.stringify({
         siteId,

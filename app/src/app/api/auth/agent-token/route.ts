@@ -62,7 +62,7 @@ const MAX_EXPIRATION_SECONDS = 12 * 60 * 60; // 43200 seconds
  * Validate site existence using control plane adapter (lightweight)
  * Uses appExists() instead of getSite() to avoid expensive getApp() API call
  */
-async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, owningProduct?: string, multiUserEnabled?: boolean): Promise<NextResponse | null> {
+async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: string, source: string, owningProduct?: string, multiUserEnabled?: boolean): Promise<NextResponse | null> {
   if (!customerHasAccount(user)) {
     return createCustomerAuthError('You must have an account to create agent tokens', 403);
   }
@@ -78,6 +78,7 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
       siteId,
       customerId: user.customerId,
       action: PaywallAction.Publish,
+      source,
       error: error instanceof Error ? error.message : String(error),
       errorType: error instanceof Error ? error.constructor.name : typeof error,
     });
@@ -89,6 +90,7 @@ async function validateSiteAccess(siteId: string, user: CustomerUser, jwt: strin
       siteId,
       customerId: user.customerId,
       action: PaywallAction.Publish,
+      source,
     });
     return NextResponse.json({
       error: 'Site not found'
@@ -105,13 +107,15 @@ function resolvePaywallResult(
   result: PromiseSettledResult<Awaited<ReturnType<typeof checkPaywallEligibility>>>,
   siteId: string,
   customerId: string,
-  action: PaywallAction
+  action: PaywallAction,
+  source: string
 ): { canDownload: boolean; canPublish: boolean } {
   if (result.status === 'rejected') {
     logger.error('agent-token.paywall-check.rejected', {
       siteId,
       customerId,
       action,
+      source,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
       errorType: result.reason instanceof Error ? result.reason.constructor.name : typeof result.reason,
     });
@@ -141,6 +145,7 @@ function resolvePaywallResult(
       siteId,
       customerId,
       action,
+      source,
       canPublish,
       canDownload,
       environment: process.env.NODE_ENV,
@@ -151,6 +156,7 @@ function resolvePaywallResult(
       siteId,
       customerId,
       action,
+      source,
       ...eligibilityDetails,
     });
   }
@@ -285,12 +291,14 @@ function resolveSiteInfoFromGetSite(
   result: PromiseSettledResult<SiteInfo | null>,
   siteId: string,
   customerId: string,
+  source: string,
 ): SiteInfo | null {
   if (result.status === 'rejected') {
     logger.warn('agent-token.get-site-info-failed', {
       siteId,
       customerId,
       action: PaywallAction.Publish,
+      source,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
     });
     return null;
@@ -301,6 +309,7 @@ function resolveSiteInfoFromGetSite(
 export const POST = withCustomerAuth(async (request: NextRequest, authContext: CustomerAuthContext): Promise<NextResponse> => {
   const routeStart = Date.now();
   const timing: Record<string, number> = {};
+  const source: string = request.headers.get('x-airo-source') ?? 'api';
 
   try {
     const bodyParseStart = Date.now();
@@ -399,6 +408,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         appId: body.siteId,
         customerId: user.customerId,
         action: PaywallAction.Publish,
+        source,
         cacheHit: true,
       });
       setApmAppId(body.siteId);
@@ -439,11 +449,12 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       ]);
       timing.parallelChecksMs = Date.now() - parallelStart;
 
-      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish));
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish, source));
       logger.info('agent-token.control-plane.check-passed', {
         siteId: body.siteId,
         customerId: user.customerId,
         action: PaywallAction.Publish,
+        source,
         cacheHit: true,
         durationMs: Date.now() - routeStart,
       });
@@ -464,7 +475,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
       agentProfile = resolveAgentProfileOverride(rawAgentProfile);
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
-      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId);
+      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId, source);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
@@ -484,13 +495,14 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         appId: body.siteId,
         customerId: user.customerId,
         action: PaywallAction.Publish,
+        source,
         cacheHit: false,
       });
       setApmAppId(body.siteId);
       setApmCustomerId(user.customerId);
       const parallelStart = Date.now();
       const [siteResult, paywallResult, domainPurchaseResult, testBudgetResult, budgetServiceResult, bmsExistingResult, siteInfoResult, assessmentAgentResult, assessmentOverrideResult, assessmentClassifierResult, modelSelectorResult, modelOverrideResult, agentProfileResult, costAttributionDryRunResult, useAtlasCrawlerResult, rebuildIntakeFormResult, debugDrawerResult, automationsResult, marketingCampaignsResult, googleBusinessProfileSyncResult, aiVisibilityResult, asmDualWriteResult, logoBrandColorsResult, purchaseIntentClassifierResult, skillSuggestionsResult, rebuildSourceImagesResult, fixSessionResult, agentStartOverrideResult] = await Promise.allSettled([
-        validateSiteAccess(body.siteId, user, authContext.jwt || '', body.owningProduct, multiUserEnabled),
+        validateSiteAccess(body.siteId, user, authContext.jwt || '', source, body.owningProduct, multiUserEnabled),
         checkPaywallEligibility(
           new ServerPaywallProvider(authContext.jwt || '', user.customerId, request.headers),
           body.siteId,
@@ -534,12 +546,13 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
         setSiteValidationCache(user.customerId, body.siteId, body.owningProduct);
       }
 
-      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish));
+      ({ canDownload, canPublish } = resolvePaywallResult(paywallResult, body.siteId, user.customerId, PaywallAction.Publish, source));
       if (!validationError) {
         logger.info('agent-token.control-plane.check-passed', {
           siteId: body.siteId,
           customerId: user.customerId,
           action: PaywallAction.Publish,
+          source,
           cacheHit: false,
           durationMs: Date.now() - routeStart,
         });
@@ -561,7 +574,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
       const rawAgentProfile = resolveStringFlag(agentProfileResult, 'agent-token.agent-profile-flag-check-failed', body.siteId, user.customerId);
       agentProfile = resolveAgentProfileOverride(rawAgentProfile);
       costAttributionDryRun = resolveBooleanFlag(costAttributionDryRunResult, 'agent-token.cost-attribution-dry-run-flag-check-failed', body.siteId, user.customerId);
-      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId);
+      siteInfo = resolveSiteInfoFromGetSite(siteInfoResult, body.siteId, user.customerId, source);
       useAtlasCrawler = resolveBooleanFlag(useAtlasCrawlerResult, 'agent-token.atlas-crawler-flag-check-failed', body.siteId, user.customerId);
       rebuildIntakeFormEnabled = resolveBooleanFlag(rebuildIntakeFormResult, 'agent-token.rebuild-intake-form-flag-check-failed', body.siteId, user.customerId);
       debugStatsEnabled = resolveBooleanFlag(debugDrawerResult, 'agent-token.debug-drawer-flag-check-failed', body.siteId, user.customerId);
@@ -645,6 +658,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
               siteId: body.siteId,
               customerId: user.customerId,
               action: PaywallAction.Publish,
+              source,
               ventureId,
             });
             canPublish = false;
@@ -674,6 +688,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
             siteId: body.siteId,
             customerId: user.customerId,
             action: PaywallAction.Publish,
+            source,
             error: err instanceof Error ? err.message : String(err),
           });
           // Fail closed on FGA error — don't grant permissions we can't verify
@@ -979,6 +994,7 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     // message can carry internal FGA / mgmt-airo error text we don't echo to clients.
     logger.error('agent-token.unhandled-error', {
       action: PaywallAction.Publish,
+      source,
       error: error instanceof Error ? error.message : 'Unknown error',
       errorType: error instanceof Error ? error.constructor.name : typeof error,
       stack: error instanceof Error ? error.stack : undefined,
