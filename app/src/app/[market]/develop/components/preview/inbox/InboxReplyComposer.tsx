@@ -71,7 +71,7 @@ export function InboxReplyComposer({
   }
 
   return (
-    <div className="mt-auto shrink-0 px-3 pb-3 pt-2">
+    <div className="mt-auto shrink-0 px-3 pt-2 pb-14 md:pb-3">
       {sendError && (
         <p className="mb-1 text-xs text-ux-text-error" data-testid="inbox-reply-error">
           {t('builder_inbox_reply_send_error')}
