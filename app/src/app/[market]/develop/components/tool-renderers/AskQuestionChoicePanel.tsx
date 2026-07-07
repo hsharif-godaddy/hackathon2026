@@ -7,6 +7,7 @@ import ArrowLeftIcon from '@ux/icon/arrow-left'
 import ArrowRightIcon from '@ux/icon/arrow-right'
 
 import StepProgressTag from '@/app/[market]/develop/components/chat/StepProgressTag'
+import { cn } from '@/lib/utils'
 
 const ASK_QUESTION_CHOICE_LIST_TESTID = 'ask-question-choice-list'
 
@@ -46,6 +47,11 @@ interface AskQuestionChoicePanelProps {
   onComplete: (selections: Record<string, string | string[] | null>) => void
   onNavigateBack?: (fromIndex: number) => void
   onNavigateForward?: (fromIndex: number) => void
+  /**
+   * Scrollable choice list with a pinned footer (Other row or Skip/Back/Submit).
+   * Used when embedded in the actions panel collapsible section.
+   */
+  stickyScrollLayout?: boolean
 }
 
 function isMultiSelectQuestion(q: AskQuestionChoiceQuestion): boolean {
@@ -127,6 +133,7 @@ export default function AskQuestionChoicePanel({
   onComplete,
   onNavigateBack,
   onNavigateForward,
+  stickyScrollLayout = false,
 }: AskQuestionChoicePanelProps) {
   const [activeStepIndex, setActiveStepIndex] = useState(0)
   const [collected, setCollected] = useState<Record<string, string | string[] | null>>({})
@@ -313,13 +320,15 @@ export default function AskQuestionChoicePanel({
   const showFooterNav =
     isMulti || (!effectiveAllowOther && !isTextStep && (skipLabel || activeStepIndex > 0))
 
+  const useStickyFooter = stickyScrollLayout && (effectiveAllowOther || showFooterNav)
+
   const singleSelectInlineProps = {
     showOptionChevron: false as const,
     showOptionArrowOnHover: true as const,
     suppressLastRowBottomBorder: true as const,
     commitBehavior: 'immediate' as const,
     showDeferredFooter: false as const,
-    ...(effectiveAllowOther
+    ...(effectiveAllowOther && !stickyScrollLayout
       ? {
           inlineSkipLabel: skipLabel,
           onInlineSkip: handleSkip,
@@ -335,8 +344,148 @@ export default function AskQuestionChoicePanel({
       : {}),
   }
 
+  const otherRowFooterProps = {
+    letter: chipValue(singleSelectSuggestions.length),
+    otherPlaceholder,
+    otherAriaLabel,
+    disabled,
+    optionDividers: false as const,
+    suppressBottomBorder: true as const,
+    draft: otherDraft,
+    onDraftChange: handleOtherChange,
+    onSubmit: (trimmed: string) => commitStepValue(trimmed),
+    submitLabel,
+    inlineSkipLabel: skipLabel,
+    onInlineSkip: handleSkip,
+    inlineBackLabel: activeStepIndex > 0 ? backLabel : undefined,
+    onInlineBack: activeStepIndex > 0 ? handleBack : undefined,
+    inlineBackTestId: 'ask-question-back',
+    inlineSkipOrSubmit: true as const,
+    submitTestId: 'ask-question-submit',
+    inlineSkipTestId: 'ask-question-skip',
+  }
+
+  const footerNav = showFooterNav ? (
+    <div className="flex items-center justify-end gap-2 px-1 pt-1">
+      {skipLabel ? (
+        <Button
+          design="control"
+          size="sm"
+          text={skipLabel}
+          disabled={disabled}
+          onClick={handleSkip}
+          data-testid="ask-question-skip"
+        />
+      ) : null}
+      {activeStepIndex > 0 ? (
+        <Button
+          design="control"
+          size="sm"
+          icon={<ArrowLeftIcon className="rtl:scale-x-[-1]" />}
+          aria-label={backLabel}
+          disabled={disabled}
+          onClick={handleBack}
+          data-testid="ask-question-back"
+        />
+      ) : null}
+      {isMulti ? (
+        <Button
+          design="primary"
+          size="sm"
+          icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
+          aria-label={submitLabel}
+          disabled={disabled || !canSubmit}
+          onClick={handleSubmit}
+          data-testid="ask-question-submit"
+        />
+      ) : null}
+    </div>
+  ) : null
+
+  const stickyFooterChrome =
+    useStickyFooter && effectiveAllowOther && !isTextStep ? (
+      <div className="airo-input-choice-list airo-input-choice-list__surface">
+        <ChoiceListOtherRow {...otherRowFooterProps} />
+      </div>
+    ) : useStickyFooter && showFooterNav ? (
+      footerNav
+    ) : null
+
+  const choiceListBody =
+    isTextStep && !textStepAsChipAndOther ? (
+      <div className="airo-input-choice-list airo-input-choice-list__surface">
+        <ChoiceListOtherRow
+          letter="1"
+          otherPlaceholder={otherPlaceholder}
+          otherAriaLabel={otherAriaLabel}
+          disabled={disabled}
+          optionDividers={false}
+          suppressBottomBorder
+          draft={otherDraft}
+          onDraftChange={handleOtherChange}
+          onSubmit={(trimmed) => commitStepValue(trimmed)}
+          submitLabel={submitLabel}
+          inlineSkipLabel={skipLabel}
+          onInlineSkip={handleSkip}
+          inlineBackLabel={activeStepIndex > 0 ? backLabel : undefined}
+          onInlineBack={activeStepIndex > 0 ? handleBack : undefined}
+          inlineBackTestId="ask-question-back"
+          inlineSkipOrSubmit
+          submitTestId="ask-question-submit"
+          inlineSkipTestId="ask-question-skip"
+        />
+      </div>
+    ) : isMulti ? (
+      <ChoiceList
+        key={`multi-${activeStepIndex}`}
+        data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
+        ariaLabel={activeQuestion?.question ?? ariaLabel}
+        selectionMode="multiple"
+        allowOther={allowOtherForStep}
+        showDeferredFooter={false}
+        disabled={disabled}
+        numberKeyShortcuts={false}
+        otherPlaceholder={otherPlaceholder}
+        otherAriaLabel={otherAriaLabel}
+        otherDraft={otherDraft}
+        onOtherDraftChange={handleOtherChange}
+        checked={pendingMulti}
+        onCheckedChange={setPendingMulti}
+        otherChecked={otherChecked}
+        onOtherCheckedChange={(checked) => {
+          setOtherCheckedByStep(prev => ({ ...prev, [stepId]: checked }))
+        }}
+        suppressLastRowBottomBorder={stickyScrollLayout && allowOtherForStep}
+      >
+        {suggestionItems}
+      </ChoiceList>
+    ) : (
+      <ChoiceList
+        key={`single-${activeStepIndex}`}
+        data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
+        ariaLabel={activeQuestion?.question ?? ariaLabel}
+        allowOther={stickyScrollLayout ? false : effectiveAllowOther}
+        disabled={disabled}
+        numberKeyShortcuts={false}
+        otherPlaceholder={otherPlaceholder}
+        otherAriaLabel={otherAriaLabel}
+        otherDraft={otherDraft}
+        onOtherDraftChange={handleOtherChange}
+        onDecision={(value) => commitStepValue(value)}
+        {...singleSelectInlineProps}
+      >
+        {suggestionItems}
+      </ChoiceList>
+    )
+
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className={cn(
+        'flex flex-col',
+        stickyScrollLayout ? 'min-h-0 flex-1 gap-0' : 'gap-2',
+      )}
+      data-testid={stickyScrollLayout ? 'ask-question-sticky-scroll' : undefined}
+    >
       {!hideQuestion && activeQuestion && (
         <div>
           <div className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
@@ -353,107 +502,27 @@ export default function AskQuestionChoicePanel({
         </div>
       )}
 
-      {isTextStep && !textStepAsChipAndOther ? (
-        <div className="airo-input-choice-list airo-input-choice-list__surface">
-          <ChoiceListOtherRow
-            letter="1"
-            otherPlaceholder={otherPlaceholder}
-            otherAriaLabel={otherAriaLabel}
-            disabled={disabled}
-            optionDividers={false}
-            suppressBottomBorder
-            draft={otherDraft}
-            onDraftChange={handleOtherChange}
-            onSubmit={(trimmed) => commitStepValue(trimmed)}
-            submitLabel={submitLabel}
-            inlineSkipLabel={skipLabel}
-            onInlineSkip={handleSkip}
-            inlineBackLabel={activeStepIndex > 0 ? backLabel : undefined}
-            onInlineBack={activeStepIndex > 0 ? handleBack : undefined}
-            inlineBackTestId="ask-question-back"
-            inlineSkipOrSubmit
-            submitTestId="ask-question-submit"
-            inlineSkipTestId="ask-question-skip"
-          />
-        </div>
-      ) : isMulti ? (
-        <ChoiceList
-          key={`multi-${activeStepIndex}`}
-          data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
-          ariaLabel={activeQuestion?.question ?? ariaLabel}
-          selectionMode="multiple"
-          allowOther={allowOtherForStep}
-          showDeferredFooter={false}
-          disabled={disabled}
-          numberKeyShortcuts={false}
-          otherPlaceholder={otherPlaceholder}
-          otherAriaLabel={otherAriaLabel}
-          otherDraft={otherDraft}
-          onOtherDraftChange={handleOtherChange}
-          checked={pendingMulti}
-          onCheckedChange={setPendingMulti}
-          otherChecked={otherChecked}
-          onOtherCheckedChange={(checked) => {
-            setOtherCheckedByStep(prev => ({ ...prev, [stepId]: checked }))
-          }}
-        >
-          {suggestionItems}
-        </ChoiceList>
+      {stickyScrollLayout ? (
+        isTextStep && !textStepAsChipAndOther ? (
+          <div className="shrink-0 bg-intents-ux-box-backgroundColor">{choiceListBody}</div>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+              {choiceListBody}
+            </div>
+            {stickyFooterChrome ? (
+              <div className="shrink-0 border-t border-border/40 bg-intents-ux-box-backgroundColor">
+                {stickyFooterChrome}
+              </div>
+            ) : null}
+          </>
+        )
       ) : (
-        <ChoiceList
-          key={`single-${activeStepIndex}`}
-          data-testid={ASK_QUESTION_CHOICE_LIST_TESTID}
-          ariaLabel={activeQuestion?.question ?? ariaLabel}
-          allowOther={effectiveAllowOther}
-          disabled={disabled}
-          numberKeyShortcuts={false}
-          otherPlaceholder={otherPlaceholder}
-          otherAriaLabel={otherAriaLabel}
-          otherDraft={otherDraft}
-          onOtherDraftChange={handleOtherChange}
-          onDecision={(value) => commitStepValue(value)}
-          {...singleSelectInlineProps}
-        >
-          {suggestionItems}
-        </ChoiceList>
+        <>
+          {choiceListBody}
+          {!stickyScrollLayout && showFooterNav ? footerNav : null}
+        </>
       )}
-
-      {showFooterNav ? (
-        <div className="flex justify-end items-center gap-2 pt-1">
-          {skipLabel ? (
-            <Button
-              design="control"
-              size="sm"
-              text={skipLabel}
-              disabled={disabled}
-              onClick={handleSkip}
-              data-testid="ask-question-skip"
-            />
-          ) : null}
-          {activeStepIndex > 0 ? (
-            <Button
-              design="control"
-              size="sm"
-              icon={<ArrowLeftIcon className="rtl:scale-x-[-1]" />}
-              aria-label={backLabel}
-              disabled={disabled}
-              onClick={handleBack}
-              data-testid="ask-question-back"
-            />
-          ) : null}
-          {isMulti ? (
-            <Button
-              design="primary"
-              size="sm"
-              icon={<ArrowRightIcon className="rtl:scale-x-[-1]" />}
-              aria-label={submitLabel}
-              disabled={disabled || !canSubmit}
-              onClick={handleSubmit}
-              data-testid="ask-question-submit"
-            />
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }

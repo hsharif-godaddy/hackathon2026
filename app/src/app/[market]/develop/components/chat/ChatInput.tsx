@@ -758,9 +758,18 @@ export default function ChatInput({
 
   return (
     <div className={cn(isCommanderMobileSheet ? 'px-0' : 'px-2 sm:px-3 md:px-0', 'mt-1 mt-auto pb-1')}>
-      <div id="tour-chat-input" className="relative flex flex-col gap-1.5" data-chat-composer-card>
+      <div
+        id="tour-chat-input"
+        className={cn(
+          'relative flex flex-col',
+          isCommanderMobileSheet && actionsPanel ? 'gap-1' : 'gap-1.5',
+        )}
+        data-chat-composer-card
+      >
         {actionsPanel && isCommanderMobileSheet ? (
-          <div className="max-h-[40vh] overflow-y-auto px-2 -mx-2 min-h-0">{actionsPanel}</div>
+          <div className="shrink-0 pt-1.5 pb-1" data-testid="commander-mobile-actions-panel-scroll">
+            {actionsPanel}
+          </div>
         ) : (
           actionsPanel
         )}

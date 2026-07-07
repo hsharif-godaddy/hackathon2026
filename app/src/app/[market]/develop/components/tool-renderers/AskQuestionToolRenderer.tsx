@@ -95,6 +95,7 @@ export default function AskQuestionToolRenderer({
   onQuestionChange,
   onStepProgressChange,
   hideQuestion,
+  stickyScrollLayout,
 }: DefaultToolRendererProps & {
   onComplete?: () => void
   /** Fired when the user skips all steps — dismisses UI only; no chat message is sent. */
@@ -102,6 +103,7 @@ export default function AskQuestionToolRenderer({
   onQuestionChange?: (question: string) => void
   onStepProgressChange?: (current: number, total: number) => void
   hideQuestion?: boolean
+  stickyScrollLayout?: boolean
 }) {
   const t = useTranslations()
   const sendUserMessage = useSendUserMessage()
@@ -305,7 +307,7 @@ export default function AskQuestionToolRenderer({
   }))
 
   return (
-    <div ref={panelRef}>
+    <div ref={panelRef} className={stickyScrollLayout ? 'flex min-h-0 flex-1 flex-col' : undefined}>
       <AskQuestionChoicePanel
         questions={panelQuestions}
         allowOtherGlobal={allowOtherGlobal}
@@ -315,6 +317,7 @@ export default function AskQuestionToolRenderer({
         selectByIndexRef={selectByIndexRef}
         disabled={isProcessing}
         hideQuestion={hideQuestion}
+        stickyScrollLayout={stickyScrollLayout}
         ariaLabel={questions[0].question}
         onStepChange={handleStepChange}
         onActiveStepChange={handleActiveStepChange}

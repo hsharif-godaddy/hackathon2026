@@ -7,6 +7,7 @@ import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import { useQueryClient } from '@tanstack/react-query'
 import Box from '@ux/box'
 
+import { useCommanderLayout } from '@/app/[market]/commander/components/CommanderLayoutContext'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import CollapsibleChatInputSection, { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
 import { FirstBuildFeedbackPanel } from '@/app/[market]/develop/components/chat/FirstBuildFeedbackPanel'
@@ -57,13 +58,18 @@ import { safeGetItem } from '@/utils/localStorage'
 
 const MAX_COMBINED_ITEMS = 4
 
+const COMMANDER_MOBILE_PANEL_MAX_HEIGHT = 'max-h-[38vh]'
+
 function InputActionsPanelCard({
   children,
   headerOnly = false,
+  constrainHeight = false,
 }: {
   children: ReactNode
   /** When true, only the header row is visible — drop bottom card padding. */
   headerOnly?: boolean
+  /** Flex-fill inside a capped mobile actions-panel slot (askQuestion scroll layout). */
+  constrainHeight?: boolean
 }) {
   return (
     <Box
@@ -73,7 +79,10 @@ function InputActionsPanelCard({
       orientation="vertical"
       blockPadding="sm"
       inlinePadding="sm"
-      className={cn(headerOnly && '[padding-block-end:0!important]')}
+      className={cn(
+        constrainHeight && 'min-h-0 max-h-full flex-1',
+        headerOnly && '[padding-block-end:0!important]',
+      )}
     >
       {children}
     </Box>
@@ -513,7 +522,7 @@ function InputActionsPanelLegacy({
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
-    <InputActionsPanelCard>
+    <InputActionsPanelCard constrainHeight={isAskQuestionActive}>
       <div className="flex flex-col gap-0.5 mb-1">
         {/* When no NBAs: single row with "Continue building" on left + "View plan" on right.
             When NBAs present: header question above, NBAs, then "View plan" as separator.
@@ -541,45 +550,55 @@ function InputActionsPanelLegacy({
         ) : (
           // NBAs present: header + NBA buttons + "View plan" separator
           <>
-            {!(fullPlanExpanded && nbaSuggestions.length === 0 && !isAskQuestionActive) && (
-              <div className="px-1 py-0.5 text-sm font-medium text-muted-foreground text-left">
-                {(isAskQuestionActive || nbaSuggestions.length > 0) && nbaData?.question
-                  ? nbaData.question
-                  : t('builder_todo_continue_building')}
-              </div>
-            )}
-
             {isAskQuestionActive ? (
-              <AskQuestionToolRenderer
-                toolName="askQuestion"
-                toolStatus="completed"
-                result={nbaData.toolResult as Record<string, unknown>}
-                isLastAssistantMessage={true}
-                hideQuestion={true}
-                onComplete={() => setAskQuestionCompleted(true)}
-              />
-            ) : nbaSuggestions.length > 0 ? (
-              <div ref={nbaCombinedChoiceListRef}>
-                <ChoiceList
-                  onDecision={(value) => {
-                    const index = parseChoiceListIndex(value, 'input-actions-panel.nba-combined')
-                    if (index === null) return
-                    const s = nbaSuggestions[index]
-                    if (s) handleSuggestionClick(s)
-                  }}
-                  ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
-                  disabled={isProcessing}
-                  optionDividers
-                  suppressLastRowBottomBorder={!showOtherInput}
-                >
-                  {nbaSuggestions.map((suggestion, index) => (
-                    <ChoiceList.Item key={index} value={String(index)}>
-                      {suggestion.text}
-                    </ChoiceList.Item>
-                  ))}
-                </ChoiceList>
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="shrink-0 px-1 py-0.5 text-left text-sm font-medium text-muted-foreground">
+                  {nbaData?.question ?? t('builder_todo_continue_building')}
+                </div>
+                <AskQuestionToolRenderer
+                  toolName="askQuestion"
+                  toolStatus="completed"
+                  result={nbaData.toolResult as Record<string, unknown>}
+                  isLastAssistantMessage={true}
+                  hideQuestion={true}
+                  stickyScrollLayout
+                  onComplete={() => setAskQuestionCompleted(true)}
+                />
               </div>
-            ) : null}
+            ) : (
+              <>
+                {!(fullPlanExpanded && nbaSuggestions.length === 0) && (
+                  <div className="px-1 py-0.5 text-sm font-medium text-muted-foreground text-left">
+                    {nbaSuggestions.length > 0 && nbaData?.question
+                      ? nbaData.question
+                      : t('builder_todo_continue_building')}
+                  </div>
+                )}
+
+                {nbaSuggestions.length > 0 ? (
+                  <div ref={nbaCombinedChoiceListRef}>
+                    <ChoiceList
+                      onDecision={(value) => {
+                        const index = parseChoiceListIndex(value, 'input-actions-panel.nba-combined')
+                        if (index === null) return
+                        const s = nbaSuggestions[index]
+                        if (s) handleSuggestionClick(s)
+                      }}
+                      ariaLabel={nbaData?.question ?? t('builder_todo_continue_building')}
+                      disabled={isProcessing}
+                      optionDividers
+                      suppressLastRowBottomBorder={!showOtherInput}
+                    >
+                      {nbaSuggestions.map((suggestion, index) => (
+                        <ChoiceList.Item key={index} value={String(index)}>
+                          {suggestion.text}
+                        </ChoiceList.Item>
+                      ))}
+                    </ChoiceList>
+                  </div>
+                ) : null}
+              </>
+            )}
 
             {showOtherInput && !isAskQuestionActive && (
               <OptionInput
@@ -698,6 +717,8 @@ function InputActionsPanelThemeSelection({
   const messages = useMessages()
   const viewMode = useDevelopPageStore((state) => state.viewMode)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
+  const commanderLayout = useCommanderLayout()
+  const isCommanderMobilePanel = commanderLayout !== null && isMobile
   const initialBuildComplete = useDevelopPageStore((state) => state.app?.initialBuildComplete)
   const hasQueuedMessages = useStreamingConversationStore(state => (state.queuedMessages?.length ?? 0) > 0)
   const appId = useAppIdFromParams()
@@ -1360,7 +1381,9 @@ function InputActionsPanelThemeSelection({
       multiline={isQuestionTitle}
     >
       {isAskQuestionActive ? (
-        <span className="text-foreground">{currentAskQuestionText || nbaData?.question}</span>
+        <span className="text-foreground">
+          {currentAskQuestionText || nbaData?.question || t('builder_todo_continue_building')}
+        </span>
       ) : (
         continueBuildingTitleText
       )}
@@ -1382,7 +1405,12 @@ function InputActionsPanelThemeSelection({
   ) : null
 
   const continueBuildingTodoBody = (
-    <div className="flex flex-col gap-1 my-1">
+    <div
+      className={cn(
+        'flex flex-col gap-1',
+        isAskQuestionActive ? 'min-h-0 flex-1' : 'my-1',
+      )}
+    >
       {isAskQuestionActive ? (
         <AskQuestionToolRenderer
           toolName="askQuestion"
@@ -1394,6 +1422,7 @@ function InputActionsPanelThemeSelection({
           onQuestionChange={setCurrentAskQuestionText}
           onStepProgressChange={handleAskQuestionStepProgress}
           hideQuestion={true}
+          stickyScrollLayout
         />
       ) : nbaSuggestions.length > 0 ? (
         <div ref={nbaChoiceShortcutsRef}>
@@ -1480,6 +1509,9 @@ function InputActionsPanelThemeSelection({
       title={continueBuildingTitle}
       expanded={continueBuildingExpanded}
       onExpandedChange={setContinueBuildingExpanded}
+      stickyScrollLayout
+      scrollBody={false}
+      scrollMaxHeightClass={isCommanderMobilePanel ? COMMANDER_MOBILE_PANEL_MAX_HEIGHT : undefined}
       data-testid="collapsible-section-continue-building"
     >
       {continueBuildingTodoBody}
@@ -1491,6 +1523,8 @@ function InputActionsPanelThemeSelection({
       expanded={continueBuildingExpanded}
       onExpandedChange={setContinueBuildingExpanded}
       headerRight={progressButton}
+      stickyScrollLayout={isCommanderMobilePanel}
+      scrollMaxHeightClass={isCommanderMobilePanel ? COMMANDER_MOBILE_PANEL_MAX_HEIGHT : undefined}
       data-testid="collapsible-section-continue-building"
     >
       {continueBuildingTodoBody}
@@ -1502,7 +1536,12 @@ function InputActionsPanelThemeSelection({
 
   // ── Mode B: Agent idle, has data ─────────────────────────────────────────
   return (
-    <InputActionsPanelCard headerOnly={showInlinePanel && !continueBuildingExpanded}>
+    <InputActionsPanelCard
+      headerOnly={showInlinePanel && !continueBuildingExpanded}
+      constrainHeight={
+        isCommanderMobilePanel && isAskQuestionActive && continueBuildingExpanded
+      }
+    >
       {feedback ? (
         <FirstBuildFeedbackPanel feedback={feedback} appId={appId ?? ''} />
       ) : showInlinePanel && (
