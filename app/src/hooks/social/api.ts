@@ -2,7 +2,7 @@ import { buildDynamicApiUrl } from '@/config/dynamic-api'
 import { agentFetch } from '@/lib/agent-fetch'
 import { scheduleInstagramPost } from '@/lib/marketing-api'
 import { SocialV2Client } from '@/lib/social'
-import { type PublishablePlatform, SocialPlatform } from '@/lib/social-platforms'
+import { isSchedulingEnabled, type PublishablePlatform, SocialPlatform } from '@/lib/social-platforms'
 import { isFacebookConnection, isInstagramConnection } from '@/lib/utils/social-type-guards'
 import type { SocialConnection, SocialPublishResult } from '@/types/social'
 import { type PendingPublish, SocialPostState } from '@/types/social-posts'
@@ -14,6 +14,7 @@ export interface PublishErrorMessages {
   platformMismatchInstagram?: string
   missingPageCredentials?: string
   missingInstagramCredentials?: string
+  instagramSchedulingUnavailable?: string
   instagramImageRequired?: string
   platformNotSupported?: string
   commonError?: string
@@ -90,6 +91,10 @@ async function publishToInstagram(
 
   // Use Marketing API for scheduled posts
   if (publish.scheduledAt) {
+    if (!isSchedulingEnabled(SocialPlatform.INSTAGRAM)) {
+      throw new Error(errorMessages?.instagramSchedulingUnavailable)
+    }
+
     const result = await scheduleInstagramPost({
       socialId: connection.socialId,
       images: publish.imageUrls,

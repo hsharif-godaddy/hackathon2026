@@ -10,7 +10,7 @@ import ToggleButton from '@ux/toggle-button'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { type PublishablePlatform } from '@/lib/social-platforms'
-import type { SiteAssociation } from '@/types/social'
+import { type SiteAssociation,SocialPlatform } from '@/types/social'
 
 export interface PlatformValidation {
   valid: boolean
@@ -45,8 +45,8 @@ export const PlatformSelector = memo(({
     icon: typeof FacebookIcon
     label: string
   }> = [
-      { key: 'facebook', icon: FacebookIcon, label: t('builder_social_platform_facebook') },
-      { key: 'instagram', icon: InstagramIcon, label: t('builder_social_platform_instagram') },
+      { key: SocialPlatform.FACEBOOK, icon: FacebookIcon, label: t('builder_social_platform_facebook') },
+      { key: SocialPlatform.INSTAGRAM, icon: InstagramIcon, label: t('builder_social_platform_instagram') },
     ]
 
   return (

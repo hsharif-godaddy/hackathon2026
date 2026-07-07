@@ -3,7 +3,8 @@
  */
 import '@testing-library/jest-dom'
 
-import { describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import Growl from '@ux/growl'
 
@@ -35,7 +36,70 @@ vi.mock('@ux/growl', () => ({
   },
 }))
 
+vi.mock('@ux/modal', () => ({
+  default: ({
+    title,
+    children,
+    onClose,
+  }: {
+    title: string
+    children: ReactNode
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label={title}>
+      <button type="button" onClick={onClose}>Close</button>
+      {children}
+    </div>
+  ),
+}))
+
+vi.mock('@ux/date-input', () => ({
+  default: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string
+    value: string[]
+    onChange: (nextValue: string[]) => void
+  }) => (
+    <label>
+      {label}
+      <input
+        aria-label={label}
+        value={value[0] || ''}
+        onChange={(event) => onChange([event.target.value])}
+      />
+    </label>
+  ),
+}))
+
+vi.mock('@ux/time-picker', () => ({
+  default: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string
+    value: string
+    onChange: (nextValue: string) => void
+  }) => (
+    <label>
+      {label}
+      <input
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  ),
+}))
+
 describe('SocialPostCanvasPane', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('updates preview content when post prop changes', () => {
     const { rerender } = renderWithProviders(
       <SocialPostCanvasPane
@@ -88,9 +152,10 @@ describe('SocialPostCanvasPane', () => {
       />,
     )
 
-    const scheduleButton = screen.getByRole('button', { name: 'Schedule' })
+    const scheduleButton = screen.getByRole('button', { name: 'builder_social_schedule_title' })
     expect(scheduleButton).toBeEnabled()
     await user.click(scheduleButton)
+    await user.click(screen.getByRole('button', { name: /Publish now|builder_social_schedule_now/ }))
 
     await waitFor(() => {
       expect(mockSendMessage).toHaveBeenCalled()
@@ -105,5 +170,60 @@ describe('SocialPostCanvasPane', () => {
       )
     })
     expect(onBack).not.toHaveBeenCalled()
+  })
+
+  it('hides platform chip bar when only one scheduling platform is enabled', () => {
+    renderWithProviders(
+      <SocialPostCanvasPane
+        post={{
+          id: 'post-1',
+          styleLabel: 'Social Post',
+          content: 'Post content',
+          hashtags: [],
+          images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
+        }}
+        appId="app-1"
+        onBack={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'builder_social_platform_all' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'builder_social_platform_facebook' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'builder_social_platform_instagram' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Coming soon!')).not.toBeInTheDocument()
+  })
+
+  it('defaults scheduling payload to Facebook only', async () => {
+    const { user } = renderWithProviders(
+      <SocialPostCanvasPane
+        post={{
+          id: 'post-1',
+          styleLabel: 'Social Post',
+          content: 'Post content',
+          hashtags: [],
+          images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
+        }}
+        appId="app-1"
+        onBack={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'builder_social_schedule_title' }))
+    const scheduleButtons = screen.getAllByRole('button', { name: 'builder_social_schedule_title' })
+    await user.click(scheduleButtons[scheduleButtons.length - 1])
+
+    await waitFor(() => {
+      expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining('Schedule'),
+        customContext: expect.objectContaining({
+          data: expect.objectContaining({
+            platforms: ['facebook'],
+            pendingPublish: expect.objectContaining({
+              scheduledAt: expect.any(Date),
+            }),
+          }),
+        }),
+      }))
+    })
   })
 })

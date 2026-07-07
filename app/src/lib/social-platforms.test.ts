@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { SocialPlatform } from '@/types/social'
-import { getPlatformStrategy, PLATFORM_STRATEGIES, usesSocialFlowsConnect } from './social-platforms'
+import {
+  getPlatformStrategy,
+  INSTAGRAM_SCHEDULING_ENABLED,
+  isSchedulingEnabled,
+  PLATFORM_STRATEGIES,
+  SCHEDULING_PLATFORMS,
+  usesSocialFlowsConnect
+} from './social-platforms'
 
 describe('social-platforms', () => {
   describe('PLATFORM_STRATEGIES', () => {
@@ -165,6 +172,21 @@ describe('social-platforms', () => {
     it('returns false for other platforms', () => {
       expect(usesSocialFlowsConnect('tiktok')).toBe(false)
       expect(usesSocialFlowsConnect('yelp')).toBe(false)
+    })
+  })
+
+  describe('scheduling platform gates', () => {
+    it('keeps Instagram scheduling disabled', () => {
+      expect(INSTAGRAM_SCHEDULING_ENABLED).toBe(false)
+      expect(isSchedulingEnabled('instagram')).toBe(false)
+    })
+
+    it('keeps Facebook scheduling enabled', () => {
+      expect(isSchedulingEnabled('facebook')).toBe(true)
+    })
+
+    it('exposes only enabled scheduling platforms', () => {
+      expect(SCHEDULING_PLATFORMS).toEqual(['facebook'])
     })
   })
 })

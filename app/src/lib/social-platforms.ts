@@ -14,10 +14,10 @@ export interface PlatformConfig {
   Icon: ComponentType<{ className?: string }> | null
 }
 
-export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
+export const PLATFORM_CONFIG = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },
   [SocialPlatform.INSTAGRAM]: { name: 'Instagram', Icon: InstagramIcon },
-}
+} satisfies Record<string, PlatformConfig>
 
 /**
  * Platforms that support publishing posts.
@@ -25,6 +25,28 @@ export const PLATFORM_CONFIG: Record<string, PlatformConfig> = {
  */
 export type PublishablePlatform = keyof typeof PLATFORM_CONFIG
 
+/**
+ * Scheduling gate for Instagram.
+ * Flip to true to re-enable Instagram scheduling.
+ */
+export const INSTAGRAM_SCHEDULING_ENABLED = false
+
+export const SCHEDULING_PLATFORM_CONFIG = {
+  [SocialPlatform.FACEBOOK]: { enabled: true },
+  [SocialPlatform.INSTAGRAM]: { enabled: INSTAGRAM_SCHEDULING_ENABLED },
+} satisfies Record<PublishablePlatform, { enabled: boolean }>
+
+export const SCHEDULING_PLATFORMS = Object.entries(SCHEDULING_PLATFORM_CONFIG)
+  .filter(([, config]) => config.enabled)
+  .map(([platform]) => platform as PublishablePlatform)
+
+export const DEFAULT_SCHEDULING_PLATFORMS: PublishablePlatform[] = SCHEDULING_PLATFORMS.length
+  ? SCHEDULING_PLATFORMS
+  : [SocialPlatform.FACEBOOK]
+
+export function isSchedulingEnabled(platform: PublishablePlatform): boolean {
+  return SCHEDULING_PLATFORM_CONFIG[platform]?.enabled ?? false
+}
 
 export const ALL_PLATFORM_CONFIG: Record<SocialPlatform, PlatformConfig> = {
   [SocialPlatform.FACEBOOK]: { name: 'Facebook', Icon: FacebookIcon },

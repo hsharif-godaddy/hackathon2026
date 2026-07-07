@@ -31,6 +31,7 @@ export function usePublishFlow(
     platformMismatchInstagram: t('builder_social_error_platform_mismatch_instagram'),
     missingPageCredentials: t('builder_social_error_missing_page_credentials'),
     missingInstagramCredentials: t('builder_social_error_missing_instagram_credentials'),
+    instagramSchedulingUnavailable: t('builder_social_instagram_schedule_coming_soon'),
     instagramImageRequired: t('builder_social_error_instagram_image_required'),
     platformNotSupported: t('builder_social_error_platform_not_supported', { platform: '' }),
     commonError: t('builder_common_unknown_error'),

@@ -6,6 +6,7 @@ import Tabs from '@ux/tabs'
 
 import { useTranslations } from '@/hooks/useTranslations'
 import { type PublishablePlatform } from '@/lib/social-platforms'
+import { SocialPlatform } from '@/types/social'
 
 interface PreviewTabsProps {
   selectedPlatform: PublishablePlatform
@@ -22,15 +23,15 @@ export const PreviewTabs = memo(({
 
   const items = [
     {
-      id: 'facebook',
+      id: SocialPlatform.FACEBOOK,
       text: t('builder_social_platform_facebook'),
-      disabled: !selectedPlatforms.has('facebook'),
+      disabled: !selectedPlatforms.has(SocialPlatform.FACEBOOK),
       content: null
     },
     {
-      id: 'instagram',
+      id: SocialPlatform.INSTAGRAM,
       text: t('builder_social_platform_instagram'),
-      disabled: !selectedPlatforms.has('instagram'),
+      disabled: !selectedPlatforms.has(SocialPlatform.INSTAGRAM),
       content: null
     }
   ]
