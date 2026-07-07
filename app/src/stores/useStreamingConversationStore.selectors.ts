@@ -51,14 +51,31 @@ const activeAwaitAgentsCountSelector = (state: StreamingConversationState): numb
 
 export const useActiveAwaitAgentsCount = () => useStreamingConversationStore(activeAwaitAgentsCountSelector)
 
+/**
+ * Token/step usage carried on a persisted `awaitAgents` result. Mirrors the
+ * backend result envelope's `usage` shape (agents `SubAgentUsage`); re-declared
+ * here because the app does not depend on the agents package.
+ */
+export interface AwaitedJobUsage {
+  modelName: string
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cachedInputTokens: number
+  cacheWriteInputTokens: number
+  steps: number
+}
+
 /** A single job's outcome as carried in a persisted `awaitAgents` tool result. */
 export interface AwaitedJobResult {
   jobId: string
   agent?: string
   title?: string
-  status: 'queued' | 'running' | 'success' | 'error' | 'aborted'
+  status: 'queued' | 'running' | 'success' | 'error' | 'aborted' | 'timeout'
   summary?: string
   artifacts?: string[]
+  usage?: AwaitedJobUsage
+  durationMs?: number
   error?: string
 }
 

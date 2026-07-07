@@ -66,10 +66,16 @@ describe('deriveSubAgentLifecycle', () => {
     expect(deriveSubAgentLifecycle([ev('outputs', detail)], 'completed')).toBe('aborted')
   })
 
+  it('reports a distinct timeout lifecycle from the outputs event', () => {
+    const detail = JSON.stringify({ status: 'timeout' })
+    expect(deriveSubAgentLifecycle([ev('outputs', detail)], 'completed')).toBe('timeout')
+  })
+
   it('falls back to the persisted awaitAgents status when events are gone (reload)', () => {
     expect(deriveSubAgentLifecycle([], 'completed', 'success')).toBe('success')
     expect(deriveSubAgentLifecycle([], 'completed', 'error')).toBe('error')
     expect(deriveSubAgentLifecycle([], 'completed', 'aborted')).toBe('aborted')
+    expect(deriveSubAgentLifecycle([], 'completed', 'timeout')).toBe('timeout')
     expect(deriveSubAgentLifecycle([], 'completed', 'running')).toBe('running')
     expect(deriveSubAgentLifecycle([], 'completed', 'queued')).toBe('running')
   })

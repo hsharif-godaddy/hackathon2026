@@ -12,7 +12,7 @@ import type { ToolStatus } from '@/app/[market]/develop/components/types'
  * fallback `completed`/`error` event — is the terminal signal.
  */
 
-export type SubAgentLifecycle = 'running' | 'success' | 'error' | 'aborted'
+export type SubAgentLifecycle = 'running' | 'success' | 'error' | 'aborted' | 'timeout'
 
 export interface SubAgentVisualOutput {
   type: 'media' | 'page' | 'doc'
@@ -57,7 +57,7 @@ export function parseSubagentOutputs(events: ReadonlyArray<SubAgentEventLike>): 
  * JobStatus union). This is the durable terminal signal that survives a page
  * reload, where the in-memory `subagentEvents` stream is gone.
  */
-export type AwaitedJobStatus = 'queued' | 'running' | 'success' | 'error' | 'aborted'
+export type AwaitedJobStatus = 'queued' | 'running' | 'success' | 'error' | 'aborted' | 'timeout'
 
 /**
  * Derive a sub-agent's lifecycle. Priority:
@@ -77,6 +77,7 @@ export function deriveSubAgentLifecycle(
   if (outputs) {
     if (outputs.status === 'success') return 'success'
     if (outputs.status === 'aborted') return 'aborted'
+    if (outputs.status === 'timeout') return 'timeout'
     return 'error'
   }
   if (events.some((e) => e.event === 'error')) return 'error'
@@ -85,6 +86,7 @@ export function deriveSubAgentLifecycle(
   if (awaitedStatus) {
     if (awaitedStatus === 'success') return 'success'
     if (awaitedStatus === 'aborted') return 'aborted'
+    if (awaitedStatus === 'timeout') return 'timeout'
     if (awaitedStatus === 'queued' || awaitedStatus === 'running') return 'running'
     return 'error'
   }

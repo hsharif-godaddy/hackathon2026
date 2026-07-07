@@ -144,7 +144,7 @@ async function handleAwaitAgents(appId: string, result: unknown): Promise<void> 
           logger.warn('workflow_transitions.auto_fail_verify', { appId, stepId: step.id, failures: verifyResult.failures })
         }
         stateChanged = true
-      } else if (job.status === 'error' || job.status === 'aborted') {
+      } else if (job.status === 'error' || job.status === 'aborted' || job.status === 'timeout') {
         step.status = 'failed'
         step.notes = `Builder ${job.status}: ${job.error ?? 'unknown'}`
         logger.warn('workflow_transitions.auto_fail_error', { appId, stepId: step.id, status: job.status, error: job.error })

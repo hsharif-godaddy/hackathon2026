@@ -5,6 +5,7 @@ import { Logger } from '../logging/index.js'
 import { skillToolManager } from '../tools/skill-tool-manager.js'
 import type { FileAccess } from './sub-agent-transcript.js'
 import { extractTranscript, extractFileAccess, truncateTranscript, WRITE_TOOL_NAMES } from './sub-agent-transcript.js'
+import type { SubAgentUsage } from './result-envelope.js'
 
 const logger = Logger.create({ component: 'sub-agent-runner' })
 
@@ -47,6 +48,8 @@ export interface SubAgentResult {
   status: 'success' | 'error'
   docPath?: string
   visualOutputs?: VisualOutput[]
+  /** Token/step usage for the run, when the model reported it. Rides the result envelope. */
+  usage?: SubAgentUsage
   /** Internal: captured transcript for re-entry. Stripped before returning to the model. */
   _session?: { messages: ModelMessage[]; filesRead: FileAccess[]; filesWritten: FileAccess[] }
   /** Internal: agent id for the captured session. */
@@ -256,21 +259,22 @@ export class SubAgentRunner {
         finishReason: unknown
         toolCalls: unknown
       }
+      let usage: SubAgentUsage | undefined
       if (fullResult.totalUsage && fullResult.totalUsage.inputTokens !== undefined) {
         const totalUsage = fullResult.totalUsage
-        onEvent({
-          event: 'usage',
-          agent: id,
-          detail: JSON.stringify({
-            modelName: model,
-            inputTokens: totalUsage.inputTokens ?? 0,
-            outputTokens: totalUsage.outputTokens ?? 0,
-            totalTokens: totalUsage.totalTokens ?? 0,
-            cachedInputTokens: totalUsage.cachedInputTokens ?? 0,
-            cacheWriteInputTokens: totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0,
-            steps: Array.isArray(fullResult.steps) ? fullResult.steps.length : 0,
-          }),
-        })
+        usage = {
+          modelName: model,
+          inputTokens: totalUsage.inputTokens ?? 0,
+          outputTokens: totalUsage.outputTokens ?? 0,
+          totalTokens: totalUsage.totalTokens ?? 0,
+          cachedInputTokens: totalUsage.cachedInputTokens ?? 0,
+          cacheWriteInputTokens: totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0,
+          steps: Array.isArray(fullResult.steps) ? fullResult.steps.length : 0,
+        }
+        // Keep emitting the transient `usage` event for the live SSE cost path
+        // (run-agent.ts → computeDebugTurnStats); the same data now also rides
+        // back on the result envelope via `usage` below.
+        onEvent({ event: 'usage', agent: id, detail: JSON.stringify(usage) })
       }
 
       const toolResults: Array<{ toolName: string; result: unknown }> = []
@@ -305,6 +309,7 @@ export class SubAgentRunner {
             'Build hit the output-token limit before finishing (finishReason: length) — the last edit was too large to emit in one call and was NOT applied. Retry by writing the file incrementally: create it with a skeleton plus the first section, then use str_replace to add each remaining section so no single write is huge.',
           artifacts,
           status: 'error',
+          ...(usage && { usage }),
           _session: session,
           _sessionAgent: id,
         }
@@ -318,6 +323,7 @@ export class SubAgentRunner {
         status: 'success',
         ...(docPath && { docPath }),
         ...(visualOutputs.length > 0 && { visualOutputs }),
+        ...(usage && { usage }),
         _session: session,
         _sessionAgent: id,
       }

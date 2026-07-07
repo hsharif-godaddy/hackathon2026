@@ -56,6 +56,70 @@ describe('SubAgentJobRegistry dispatch', () => {
     expect(res.error).toContain('nope')
   })
 
+  it('envelope carries durationMs', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4 })
+    const jobId = reg.dispatch({ agent: 'builder', title: 'Home' }, async () => ok('done'))
+    const [res] = await reg.await([jobId])
+    expect(res.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('threads usage from the run result onto the envelope', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4 })
+    const usage = { modelName: 'm', inputTokens: 10, outputTokens: 5, totalTokens: 15, cachedInputTokens: 0, cacheWriteInputTokens: 0, steps: 2 }
+    const jobId = reg.dispatch({ agent: 'builder', title: 'Home' }, async () => ({ summary: 'd', artifacts: [], status: 'success', usage } as SubAgentResult))
+    const [res] = await reg.await([jobId])
+    expect(res.usage).toEqual(usage)
+  })
+
+  it('times out a hung job: aborts the worker and returns a timeout envelope (does not hang)', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4, taskTimeoutMs: 20 })
+    let sawAbort = false
+    const jobId = reg.dispatch({ agent: 'builder', title: 'slow' }, (signal) =>
+      new Promise<SubAgentResult>((resolve) => {
+        signal.addEventListener('abort', () => { sawAbort = true; resolve({ summary: 'stopped', artifacts: [], status: 'error' }) })
+      }))
+    const [res] = await reg.await([jobId])
+    expect(res.status).toBe('timeout')
+    expect(res.error).toContain('timed out')
+    expect(res.durationMs).toBeGreaterThanOrEqual(0)
+    expect(sawAbort).toBe(true)
+  })
+
+  it('a run that settles just before its timeout is NOT relabeled timeout', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4, taskTimeoutMs: 10_000 })
+    const jobId = reg.dispatch({ agent: 'builder', title: 'fast' }, async () => ok('quick'))
+    const [res] = await reg.await([jobId])
+    expect(res.status).toBe('success')
+    expect(res.summary).toBe('quick')
+  })
+
+  it('frees the concurrency slot when a hung worker times out, so a queued job still runs', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 1, taskTimeoutMs: 20 })
+    // A worker that never settles and ignores its abort signal: run() stays
+    // pending forever, so its .finally never fires — only the timeout path can
+    // free the slot. Without that, the queued job below never starts and await hangs.
+    const hung = reg.dispatch({ agent: 'builder', title: 'hung' }, () => new Promise<SubAgentResult>(() => {}))
+    const queued = reg.dispatch({ agent: 'builder', title: 'queued' }, async () => ok('ran'))
+    const [hungRes, queuedRes] = await reg.await([hung, queued])
+    expect(hungRes.status).toBe('timeout')
+    expect(queuedRes.status).toBe('success')
+    expect(queuedRes.summary).toBe('ran')
+  })
+
+  it('clamps an over-large taskTimeoutMs so the backstop does not fire instantly (setTimeout 32-bit overflow)', async () => {
+    // A value above setTimeout's 2^31-1 ms limit clamps to 1ms and would time out
+    // every job almost immediately. With the clamp, a ~15ms job (well under any
+    // real timeout, well over the overflow's 1ms) must still complete as success.
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4, taskTimeoutMs: 3_000_000_000 })
+    const jobId = reg.dispatch({ agent: 'builder', title: 'slow-ish' }, async () => {
+      await new Promise<void>(r => { setTimeout(r, 15) })
+      return ok('quick')
+    })
+    const [res] = await reg.await([jobId])
+    expect(res.status).toBe('success')
+    expect(res.summary).toBe('quick')
+  })
+
   it('abortAll resolves queued (never-started) jobs so await does not hang', async () => {
     const reg = new SubAgentJobRegistry({ maxConcurrent: 1 })
     const block = deferred<void>()
@@ -93,6 +157,22 @@ describe('SubAgentJobRegistry concurrency + abort', () => {
     reg.abortAll()
     const [res] = await reg.await([jobId])
     expect(sawAbort).toBe(true)
+    expect(res.status).toBe('aborted')
+  })
+
+  it('abortAll on a worker that ignores its signal resolves as aborted (not timeout) without waiting for the backstop', async () => {
+    // Long timeout: if abortAll relied on the backstop timer to resolve the job, the
+    // await would either hang for ~10s or surface as 'timeout'. settleAborted must
+    // resolve it promptly and classify a deliberate cancellation as 'aborted'.
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4, taskTimeoutMs: 10_000 })
+    const started = deferred<void>()
+    const jobId = reg.dispatch({ agent: 'builder', title: 'stubborn' }, () => {
+      started.resolve()
+      return new Promise<SubAgentResult>(() => {}) // never settles, ignores abort
+    })
+    await started.promise
+    reg.abortAll()
+    const [res] = await reg.await([jobId])
     expect(res.status).toBe('aborted')
   })
 

@@ -94,7 +94,10 @@ export default function RunAgentToolRenderer({
   const visualOutputs = (outputs?.visualOutputs ?? legacyResult?.visualOutputs) as VisualOutput[] | undefined
 
   const isRunning = lifecycle === 'running'
-  const isError = lifecycle === 'error'
+  // A timeout is an involuntary failure (the per-task backstop stopped a hung
+  // worker), so render it with the error treatment — its summary carries the
+  // "timed out after Nms" reason — rather than the user-initiated "Stopped" chip.
+  const isError = lifecycle === 'error' || lifecycle === 'timeout'
   const isDone = lifecycle === 'success'
   const isAborted = lifecycle === 'aborted'
 

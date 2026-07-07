@@ -1,19 +1,16 @@
 import type { ModelMessage } from 'ai'
 import type { SubAgentResult } from './sub-agent-runner.js'
 import type { FileAccess } from './sub-agent-transcript.js'
+import { buildResultEnvelope, type ResultEnvelope, type ResultEnvelopeStatus } from './result-envelope.js'
 
-export type JobStatus = 'queued' | 'running' | 'success' | 'error' | 'aborted'
+export type JobStatus = ResultEnvelopeStatus
 
-/** What awaitAgents/checkAgents return to the orchestrator (no transcript). */
-export interface JobResult {
-  jobId: string
-  agent: string
-  title: string
-  status: JobStatus
-  summary?: string
-  artifacts?: string[]
-  error?: string
-}
+/**
+ * What the registry's `await()` and `snapshot()` return to the orchestrator (no
+ * transcript): the result envelope. See {@link ResultEnvelope} for the field
+ * contract.
+ */
+export type JobResult = ResultEnvelope
 
 export interface CachedSession {
   agent: string
@@ -37,6 +34,8 @@ interface Job {
   abort: AbortController
   startedAt: number
   finishedAt?: number
+  /** Set once the job starts running: resolves it as a deliberate cancellation. */
+  settleAborted?: () => void
 }
 
 interface QueueItem {
@@ -49,9 +48,27 @@ export interface RegistryOptions {
   maxConcurrent?: number
   maxSessions?: number
   sessionTtlMs?: number
+  taskTimeoutMs?: number
 }
 
-const DEFAULTS = { maxConcurrent: 4, maxSessions: 20, sessionTtlMs: 5 * 60 * 1000 }
+// taskTimeoutMs is a generous, configurable backstop: a hung worker surfaces as
+// a timed-out envelope instead of blocking the orchestrator's await forever. Keep
+// it well above the longest a legitimate run can take, so a slow-but-working
+// sub-agent is never mislabeled timed-out — hence the generous default.
+// Overridable per-registry and via SUBAGENT_TASK_TIMEOUT_MS at the singleton.
+const DEFAULTS = { maxConcurrent: 4, maxSessions: 20, sessionTtlMs: 5 * 60 * 1000, taskTimeoutMs: 15 * 60 * 1000 }
+
+// setTimeout clamps any delay above the 32-bit signed max to 1ms — firing almost
+// immediately — so a taskTimeoutMs above this would silently turn the backstop
+// into an instant timeout of every job. Cap it here regardless of source (env or
+// per-registry opts); above this the backstop is effectively "no timeout" anyway.
+const MAX_TASK_TIMEOUT_MS: number = 2_147_483_647
+
+// Abort reason the backstop uses when it force-stops a hung worker. Shared with the
+// run-agent consumer (which classifies a signalled abort as 'timeout' vs a user Stop
+// by matching this exact reason) so the coupling is a single constant, not a bare
+// string literal duplicated across the module boundary.
+export const TASK_TIMEOUT_ABORT_REASON = 'task_timeout' as const
 
 export class SubAgentJobRegistry {
   private readonly jobs = new Map<string, Job>()
@@ -62,11 +79,18 @@ export class SubAgentJobRegistry {
   private readonly maxConcurrent: number
   private readonly maxSessions: number
   private readonly sessionTtlMs: number
+  private readonly taskTimeoutMs: number
 
   constructor(opts: RegistryOptions = {}) {
     this.maxConcurrent = opts.maxConcurrent ?? DEFAULTS.maxConcurrent
     this.maxSessions = opts.maxSessions ?? DEFAULTS.maxSessions
     this.sessionTtlMs = opts.sessionTtlMs ?? DEFAULTS.sessionTtlMs
+    // Floor a non-positive or NaN opt (e.g. a caller passing 0 for "no timeout") to
+    // the default: passing it straight to setTimeout would coerce it to ~0ms and time
+    // out every job on the next tick. Mirrors the env parser's `> 0` guard so both
+    // configuration entry points agree.
+    const requestedTimeout: number = opts.taskTimeoutMs ?? DEFAULTS.taskTimeoutMs
+    this.taskTimeoutMs = requestedTimeout > 0 ? Math.min(requestedTimeout, MAX_TASK_TIMEOUT_MS) : DEFAULTS.taskTimeoutMs
   }
 
   dispatch(spec: { agent: string; title: string }, run: JobRun): string {
@@ -91,8 +115,80 @@ export class SubAgentJobRegistry {
       this.running++
       job.status = 'running'
       job.startedAt = Date.now()
+
+      // `settled` guards the single-resolution invariant: the run-settle path and
+      // the timeout path race, and exactly one must win. The loser (typically the
+      // aborted run settling after a timeout already fired) is a no-op.
+      let settled: boolean = false
+      // The concurrency slot is freed exactly once, by whichever of the run-settle
+      // path (`.finally`) or the timeout path reaches `releaseSlot` first. A worker
+      // that ignores its abort signal never settles, so `.finally` never runs —
+      // the timeout MUST free the slot itself, or `running` stays elevated and
+      // `pump()` eventually starves every queued job.
+      let slotReleased: boolean = false
+      const releaseSlot = (): void => {
+        if (slotReleased) return
+        slotReleased = true
+        this.running--
+        this.pump()
+      }
+      const finalize = (result: SubAgentResult): void => {
+        if (settled) return
+        settled = true
+        // Stamp finishedAt HERE (not in .finally): finalize resolves job.promise,
+        // and the awaiter's toResult() reads durationMs the microtask after that
+        // resolve — before .finally would run. Setting it here guarantees the
+        // duration is present on the envelope the awaiter receives.
+        if (job.finishedAt === undefined) job.finishedAt = Date.now()
+        job.result = result
+        resolve(result)
+      }
+
+      // Resolve a still-running job as a deliberate cancellation. abortAll() calls
+      // this after signalling the abort so a worker that ignores its signal can't
+      // block the awaiter — and so the backstop timer is cleared, releasing this
+      // closure (and the registry it captures) instead of lingering for the full
+      // timeout. Distinct from the timeout path: a user Stop is 'aborted', not a
+      // 'timeout' involuntary failure.
+      const settleAborted = (): void => {
+        if (settled) return
+        clearTimeout(timer)
+        job.status = 'aborted'
+        job.error = 'conversation aborted'
+        finalize({ summary: job.error, artifacts: [], status: 'error' })
+        releaseSlot()
+      }
+      job.settleAborted = settleAborted
+
+      const timer: NodeJS.Timeout = setTimeout(() => {
+        if (settled) return
+        // If the signal was already aborted (e.g. a user Stop via abortAll whose
+        // worker ignored the signal), this is a deliberate cancellation, not an
+        // involuntary timeout — classify it 'aborted' to match the run-settle path's
+        // aborted-vs-failure distinction rather than overwriting it with 'timeout'.
+        const aborted: boolean = job.abort.signal.aborted
+        job.status = aborted ? 'aborted' : 'timeout'
+        job.error = aborted ? 'conversation aborted' : this.timeoutErrorMessage()
+        finalize({ summary: job.error, artifacts: [], status: 'error' })
+        // Ask the worker to stop; its run settles later and hits the no-op branch
+        // above (the envelope is already the job's result). Free the slot NOW rather
+        // than waiting for that settle — a hung worker may never settle, and
+        // `.finally` (which also calls releaseSlot) would then never run.
+        if (!aborted) job.abort.abort(TASK_TIMEOUT_ABORT_REASON)
+        releaseSlot()
+      }, this.taskTimeoutMs)
+      // The backstop alone must not keep the process alive at shutdown.
+      timer.unref?.()
+
       run(job.abort.signal)
         .then(result => {
+          // Capture the session BEFORE the settled guard: a worker that finished
+          // successfully in the race window just after the timeout fired still
+          // settled with a real transcript, and caching it lets a later
+          // continue/fromJobId retry resume instead of cold-restarting. (A truly
+          // aborted worker resolves with no _session, so this is a no-op there.)
+          this.captureSession(job.id, result)
+          if (settled) return
           // The runner swallows AbortError into a resolved { status: 'error' },
           // so a deliberate cancellation lands here, not in .catch. Treat a
           // signalled abort as 'aborted' regardless of the returned status so
@@ -100,22 +196,18 @@ export class SubAgentJobRegistry {
           const aborted = job.abort.signal.aborted
           job.status = aborted ? 'aborted' : (result.status === 'error' ? 'error' : 'success')
           if (job.status !== 'success') job.error = result.summary
-          this.captureSession(job.id, result)
-          job.result = stripSession(result)
-          resolve(job.result)
+          finalize(stripSession(result))
         })
         .catch(err => {
+          if (settled) return
           const aborted = job.abort.signal.aborted
           job.status = aborted ? 'aborted' : 'error'
           job.error = err instanceof Error ? err.message : String(err)
-          const synthetic: SubAgentResult = { summary: job.error, artifacts: [], status: 'error' }
-          job.result = synthetic
-          resolve(synthetic)
+          finalize({ summary: job.error, artifacts: [], status: 'error' })
         })
         .finally(() => {
-          job.finishedAt = Date.now()
-          this.running--
-          this.pump()
+          clearTimeout(timer)
+          releaseSlot()
         })
     }
   }
@@ -124,7 +216,7 @@ export class SubAgentJobRegistry {
     return Promise.all(jobIds.map(async id => {
       const job = this.jobs.get(id)
       if (!job) {
-        return { jobId: id, agent: 'unknown', title: '', status: 'error' as JobStatus, error: `No job ${id}` }
+        return buildResultEnvelope({ jobId: id, agent: 'unknown', title: '', status: 'error', error: `No job ${id}` })
       }
       await job.promise
       return this.toResult(job)
@@ -133,6 +225,19 @@ export class SubAgentJobRegistry {
 
   snapshot(): JobResult[] {
     return [...this.jobs.values()].map(j => this.toResult(j))
+  }
+
+  /**
+   * A single job's current status, read directly from the job (O(1)). Prefer this
+   * over `snapshot().find(...)` when only one job's status is needed — snapshot()
+   * builds and validates an envelope for every job in the registry.
+   */
+  statusOf(jobId: string): JobStatus | undefined {
+    return this.jobs.get(jobId)?.status
+  }
+
+  timeoutErrorMessage(): string {
+    return `Sub-agent timed out after ${this.taskTimeoutMs}ms`
   }
 
   abortAll(): void {
@@ -145,9 +250,15 @@ export class SubAgentJobRegistry {
       item.resolve(synthetic)
     }
     this.queue.length = 0
-    // Abort jobs that are actually running; their run fn rejects and the catch in pump marks them 'aborted'.
+    // Abort jobs that are actually running: signal first so a well-behaved worker
+    // stops, then settle the job as aborted ourselves. settleAborted clears the
+    // backstop timer and resolves the awaiter immediately even if the worker ignores
+    // its signal — rather than waiting out the full task timeout (which would also
+    // mislabel a deliberate cancellation as 'timeout').
     for (const job of this.jobs.values()) {
-      if (job.status === 'running') job.abort.abort('conversation_aborted')
+      if (job.status !== 'running') continue
+      job.abort.abort('conversation_aborted')
+      job.settleAborted?.()
     }
   }
 
@@ -212,15 +323,17 @@ export class SubAgentJobRegistry {
   }
 
   private toResult(job: Job): JobResult {
-    return {
+    return buildResultEnvelope({
       jobId: job.id,
       agent: job.agent,
       title: job.title,
       status: job.status,
       ...(job.result?.summary !== undefined && { summary: job.result.summary }),
       ...(job.result?.artifacts && { artifacts: job.result.artifacts }),
+      ...(job.result?.usage && { usage: job.result.usage }),
+      ...(job.finishedAt !== undefined && { durationMs: Math.max(0, job.finishedAt - job.startedAt) }),
       ...(job.error && { error: job.error }),
-    }
+    })
   }
 }
 
@@ -273,5 +386,16 @@ export class SubAgentJobRegistryManager {
   }
 }
 
+/** Ops override for the per-task timeout; falls back to the generous default. */
+function resolveRegistryOptions(): RegistryOptions {
+  const raw: string | undefined = process.env.SUBAGENT_TASK_TIMEOUT_MS
+  // Strict decimal-integer parse: bare Number() leniently accepts '0x10', '1e-3',
+  // '16abc' etc., silently turning a fat-fingered env value into a catastrophic
+  // near-instant timeout. Anything that isn't a plain positive integer of ms falls
+  // back to the generous default instead.
+  const parsed: number = raw !== undefined && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : NaN
+  return Number.isFinite(parsed) && parsed > 0 ? { taskTimeoutMs: parsed } : {}
+}
+
 /** Process-wide singleton (mirrors interactiveSubAgentManager). */
-export const subAgentJobRegistry = new SubAgentJobRegistryManager()
+export const subAgentJobRegistry = new SubAgentJobRegistryManager({ registry: resolveRegistryOptions() })

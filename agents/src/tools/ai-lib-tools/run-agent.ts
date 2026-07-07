@@ -8,7 +8,7 @@ import { createInteractiveInterviewConfig } from '../../agents/sub-agents/interv
 import { createInteractiveBuilderConfig } from '../../agents/sub-agents/builder.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { Logger } from '../../logging/index.js'
-import { subAgentJobRegistry } from '../../agents/sub-agent-job-registry.js'
+import { subAgentJobRegistry, TASK_TIMEOUT_ABORT_REASON } from '../../agents/sub-agent-job-registry.js'
 import { detectStaleFiles } from '../../agents/sub-agent-transcript.js'
 
 const logger = Logger.create({ component: 'run-agent-tool' })
@@ -169,7 +169,13 @@ Available agents: planning (write implementation plans), plan-review (review and
       // as 'aborted' — not a failure — so logs and the UI card don't treat every
       // Stop as an error.
       const aborted = signal.aborted
-      if (aborted) {
+      // The registry aborts with reason 'task_timeout' when its per-task backstop
+      // fires; distinguish that from a user/conversation stop so the live outputs
+      // event agrees with the persisted awaitAgents envelope (both report 'timeout').
+      const timedOut: boolean = aborted && signal.reason === TASK_TIMEOUT_ABORT_REASON
+      if (timedOut) {
+        logger.warn('runAgent.timed_out', { agent, appId })
+      } else if (aborted) {
         logger.info('runAgent.aborted', { agent, appId })
       } else if (result.status === 'error') {
         logger.error('runAgent.failed', { agent, appId, summary: result.summary?.slice(0, 200) })
@@ -185,19 +191,29 @@ Available agents: planning (write implementation plans), plan-review (review and
       emitEvent({
         event: 'outputs',
         agent,
-        detail: JSON.stringify({
-          status: aborted ? 'aborted' : result.status,
-          summary: result.summary,
-          artifacts: result.artifacts,
-          visualOutputs: result.visualOutputs ?? [],
-          ...(result.docPath ? { docPath: result.docPath } : {}),
-        }),
+        // On timeout the run may resolve AFTER the backstop already finalized the
+        // envelope (with a synthetic timeout summary and no artifacts). The UI
+        // prioritizes this live payload over the awaited result, so emitting the
+        // runner's late summary/artifacts here would contradict awaitAgents — a
+        // red timeout card showing an AbortError message or even late-success
+        // files. Emit a timeout-consistent payload instead so both surfaces agree.
+        detail: JSON.stringify(
+          timedOut
+            ? { status: 'timeout', summary: registry.timeoutErrorMessage(), artifacts: [], visualOutputs: [] }
+            : {
+                status: aborted ? 'aborted' : result.status,
+                summary: result.summary,
+                artifacts: result.artifacts,
+                visualOutputs: result.visualOutputs ?? [],
+                ...(result.docPath ? { docPath: result.docPath } : {}),
+              },
+        ),
       })
 
       return result
     })
 
-    const status = registry.snapshot().find(j => j.jobId === jobId)?.status ?? 'running'
+    const status = registry.statusOf(jobId) ?? 'running'
     return { jobId, agent, title: input.title, status }
   }
 )
@@ -268,7 +284,7 @@ async function handleInteractiveMode(
 export const awaitAgentsAITool: Tool = createTool(
   `Wait for one or more previously dispatched sub-agent jobs to finish, then return their results.
 
-Pass the jobIds returned by earlier runAgent calls. Blocks until all listed jobs complete. Returns each job's status ("success" | "error" | "aborted"), summary, artifacts, and (on failure) error. A failed job is reported as a structured error result — it does NOT throw — so you can decide whether to retry or route around it.`,
+Pass the jobIds returned by earlier runAgent calls. Blocks until all listed jobs complete. Returns each job as a result envelope: status ("success" | "error" | "aborted" | "timeout"), summary (the sub-agent's final output), artifacts (files it wrote), usage (token counts), durationMs, and (on failure) error. A failed, aborted, or timed-out job is reported as a structured result — it does NOT throw — so you can decide whether to retry or route around it. "timeout" means the worker exceeded the per-task limit and was stopped.`,
   z.object({
     jobIds: z.array(z.string()).min(1).describe('Job IDs returned by prior runAgent dispatches'),
   }),

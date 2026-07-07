@@ -41,8 +41,10 @@ export default function AwaitAgentsToolRenderer({
   const isRunning = toolStatus === 'running'
 
   // A deliberate cancellation ('aborted') is NOT a failure — keep it distinct so
-  // a user Stop doesn't render as a red error.
-  const failed = results.filter((r) => r.status === 'error')
+  // a user Stop doesn't render as a red error. A 'timeout' IS an involuntary
+  // failure (the per-task backstop stopped a hung worker), so it buckets with
+  // 'error' and gets the error treatment — mirroring RunAgentToolRenderer.
+  const failed = results.filter((r) => r.status === 'error' || r.status === 'timeout')
   const aborted = results.filter((r) => r.status === 'aborted')
   const succeeded = results.filter((r) => r.status === 'success')
 
@@ -90,7 +92,7 @@ export default function AwaitAgentsToolRenderer({
         <ToolModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={t('builder_subagent_await_modal_title', undefined, 'Awaited tasks')}>
           <div className="flex-1 overflow-y-auto flex flex-col gap-2">
             {results.map((job) => {
-              const jobFailed = job.status === 'error'
+              const jobFailed = job.status === 'error' || job.status === 'timeout'
               const jobAborted = job.status === 'aborted'
               const detail = job.error || job.summary
               return (
