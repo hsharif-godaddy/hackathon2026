@@ -43,7 +43,7 @@ For `needs_store_choice`: the response includes a `stores` array. Call `askQuest
 9. Do not invent bespoke product API routes, `useProducts` hooks, or static product catalogs for a Commerce-backed UI unless the user explicitly asks for non-Commerce/mock/static data.
 10. Do not expose internal tool or skill names to the user. Describe actions in plain language.
 11. When reporting a connected store to the user, include full Store ID, Channel ID, Business ID when available, and Commerce Home link when available. Do not abbreviate or truncate UUIDs.
-12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`.
+12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`. That checklist requires loading the `payment` router and determining merchant selling country before selecting a provider. Commerce cart checkout is currently supported only through GoDaddy Payments for confirmed US/CA merchants; for non-US/Canada merchants, block Commerce checkout before building checkout UI and recommend Stripe or another third-party processor for a non-Commerce payment flow.
 13. Before reporting checkout as complete, run `commerce__validate_checkout` and fix every finding.
 14. Once the Commerce work is fully done — the store/business is selected, the channel is ensured (`commerce__provision` returned `status: 'ready'`), all required files are created (templates installed, catalog/UI/checkout wired), and any checkout has passed `commerce__validate_checkout` — signal completion as the final step:
     ```typescript
@@ -65,10 +65,10 @@ For catalog UI/full-shop requests, install `commerce/ui` first, then handle cata
 `commerce__provision` returns structured `capabilityChecklists` when it reaches `status: 'ready'`.
 
 - `catalogOrCartUi` — Commerce store/channel, `commerce/ui` templates, and catalog data decision.
-- `fullShopWithCheckout` — Commerce store/channel, `commerce/ui`, catalog data decision, GoDaddy Payments provision, GoDaddy Payments templates, and cart checkout wiring to `POST /api/commerce/checkout`.
-- `nonCatalogPayment` — GoDaddy Payments provision/templates plus direct `lineItemData` checkout.
+- `fullShopWithCheckout` — Commerce store/channel, `commerce/ui`, catalog data decision, payment router region eligibility, and either confirmed US/CA GoDaddy Payments checkout wiring or an explicit non-US/CA block before checkout UI. GoDaddy Payments checkout wiring to `POST /api/commerce/checkout` is only for confirmed US/CA merchants.
+- `nonCatalogPayment` — payment router region eligibility plus eligible provider setup. GoDaddy Payments `lineItemData` checkout is only for confirmed US/CA merchants.
 
-For cart checkout, the checklist is authoritative. Loading `payment/godaddy-payments` is not enough; `godaddy-payments__provision` must return `ready` and `payment/godaddy-payments` templates must be installed before checkout UI or server code is written.
+For cart checkout, the checklist is authoritative. Loading `payment/godaddy-payments` is not enough and is forbidden for non-US/Canada merchants. For confirmed US/CA GoDaddy Payments checkout, `godaddy-payments__provision` must return `ready` and `payment/godaddy-payments` templates must be installed before checkout UI or server code is written. For non-US/Canada merchants, stop before checkout UI and explain that Commerce cart checkout is not supported with GoDaddy Payments in their region; recommend Stripe or another third-party processor for a non-Commerce payment flow.
 
 ## Error Handling
 

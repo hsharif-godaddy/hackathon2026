@@ -2,6 +2,12 @@
 name: godaddy-payments
 description: Provider flow for GoDaddy Payments setup and hosted checkout. Owns payment setup tools plus checkout/order-status templates for non-catalog payments, buy buttons, and cart checkout.
 whenToUse: Loaded by the payment router when the user selects or explicitly requests GoDaddy Payments.
+markets:
+  - en-US
+  - es-US
+  - en-CA
+  - fr-CA
+requiresSellingCountry: true
 post-install-notes: 'GoDaddy Payments checkout/order-status routes and server helpers are included in the templates. Do NOT create src/server/api/commerce/checkout/POST.ts, src/server/api/commerce/order-status/GET.ts, or replacement Commerce checkout helpers manually. Build UI against the installed routes/helpers.'
 ---
 
@@ -13,22 +19,26 @@ GoDaddy Payments uses a GoDaddy Commerce store and an Airo App Builder channel u
 
 ## Activation Contract
 
+**Region eligibility (US/CA only).** GoDaddy Payments is available only to merchants in the United States and Canada, and the platform enforces this at skill-load time. If this skill ever fails to load with a market error ("not available in your market"), do NOT retry, do NOT work around it, and do NOT call `godaddy-payments__provision`. Return to the `payment` router and set the merchant up with Stripe (or an explicit third-party alternate) instead.
+
+**Carry the confirmed selling country through the whole flow.** The `payment` router passes the merchant's confirmed selling country (ISO-3166 alpha-2, e.g. `US`, `CA`) when it loads this skill. That value is authoritative for eligibility over the plumbed market, which may be missing or stale. Pass the same alpha-2 country into every `godaddy-payments__provision` and `skill({ action: 'install', ... })` call below. If you do not have a confirmed `US` or `CA` selling country, do not continue this flow; return to the `payment` router to ask for region and route the merchant correctly.
+
 This skill has templates, but it is not safe to install them immediately after load. Generic activation workflows may say to load and then install template skills; for this provider, installation is gated by the setup workflow below.
 
 Required order:
 
 1. Load this skill.
-2. Call `godaddy-payments__provision`.
-3. If provision returns a `needs_*` status, ask the required question and re-call `godaddy-payments__provision` with the answer.
-4. When provision returns `status: "ready"`, install `payment/godaddy-payments` templates.
+2. Call `godaddy-payments__provision`, passing the confirmed selling country — `godaddy-payments__provision({ sellingCountry: 'US' })` for a US merchant or `godaddy-payments__provision({ sellingCountry: 'CA' })` for a Canadian merchant. Always use the country the router confirmed; never hard-code `US`.
+3. If provision returns a `needs_*` status, ask the required question and re-call `godaddy-payments__provision` with the answer (keep passing the confirmed `sellingCountry`).
+4. When provision returns `status: "ready"`, install `payment/godaddy-payments` templates, passing the same confirmed `sellingCountry`.
 5. Implement UI/server code that calls the installed routes.
 
 If provisioning or env writing cannot be completed, stop. Do not install templates, do not render checkout UI against missing env vars, and do not invent placeholder store/channel IDs.
 
-After `godaddy-payments__provision` returns `status: "ready"`, do not list or read `src/server`, do not create API files, and do not implement checkout. First call:
+After `godaddy-payments__provision` returns `status: "ready"`, do not list or read `src/server`, do not create API files, and do not implement checkout. First call (substitute the confirmed `sellingCountry` — `'US'` or `'CA'`):
 
 ```typescript
-skill({ action: 'install', skill: 'payment/godaddy-payments' });
+skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' /* or 'CA' — the confirmed country */ });
 ```
 
 ## Ownership Boundary
@@ -60,10 +70,12 @@ skill({ action: 'install', skill: 'payment/godaddy-payments' });
 
 For appointment deposits, donations, event tickets, registrations, custom fees, tips, pay-what-you-want payments, service deposits, reservation fees, retainers, custom invoices, user-entered amounts, and one-off payments:
 
-- call `godaddy-payments__provision`
-- install `payment/godaddy-payments`
+- call `godaddy-payments__provision({ sellingCountry: 'US' })` or `godaddy-payments__provision({ sellingCountry: 'CA' })` with the confirmed eligible country
+- install with the same confirmed country: `skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' })` or `sellingCountry: 'CA'`
 - call `/api/commerce/checkout` with `lineItemData`
 - do not load `commerce`, do not install `commerce/ui`, do not call catalog/product/SKU tools, and do not create products or SKUs
+
+If the confirmed selling country is not `US` or `CA`, do not continue this non-catalog GoDaddy Payments flow. Return to the `payment` router, explain that GoDaddy Payments is available only for businesses in the US and Canada, and route the merchant to Stripe or another explicit third-party alternate.
 
 The non-catalog checkout body must use this exact shape. Do not use `unitPrice`, `amount`, `price`, or a top-level `description` in place of `priceData`.
 
@@ -92,7 +104,7 @@ This skill exposes a single provisioning tool plus read-only store diagnostics:
 
 ## Setup Workflow
 
-**Never ask the user anything before calling `godaddy-payments__provision`.** Always call it first with no params. If Commerce already provisioned this app, the tool resumes from that persisted binding and does not ask the user to choose/create a store again. The response determines what to ask.
+**Never ask store/business setup questions before calling `godaddy-payments__provision`.** Region must already be confirmed by the `payment` router before this skill is loaded. Always call provision first with the confirmed `sellingCountry`; if Commerce already provisioned this app, the tool resumes from that persisted binding and does not ask the user to choose/create a store again. The response determines what setup question to ask next.
 
 ### Airo App Builder Channel Contract
 
@@ -105,12 +117,14 @@ A GoDaddy Payments-backed store is ready for Airo App Builder only after `godadd
 
 <mandatory_sequence id="setup_then_channel_ensure">
 <trigger>`godaddy-payments__provision` returns any status other than `ready`.</trigger>
-<required_next_action>Follow that status exactly and re-call `godaddy-payments__provision` with the user's answer. Do not call store setup or channel ensure tools directly.</required_next_action>
-<store_choice_flow>If provision returns `needs_store_choice`, wait for the user's choice. If the response includes `resumeInput`, merge it into the next `godaddy-payments__provision` call. If the user chooses an existing store, call with the chosen `storeId`. If the user chooses to create a new store, call with `storePreference: "new"` and omit `storeId` and `storeUrl`.</store_choice_flow>
+<required_next_action>Follow that status exactly and re-call `godaddy-payments__provision` with the user's answer plus the same confirmed `sellingCountry`. Do not call store setup or channel ensure tools directly.</required_next_action>
+<store_choice_flow>If provision returns `needs_store_choice`, wait for the user's choice. If the response includes `resumeInput`, merge it into the next `godaddy-payments__provision` call along with the same confirmed `sellingCountry`. If the user chooses an existing store, call with the chosen `storeId`. If the user chooses to create a new store, call with `storePreference: "new"` and omit `storeId` and `storeUrl`.</store_choice_flow>
 <failure_behavior>If provision fails or returns a non-matching channel, stop the payment flow and explain in plain language that this app could not be connected to GoDaddy Payments.</failure_behavior>
 </mandatory_sequence>
 
-### Step 1 — Call `godaddy-payments__provision` with no params
+### Step 1 — Call `godaddy-payments__provision` with the confirmed selling country
+
+Example: `godaddy-payments__provision({ sellingCountry: 'US' })`.
 
 ### Step 2 — Handle the response
 
@@ -121,11 +135,11 @@ The response includes a `businesses` array. Call `askQuestion` with `multiSelect
 The response includes a `stores` array. Call `askQuestion` with `multiSelect: false`, `allowOther: false`. For each store set `text` to "Store Name (Business Name)" and `value` to the bare `storeId` UUID. Unless the response includes `conflict: "store_creation_conflict"`, add a create option: `text` = "Create a new store", `value` = "new". Do NOT use `suggestedResponse`. Do not retry setup again in the same turn — wait for the user's answer first.
 
 After the user answers — two cases, no others:
-- **Value is a UUID**: call `godaddy-payments__provision` with that `storeId` plus `resumeInput` when provided.
-- **Value is `"new"`**: call `godaddy-payments__provision` with `storePreference: "new"` plus `resumeInput` when provided. Omit `storeId` and `storeUrl`.
+- **Value is a UUID**: call `godaddy-payments__provision` with that `storeId`, the confirmed `sellingCountry`, plus `resumeInput` when provided.
+- **Value is `"new"`**: call `godaddy-payments__provision` with `storePreference: "new"`, the confirmed `sellingCountry`, plus `resumeInput` when provided. Omit `storeId` and `storeUrl`.
 
 **`status: "needs_identity"`** — creating a new store requires owner details, or no stores exist on this account.
-Call `askQuestion`: "To set up payments, I need a few details — what's your first name, last name, and email address?" Do NOT display raw field names or JSON in your message. Retry with `storePreference: "new"` plus the provided `firstName`, `lastName`, `email`, merged with `resumeInput` when provided.
+Call `askQuestion`: "To set up payments, I need a few details — what's your first name, last name, and email address?" Do NOT display raw field names or JSON in your message. Retry with `storePreference: "new"`, the confirmed `sellingCountry`, plus the provided `firstName`, `lastName`, `email`, merged with `resumeInput` when provided.
 
 **`status: "provisioning_in_progress"`** — a store setup is already in progress.
 Tell the user payment setup is still finishing and do NOT call setup again.
@@ -155,10 +169,10 @@ When `godaddy-payments__provision` succeeds, the immediate next action is templa
 
 ## Install Templates
 
-After setup and channel ensure, install this provider's checkout templates:
+After setup and channel ensure, install this provider's checkout templates, passing the same confirmed `sellingCountry` (`'US'` or `'CA'`):
 
 ```typescript
-skill({ action: 'install', skill: 'payment/godaddy-payments' });
+skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' /* or 'CA' — the confirmed country */ });
 ```
 
 The install copies:

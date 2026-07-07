@@ -5,22 +5,14 @@ import { logger } from '../../../logging/index.js';
 import { GODADDY_PAYMENTS_TEMPLATE_PATHS } from '../checkout-guard.js';
 import { runCheckoutGuardOnWorkspace } from '../checkout-guard-workspace.js';
 import { readCurrentCommerceBinding } from '../binding.js';
-import {
-  callCommerceMcpTool,
-  formatToolError,
-  isRecord,
-  requireAppId,
-} from '../mcp.js';
+import { callCommerceMcpTool, formatToolError, isRecord, requireAppId } from '../mcp.js';
 import { provisionCommerceForApp } from '../provisioning.js';
 
 export { mergeEnvContent } from '../binding.js';
 
 const COMMERCE_UI_TEMPLATE_LOAD_ACTION = "skill({ action: 'load', skill: 'commerce/ui' })";
 const COMMERCE_UI_TEMPLATE_INSTALL_ACTION = "skill({ action: 'install', skill: 'commerce/ui' })";
-const GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION =
-  "skill({ action: 'load', skill: 'payment/godaddy-payments' })";
-const GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION =
-  "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
+const PAYMENT_ROUTER_LOAD_ACTION = "skill({ action: 'load', skill: 'payment' })";
 
 function buildCommerceCapabilityChecklists(): Record<string, unknown> {
   const commerceProvisioned = {
@@ -51,21 +43,23 @@ function buildCommerceCapabilityChecklists(): Record<string, unknown> {
       'reporting the storefront as complete',
     ],
   };
-  const godaddyPaymentsLoaded = {
-    id: 'godaddy_payments_skill_loaded',
+  const paymentRegionChecked = {
+    id: 'payment_region_checked_before_provider_selection',
     status: 'required',
-    requiredAction: GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION,
+    requiredAction: `${PAYMENT_ROUTER_LOAD_ACTION}; determine or ask for the merchant selling country before selecting a provider. Commerce cart checkout is currently supported only through GoDaddy Payments for confirmed US/CA merchants. For non-US/Canada merchants, do not build Commerce cart checkout UI; explain that GoDaddy Payments checkout is unavailable in their region and recommend Stripe or another third-party processor for a non-Commerce payment flow.`,
   };
-  const godaddyPaymentsProvisioned = {
-    id: 'godaddy_payments_provisioned',
+  const paymentProviderProvisioned = {
+    id: 'eligible_payment_provider_provisioned',
     status: 'required',
-    requiredAction: 'godaddy-payments__provision',
+    requiredAction:
+      'Follow the payment router. For US/CA Commerce cart checkout, load payment/godaddy-payments with sellingCountry and run godaddy-payments__provision. For non-US/CA Commerce cart checkout, stop before checkout UI and recommend Stripe or another third-party processor as an alternate non-Commerce payment flow; do not provision GoDaddy Payments.',
     mustCompleteBefore: ['checkout UI', 'checkout buttons', 'checkout pages', 'order-status code'],
   };
-  const godaddyPaymentsTemplates = {
-    id: 'godaddy_payments_templates_installed',
+  const paymentProviderTemplates = {
+    id: 'eligible_payment_provider_templates_installed',
     status: 'required',
-    requiredAction: GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION,
+    requiredAction:
+      'Install only the templates for the eligible provider selected by the payment router. GoDaddy Payments templates require confirmed US/CA sellingCountry; never install them for non-US/CA merchants.',
     mustCompleteBefore: [
       'checkout UI',
       'checkout buttons',
@@ -75,15 +69,16 @@ function buildCommerceCapabilityChecklists(): Record<string, unknown> {
     ],
   };
   const cartCheckoutWiring = {
-    id: 'cart_checkout_wired_to_installed_route',
+    id: 'us_ca_godaddy_payments_cart_checkout_wired_to_installed_route',
     status: 'required',
     contract: {
+      supportedProvider: 'GoDaddy Payments for confirmed US/CA merchants only',
       request: { draftOrderId: 'cart.id', returnUrl: 'string', successUrl: 'string' },
       response: { url: 'string', id: 'string', draftOrderId: 'string | null' },
       redirectField: 'url',
     },
     requiredAction:
-      'Call POST /api/commerce/checkout with draftOrderId, returnUrl, and successUrl, then redirect to data.url.',
+      'Only after confirmed US/CA GoDaddy Payments provision and template install, call POST /api/commerce/checkout with draftOrderId, returnUrl, and successUrl, then redirect to data.url. For non-US/CA merchants, do not build this checkout surface; explain the region limitation and recommend Stripe or another third-party processor for a non-Commerce payment flow.',
   };
 
   return {
@@ -92,16 +87,16 @@ function buildCommerceCapabilityChecklists(): Record<string, unknown> {
       commerceProvisioned,
       commerceUiTemplates,
       catalogDataDecision,
-      godaddyPaymentsLoaded,
-      godaddyPaymentsProvisioned,
-      godaddyPaymentsTemplates,
+      paymentRegionChecked,
+      paymentProviderProvisioned,
+      paymentProviderTemplates,
       cartCheckoutWiring,
     ],
     nonCatalogPayment: [
       commerceProvisioned,
-      godaddyPaymentsLoaded,
-      godaddyPaymentsProvisioned,
-      godaddyPaymentsTemplates,
+      paymentRegionChecked,
+      paymentProviderProvisioned,
+      paymentProviderTemplates,
       {
         id: 'non_catalog_checkout_wired_to_installed_route',
         status: 'required',
@@ -330,8 +325,7 @@ IDEMPOTENT: Re-calling with the same or additional inputs resumes from the last 
 
       return {
         ...result,
-        NEXT_STEP:
-          `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. CRITICAL: If the user's request contains ANY cart, checkout button, buy button, hosted checkout, place order, or order confirmation — payment/godaddy-payments is REQUIRED, not optional. Do not build a Checkout button, /checkout page, or order-confirmation route without first calling ${GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION}, then godaddy-payments__provision, then ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION}. A cart checkout button wired to nothing is a broken app — do not deliver it.`,
+        NEXT_STEP: `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. CRITICAL: If the user's request contains ANY cart, checkout button, buy button, hosted checkout, place order, or order confirmation — load the payment router first with ${PAYMENT_ROUTER_LOAD_ACTION} and determine the merchant selling country before provider selection. Commerce cart checkout is currently supported only through GoDaddy Payments for confirmed US/CA merchants. For non-US/Canada merchants, do not load, provision, or install payment/godaddy-payments and do not build Commerce checkout UI; explain that GoDaddy Payments checkout is unavailable in their region and recommend Stripe or another third-party processor for a non-Commerce payment flow. Only for confirmed US/CA one-time checkout should you follow the GoDaddy Payments flow with sellingCountry, then wire Commerce checkout after provision and templates succeed. A cart checkout button wired to nothing is a broken app — do not deliver it.`,
         capabilityChecklists: buildCommerceCapabilityChecklists(),
       };
     } catch (err) {
@@ -350,7 +344,7 @@ WHEN TO USE:
 - Before final response for a Commerce request that included checkout.
 
 CHECKS:
-- payment/godaddy-payments checkout templates are installed when checkout is expected.
+- payment/godaddy-payments checkout templates are installed when confirmed US/CA Commerce checkout is expected.
 - frontend code redirects to data.url, not data.redirectUrl.
 - no manual checkout/order-status routes were created outside the installed template paths.
 - no replacement shipping/place-order/order-completion APIs were built instead of hosted checkout.

@@ -10,6 +10,36 @@ import { DevSupervisorError } from '../services/DevSupervisorClient.js';
 import { regenerateEntryApiRegistrations } from '../utils/entry-api-sync.js';
 
 /**
+ * Extract the ISO-3166 region subtags (uppercased) from a list of BCP-47
+ * market locales, so a merchant's confirmed selling country can be matched
+ * against a skill's `markets` allowlist (e.g. ['en-US','fr-CA'] -> {'US','CA'}).
+ */
+function marketCountries(markets: string[]): Set<string> {
+  return new Set(
+    markets
+      .map((locale) => locale.split('-')[1]?.toUpperCase())
+      .filter((country): country is string => typeof country === 'string' && country.length > 0)
+  );
+}
+
+/**
+ * Normalized region-eligibility inputs read from a skill's frontmatter.
+ */
+interface RegionGate {
+  markets: string[] | undefined;
+  requiresSellingCountry: boolean;
+}
+
+/**
+ * Result of a region-eligibility check. When ineligible, `reason` distinguishes
+ * a missing confirmed selling country from a market/country mismatch so callers
+ * can emit the right log event and error message.
+ */
+type RegionEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: 'selling_country_required' | 'market_restricted' };
+
+/**
  * Options for loading a skill
  */
 export interface SkillLoaderOptions {
@@ -21,6 +51,14 @@ export interface SkillLoaderOptions {
    * When absent, market-restricted skills are rejected.
    */
   market?: string;
+  /**
+   * ISO-3166 alpha-2 country code (e.g. 'US', 'CA', 'AU') the user confirmed as
+   * their selling location. When provided it is AUTHORITATIVE for a skill's
+   * `markets` restriction — eligibility is checked against the country subtags
+   * of the allowlist rather than the plumbed `market` locale, which may be
+   * missing or stale.
+   */
+  sellingCountry?: string;
   /** Per-request context metadata for switchboard flag checking */
   contextMetadata?: Record<string, unknown>;
 }
@@ -47,6 +85,8 @@ export interface InstallTemplatesOptions {
   appPath: string;
   /** App ID for workspace file operations and terminal commands */
   appId: string;
+  /** ISO-3166 alpha-2 country code the user confirmed as their selling location */
+  sellingCountry?: string;
   /** @internal Set of skills being installed to prevent circular dependencies */
   installingSkills?: Set<string>;
   /** @internal Configuration for this installation (from skill-deps) */
@@ -168,7 +208,7 @@ export function escapeXml(text: string): string {
  */
 export function buildSkillsPromptSection(skills: SkillListItem[]): string {
   const skillEntries = skills
-    .map(s => {
+    .map((s) => {
       const parts = [escapeXml(s.description)];
       if (s.whenToUse) parts.push(`Use this when: ${escapeXml(s.whenToUse)}`);
       return `  <skill name="${escapeXml(s.name)}">
@@ -177,12 +217,11 @@ export function buildSkillsPromptSection(skills: SkillListItem[]): string {
     })
     .join('\n');
 
-  const intentEntries = skills.flatMap(s =>
-    (s.intents ?? []).map(phrase => `${phrase} → ${s.name}`)
+  const intentEntries = skills.flatMap((s) =>
+    (s.intents ?? []).map((phrase) => `${phrase} → ${s.name}`)
   );
-  const intentMapLine = intentEntries.length > 0
-    ? `\n\n**Quick intent map:** ${intentEntries.join(' | ')}`
-    : '';
+  const intentMapLine =
+    intentEntries.length > 0 ? `\n\n**Quick intent map:** ${intentEntries.join(' | ')}` : '';
 
   return `## Available Skills
 
@@ -220,6 +259,7 @@ interface SkillFrontmatter {
   switchboardFlag: string | undefined;
   intents: string[] | undefined;
   skillMarkets: string[] | undefined;
+  requiresSellingCountry: boolean;
   allowedAgents: string[] | undefined;
   templateMappings: TemplateMappingRule[] | undefined;
 }
@@ -248,17 +288,71 @@ export class SkillLoaderTool {
    * listSkills/loadSkill so a non-en-US caller can't bypass list filtering by
    * naming a market-restricted skill directly.
    */
-  async isSkillAvailableInMarket(skillName: string, market: string | undefined): Promise<boolean> {
+  async isSkillAvailableInMarket(
+    skillName: string,
+    market: string | undefined,
+    sellingCountry?: string
+  ): Promise<boolean> {
     const fm = await this.getSkillFrontmatter(skillName);
     // When frontmatter is null (file missing or transient read error) AND a
-    // market is required by the caller, fail closed — we cannot confirm the
-    // skill is unrestricted without reading its metadata.
-    if (!fm && market) return false;
-    const allow = fm?.skillMarkets;
-    if (!allow || allow.length === 0) return true;
-    if (!market) return false;
-    return allow.includes(market);
+    // market/country is required by the caller, fail closed — we cannot confirm
+    // the skill is unrestricted without reading its metadata.
+    if (!fm && (market || sellingCountry)) return false;
+    return this.evaluateRegionEligibility({
+      skill: skillName,
+      markets: fm?.skillMarkets,
+      requiresSellingCountry: fm?.requiresSellingCountry ?? false,
+      market,
+      sellingCountry,
+    }).eligible;
   }
+
+  /**
+   * Single source of truth for region gating shared by loadSkill,
+   * installTemplates, and isSkillAvailableInMarket (pin/install). A skill that
+   * declares `requiresSellingCountry` must receive a confirmed selling country,
+   * and a confirmed country is authoritative over the plumbed market. Two
+   * misconfigurations fail closed (block everyone) but are logged so they are
+   * observable rather than silent: a `markets` allowlist that parses to zero
+   * country subtags, and a `requiresSellingCountry` gate with no `markets`
+   * allowlist to validate the confirmed country against.
+   */
+  private evaluateRegionEligibility(params: {
+    skill: string;
+    markets: string[] | undefined;
+    requiresSellingCountry: boolean;
+    market: string | undefined;
+    sellingCountry: string | undefined;
+  }): RegionEligibility {
+    const { skill, markets, requiresSellingCountry, market, sellingCountry } = params;
+    if (requiresSellingCountry && !sellingCountry) {
+      return { eligible: false, reason: 'selling_country_required' };
+    }
+    if (!markets || markets.length === 0) {
+      if (requiresSellingCountry) {
+        this.logger.warn('skill.markets.required_without_allowlist', { skill });
+        return { eligible: false, reason: 'market_restricted' };
+      }
+      return { eligible: true };
+    }
+    const allowedCountries = marketCountries(markets);
+    if (allowedCountries.size === 0) {
+      this.logger.warn('skill.markets.unparseable', { skill, markets });
+      return { eligible: false, reason: 'market_restricted' };
+    }
+    // A confirmed selling country is authoritative over the plumbed market.
+    const eligible = sellingCountry
+      ? allowedCountries.has(sellingCountry.toUpperCase())
+      : !!market && markets.includes(market);
+    return eligible ? { eligible: true } : { eligible: false, reason: 'market_restricted' };
+  }
+
+  private readonly regionGate = (data: Record<string, unknown>): RegionGate => ({
+    markets: Array.isArray(data.markets)
+      ? (data.markets as unknown[]).filter((m): m is string => typeof m === 'string')
+      : undefined,
+    requiresSellingCountry: data.requiresSellingCountry === true,
+  });
 
   /**
    * Read + parse a skill's frontmatter, caching the result per-process.
@@ -286,20 +380,25 @@ export class SkillLoaderTool {
           })
         : undefined;
 
-      const templateMappings: TemplateMappingRule[] | undefined = this.parseTemplateMappings(data.templateMappings);
+      const templateMappings: TemplateMappingRule[] | undefined = this.parseTemplateMappings(
+        data.templateMappings
+      );
 
       const fm: SkillFrontmatter = {
         name: typeof data.name === 'string' && data.name ? data.name : skillName,
         description: typeof data.description === 'string' ? data.description : '',
-        whenToUse: typeof data.whenToUse === 'string' && data.whenToUse.trim()
-          ? data.whenToUse.trim()
-          : undefined,
+        whenToUse:
+          typeof data.whenToUse === 'string' && data.whenToUse.trim()
+            ? data.whenToUse.trim()
+            : undefined,
         enablementId: typeof data.enablementId === 'string' ? data.enablementId : undefined,
-        switchboardFlag: typeof data.switchboardFlag === 'string' ? data.switchboardFlag : undefined,
+        switchboardFlag:
+          typeof data.switchboardFlag === 'string' ? data.switchboardFlag : undefined,
         intents: intents && intents.length > 0 ? intents : undefined,
         skillMarkets: Array.isArray(data.markets)
           ? (data.markets as unknown[]).filter((m): m is string => typeof m === 'string')
           : undefined,
+        requiresSellingCountry: data.requiresSellingCountry === true,
         allowedAgents: Array.isArray(data.allowedAgents)
           ? (data.allowedAgents as unknown[]).filter((a): a is string => typeof a === 'string')
           : undefined,
@@ -375,7 +474,11 @@ export class SkillLoaderTool {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT') {
         this.logger.warn('skill.loadReference.not_found', { refPath, filePath });
-        return { success: false, skill: refPath, error: `Reference file not found: '${refPath}.md'` };
+        return {
+          success: false,
+          skill: refPath,
+          error: `Reference file not found: '${refPath}.md'`,
+        };
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error('skill.loadReference.error', { refPath, error: errorMessage });
@@ -392,7 +495,8 @@ export class SkillLoaderTool {
     // npm package names: lowercase, hyphens, @scopes allowed
     // Must start with alphanumeric or @scope, can contain . _ - ~
     // Optional version suffix: @1.0.0, @^1.0.0, @~1.0.0, @latest, etc.
-    const validPattern = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-zA-Z0-9.^~<>=|-]+)?$/;
+    const validPattern =
+      /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-zA-Z0-9.^~<>=|-]+)?$/;
     return validPattern.test(packageName);
   }
 
@@ -404,7 +508,9 @@ export class SkillLoaderTool {
    */
   private getSkillPath(skillName: string, subpath?: string): string {
     if (!this.validateSkillName(skillName)) {
-      throw new Error(`Invalid skill name '${skillName}'. Skill names must contain only letters, numbers, hyphens, and underscores, with an optional single category prefix (e.g. payment/stripe).`);
+      throw new Error(
+        `Invalid skill name '${skillName}'. Skill names must contain only letters, numbers, hyphens, and underscores, with an optional single category prefix (e.g. payment/stripe).`
+      );
     }
     if (subpath) {
       return path.join(this.skillsDir, skillName, subpath);
@@ -420,7 +526,7 @@ export class SkillLoaderTool {
     const { skill } = options;
 
     this.logger.info('skill.load.start', {
-      skill
+      skill,
     });
 
     try {
@@ -435,7 +541,7 @@ export class SkillLoaderTool {
         return {
           success: false,
           skill,
-          error: `Skill '${skill}' not found. Available skills can be listed using the skill directory.`
+          error: `Skill '${skill}' not found. Available skills can be listed using the skill directory.`,
         };
       }
 
@@ -446,12 +552,12 @@ export class SkillLoaderTool {
         instructions = await fs.readFile(skillFile, 'utf-8');
         this.logger.info('skill.load.instructions_loaded', {
           skill,
-          size: instructions.length
+          size: instructions.length,
         });
       } catch (error) {
         this.logger.warn('skill.load.instructions_missing', {
           skill,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
       }
 
@@ -460,46 +566,70 @@ export class SkillLoaderTool {
         return {
           success: false,
           skill,
-          error: `Skill '${skill}' has no instructions`
+          error: `Skill '${skill}' has no instructions`,
         };
       }
 
       // Check enablement via frontmatter (prevents bypass of listSkills filter)
       const { data: frontmatter } = matter(instructions);
-      const loadEnablementId = typeof frontmatter.enablementId === 'string' ? frontmatter.enablementId : undefined;
+      const loadEnablementId =
+        typeof frontmatter.enablementId === 'string' ? frontmatter.enablementId : undefined;
       if (loadEnablementId && !skills.isEnabled(loadEnablementId)) {
         this.logger.warn('skill.load.feature_disabled', { skill, enablementId: loadEnablementId });
         return {
           success: false,
           skill,
-          error: `Skill '${skill}' is not available.`
+          error: `Skill '${skill}' is not available.`,
         };
       }
 
       // Check market restriction
-      const loadMarkets = Array.isArray(frontmatter.markets)
-        ? (frontmatter.markets as unknown[]).filter((m): m is string => typeof m === 'string')
-        : undefined;
-      if (loadMarkets && loadMarkets.length > 0) {
-        const { market } = options;
-        if (!market || !loadMarkets.includes(market)) {
-          this.logger.warn('skill.load.market_restricted', { skill, loadMarkets, requestMarket: market });
+      const { markets: loadMarkets, requiresSellingCountry: loadRequiresSellingCountry } =
+        this.regionGate(frontmatter);
+      const loadEligibility = this.evaluateRegionEligibility({
+        skill,
+        markets: loadMarkets,
+        requiresSellingCountry: loadRequiresSellingCountry,
+        market: options.market,
+        sellingCountry: options.sellingCountry,
+      });
+      if (!loadEligibility.eligible) {
+        if (loadEligibility.reason === 'selling_country_required') {
+          this.logger.warn('skill.load.selling_country_required', {
+            skill,
+            requestMarket: options.market,
+          });
           return {
             success: false,
             skill,
-            error: `Skill '${skill}' is not available in your market.`,
+            error: `Skill '${skill}' requires a confirmed merchant selling country before provider selection. Ask for the selling country and pass sellingCountry as an ISO-3166 alpha-2 code.`,
           };
         }
-      }
-
-      // Check switchboardFlag via per-request context metadata
-      const loadSwitchboardFlag = typeof frontmatter.switchboardFlag === 'string' ? frontmatter.switchboardFlag : undefined;
-      if (loadSwitchboardFlag && !options.contextMetadata?.[loadSwitchboardFlag]) {
-        this.logger.info('skill.load.switchboard_disabled', { skill, switchboardFlag: loadSwitchboardFlag });
+        this.logger.warn('skill.load.market_restricted', {
+          skill,
+          loadMarkets,
+          requestMarket: options.market,
+          sellingCountry: options.sellingCountry,
+        });
         return {
           success: false,
           skill,
-          error: `Skill '${skill}' is not available for this account. Tell the user this feature isn't available yet and do not attempt this task manually. Stop here.`
+          error: `Skill '${skill}' is not available in your market.`,
+        };
+      }
+
+      // Check switchboardFlag via per-request context metadata
+      const loadSwitchboardFlag =
+        typeof frontmatter.switchboardFlag === 'string' ? frontmatter.switchboardFlag : undefined;
+      if (loadSwitchboardFlag && !options.contextMetadata?.[loadSwitchboardFlag]) {
+        this.logger.info('skill.load.switchboard_disabled', {
+          skill,
+          switchboardFlag: loadSwitchboardFlag,
+        });
+        return {
+          success: false,
+          skill,
+          error: `Skill '${skill}' is not available for this account. Tell the user this feature isn't available yet and do not attempt this task manually. Stop here.`,
         };
       }
 
@@ -511,7 +641,7 @@ export class SkillLoaderTool {
         templates = await this.loadTemplateFiles(templatesDir, '');
         this.logger.info('skill.load.templates_loaded', {
           skill,
-          count: templates.length
+          count: templates.length,
         });
       } catch (error) {
         this.logger.info('skill.load.no_templates', { skill });
@@ -520,14 +650,14 @@ export class SkillLoaderTool {
       this.logger.info('skill.load.success', {
         skill,
         hasInstructions: !!instructions,
-        templateCount: templates.length
+        templateCount: templates.length,
       });
 
       return {
         success: true,
         skill,
         ...(instructions ? { instructions } : {}),
-        ...(templates.length > 0 ? { templates } : {})
+        ...(templates.length > 0 ? { templates } : {}),
       };
     } catch (error) {
       // Handle validation errors and other errors
@@ -543,7 +673,7 @@ export class SkillLoaderTool {
       return {
         success: false,
         skill,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -553,7 +683,14 @@ export class SkillLoaderTool {
    * Copies template files without going through LLM context
    */
   async installTemplates(options: InstallTemplatesOptions): Promise<InstallTemplatesResult> {
-    const { skill, appPath, appId, installingSkills = new Set<string>(), config = {} } = options;
+    const {
+      skill,
+      appPath,
+      appId,
+      sellingCountry,
+      installingSkills = new Set<string>(),
+      config = {},
+    } = options;
 
     // Prevent circular dependencies
     if (installingSkills.has(skill)) {
@@ -562,7 +699,7 @@ export class SkillLoaderTool {
         success: true,
         skill,
         filesInstalled: 0,
-        installedFiles: []
+        installedFiles: [],
       };
     }
 
@@ -570,7 +707,7 @@ export class SkillLoaderTool {
 
     this.logger.info('skill.install.start', {
       skill,
-      appPath
+      appPath,
     });
 
     try {
@@ -578,6 +715,45 @@ export class SkillLoaderTool {
       const skillFile = this.getSkillPath(skill, 'skill.md');
       const skillContent = await fs.readFile(skillFile, 'utf-8');
       const { data } = matter(skillContent);
+      const { markets: installMarkets, requiresSellingCountry: installRequiresSellingCountry } =
+        this.regionGate(data);
+      // installTemplates has no request `market` (the general market gate is
+      // enforced by the caller via isSkillAvailableInMarket). Here we only
+      // enforce the country-eligibility gate for skills that require a
+      // confirmed selling country, using the country as the authority.
+      if (installRequiresSellingCountry) {
+        const installEligibility = this.evaluateRegionEligibility({
+          skill,
+          markets: installMarkets,
+          requiresSellingCountry: installRequiresSellingCountry,
+          market: undefined,
+          sellingCountry,
+        });
+        if (!installEligibility.eligible) {
+          if (installEligibility.reason === 'selling_country_required') {
+            this.logger.warn('skill.install.selling_country_required', { skill });
+            return {
+              success: false,
+              skill,
+              filesInstalled: 0,
+              installedFiles: [],
+              error: `Skill '${skill}' requires a confirmed merchant selling country before template installation.`,
+            };
+          }
+          this.logger.warn('skill.install.market_restricted', {
+            skill,
+            installMarkets,
+            sellingCountry: sellingCountry?.trim().toUpperCase(),
+          });
+          return {
+            success: false,
+            skill,
+            filesInstalled: 0,
+            installedFiles: [],
+            error: `Skill '${skill}' is not available in your market.`,
+          };
+        }
+      }
 
       const skillDeps = data['skill-deps'] as Record<string, SkillDependencyConfig> | undefined;
       const installedSkillDeps: string[] = [];
@@ -588,15 +764,16 @@ export class SkillLoaderTool {
           if (depConfig.templates) {
             this.logger.info('skill.install.dependency', {
               skill,
-              dependency: depSkill
+              dependency: depSkill,
             });
 
             const depResult = await this.installTemplates({
               skill: depSkill,
               appPath,
               appId,
+              sellingCountry,
               installingSkills,
-              config: depConfig
+              config: depConfig,
             });
 
             installedSkillDeps.push(depSkill);
@@ -610,7 +787,7 @@ export class SkillLoaderTool {
                 this.logger.info('skill.install.dependency_instructions_loaded', {
                   skill,
                   dependency: depSkill,
-                  size: depInstructions.length
+                  size: depInstructions.length,
                 });
 
                 dependentInstructions[depSkill] = depInstructions;
@@ -623,7 +800,7 @@ export class SkillLoaderTool {
                 this.logger.warn('skill.install.dependency_instructions_failed', {
                   skill,
                   dependency: depSkill,
-                  error: error instanceof Error ? error.message : String(error)
+                  error: error instanceof Error ? error.message : String(error),
                 });
               }
             }
@@ -654,7 +831,13 @@ export class SkillLoaderTool {
       const workspace = createForWorkspace(appId, 'preview');
       if (!workspace) {
         this.logger.error('skill.install.workspace_unavailable', { skill, appId });
-        return { success: false, skill, filesInstalled: 0, installedFiles: [], error: 'Workspace not found' };
+        return {
+          success: false,
+          skill,
+          filesInstalled: 0,
+          installedFiles: [],
+          error: 'Workspace not found',
+        };
       }
 
       if (hasTemplates) {
@@ -703,7 +886,7 @@ export class SkillLoaderTool {
       // If the skill installed any API route files under src/server/api/**,
       // regenerate the import + registration blocks in src/server/entry.ts.
       const installedApiRoute = installedFiles.some((p) =>
-        /src\/server\/api\/(?:.+\/)?(GET|POST|PUT|PATCH|DELETE)\.(ts|js)$/.test(p),
+        /src\/server\/api\/(?:.+\/)?(GET|POST|PUT|PATCH|DELETE)\.(ts|js)$/.test(p)
       );
       if (installedApiRoute) {
         try {
@@ -729,8 +912,8 @@ export class SkillLoaderTool {
         }
       }
 
-      const failedDeps = dependencyResults.filter(r => !r.success).length;
-      const failedDevDeps = devDependencyResults.filter(r => !r.success).length;
+      const failedDeps = dependencyResults.filter((r) => !r.success).length;
+      const failedDevDeps = devDependencyResults.filter((r) => !r.success).length;
 
       this.logger.info('skill.install.success', {
         skill,
@@ -740,7 +923,7 @@ export class SkillLoaderTool {
         dependenciesFailed: failedDeps,
         devDependenciesInstalled: devDependencyResults.length,
         devDependenciesFailed: failedDevDeps,
-        skillDependenciesInstalled: installedSkillDeps.length
+        skillDependenciesInstalled: installedSkillDeps.length,
       });
 
       const result: InstallTemplatesResult = {
@@ -799,7 +982,7 @@ export class SkillLoaderTool {
       return {
         success: false,
         skill,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   }
@@ -816,16 +999,20 @@ export class SkillLoaderTool {
    * Get destination path for a template file using frontmatter-driven mappings.
    * Falls back to `src/{templatePath}` when no mapping matches.
    */
-  private getDestinationPath(templatePath: string, mappings: TemplateMappingRule[] | undefined): string {
+  private getDestinationPath(
+    templatePath: string,
+    mappings: TemplateMappingRule[] | undefined
+  ): string {
     if (mappings) {
       for (const rule of mappings) {
         if (rule.prefix === '*') {
           return `${rule.destination}${templatePath}`;
         }
         if (templatePath === rule.prefix || templatePath.startsWith(`${rule.prefix}/`)) {
-          const remainder: string = templatePath === rule.prefix
-            ? path.basename(templatePath)
-            : templatePath.slice(rule.prefix.length + 1);
+          const remainder: string =
+            templatePath === rule.prefix
+              ? path.basename(templatePath)
+              : templatePath.slice(rule.prefix.length + 1);
           return `${rule.destination}${remainder}`;
         }
       }
@@ -837,12 +1024,17 @@ export class SkillLoaderTool {
    * List all available skills with their descriptions from YAML frontmatter
    * Only reads the frontmatter, not the full skill.md content
    */
-  async listSkills(options?: { pinned?: Set<string>; market?: string; contextMetadata?: Record<string, unknown>; agentId?: string }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
+  async listSkills(options?: {
+    pinned?: Set<string>;
+    market?: string;
+    contextMetadata?: Record<string, unknown>;
+    agentId?: string;
+  }): Promise<{ success: boolean; skills?: SkillListItem[]; error?: string }> {
     this.logger.info('skill.list.start', {});
 
     try {
       const entries = await fs.readdir(this.skillsDir, { withFileTypes: true });
-      const skillDirs = entries.filter(entry => entry.isDirectory());
+      const skillDirs = entries.filter((entry) => entry.isDirectory());
 
       // Load metadata from frontmatter, hitting the per-process cache so per-turn
       // listSkills() doesn't re-read skill.md on every request.
@@ -854,7 +1046,10 @@ export class SkillLoaderTool {
         // required, fail closed — exclude the skill rather than including an
         // unrestricted entry. Mirrors isSkillAvailableInMarket's guard.
         if (!fm && options?.market) {
-          this.logger.debug('skill.list.frontmatter_unavailable', { skill: skillName, market: options.market });
+          this.logger.debug('skill.list.frontmatter_unavailable', {
+            skill: skillName,
+            market: options.market,
+          });
           return null;
         }
 
@@ -875,14 +1070,14 @@ export class SkillLoaderTool {
             this.logger.warn('skill.list.unknown_feature_flag', {
               skill: skillName,
               enablementId,
-              message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration or add to profileGatedSkills.`
+              message: `Skill references unknown feature flag '${enablementId}'. Check features.ts configuration or add to profileGatedSkills.`,
             });
           }
 
           if (!skills.isEnabled(enablementId)) {
             this.logger.debug('skill.list.feature_disabled', {
               skill: skillName,
-              enablementId
+              enablementId,
             });
             return null; // Skip this skill - feature is disabled
           }
@@ -905,18 +1100,22 @@ export class SkillLoaderTool {
         if (switchboardFlag && !options?.contextMetadata?.[switchboardFlag]) {
           this.logger.debug('skill.list.switchboard_disabled', {
             skill: skillName,
-            switchboardFlag
+            switchboardFlag,
           });
           return null;
         }
 
         // If allowedAgents is provided, only show this skill to listed agents
         const allowedAgents = fm?.allowedAgents;
-        if (Array.isArray(allowedAgents) && options?.agentId && !allowedAgents.includes(options.agentId)) {
+        if (
+          Array.isArray(allowedAgents) &&
+          options?.agentId &&
+          !allowedAgents.includes(options.agentId)
+        ) {
           this.logger.debug('skill.list.agent_restricted', {
             skill: skillName,
             allowedAgents,
-            agentId: options.agentId
+            agentId: options.agentId,
           });
           return null;
         }
@@ -949,27 +1148,27 @@ export class SkillLoaderTool {
       const enabledSkills = allSkills.filter((skill): skill is SkillListItem => skill !== null);
 
       const totalSkillsCount = allSkills.length;
-      const disabledCount = allSkills.filter(s => s === null).length;
+      const disabledCount = allSkills.filter((s) => s === null).length;
 
       this.logger.info('skill.list.success', {
         count: enabledSkills.length,
         totalSkills: totalSkillsCount,
         disabledCount,
-        skills: enabledSkills.map(s => s.name)
+        skills: enabledSkills.map((s) => s.name),
       });
 
       return {
         success: true,
-        skills: enabledSkills
+        skills: enabledSkills,
       };
     } catch (error) {
       this.logger.error('skill.list.error', {
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error listing skills'
+        error: error instanceof Error ? error.message : 'Unknown error listing skills',
       };
     }
   }
@@ -999,7 +1198,7 @@ export class SkillLoaderTool {
               this.logger.warn('skill.dependencies.invalid_name', {
                 skill,
                 field,
-                packageName: dep
+                packageName: dep,
               });
               return false;
             }
@@ -1012,7 +1211,7 @@ export class SkillLoaderTool {
       this.logger.warn('skill.dependencies.parse_failed', {
         skill,
         field,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       return [];
     }
@@ -1039,45 +1238,44 @@ export class SkillLoaderTool {
       this.logger.warn('skill.dependencies.no_dev_supervisor', {
         package: packageName,
         appId,
-        group
+        group,
       });
       return {
         package: packageName,
         success: false,
         error: 'Dev supervisor not available for package installation',
-        retries: 0
+        retries: 0,
       };
     }
 
     const terminalTool = new TerminalTool(workspace.tasks);
-    const installCommand = group === 'dev'
-      ? `npm install --save-dev ${packageName}`
-      : `npm install ${packageName}`;
+    const installCommand =
+      group === 'dev' ? `npm install --save-dev ${packageName}` : `npm install ${packageName}`;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       this.logger.info('skill.dependencies.install_attempt', {
         package: packageName,
         group,
         attempt: attempt + 1,
-        maxRetries
+        maxRetries,
       });
 
       try {
         const result = await terminalTool.executeCommand(appPath, {
           command: installCommand,
-          timeout: 60000 // 60 seconds for npm install
+          timeout: 60000, // 60 seconds for npm install
         });
 
         if (result.success) {
           this.logger.info('skill.dependencies.install_success', {
             package: packageName,
-            attempts: attempt + 1
+            attempts: attempt + 1,
           });
 
           return {
             package: packageName,
             success: true,
-            retries: attempt
+            retries: attempt,
           };
         }
 
@@ -1090,7 +1288,7 @@ export class SkillLoaderTool {
         package: packageName,
         attempt: attempt + 1,
         maxRetries,
-        error: lastError
+        error: lastError,
       });
 
       // Wait before retry with exponential backoff: 1s, 2s, 4s
@@ -1098,22 +1296,22 @@ export class SkillLoaderTool {
         const backoffMs = 1000 * Math.pow(2, attempt);
         this.logger.debug('skill.dependencies.backoff', {
           package: packageName,
-          backoffMs
+          backoffMs,
         });
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
     }
 
     this.logger.error('skill.dependencies.install_failed', {
       package: packageName,
       attempts: maxRetries,
-      error: lastError
+      error: lastError,
     });
 
     const failResult: DependencyInstallResult = {
       package: packageName,
       success: false,
-      retries: maxRetries - 1
+      retries: maxRetries - 1,
     };
 
     if (lastError) {
@@ -1147,7 +1345,7 @@ export class SkillLoaderTool {
       skill,
       group,
       dependencies: packages,
-      count: packages.length
+      count: packages.length,
     });
 
     const results: DependencyInstallResult[] = [];
@@ -1157,15 +1355,15 @@ export class SkillLoaderTool {
       results.push(result);
     }
 
-    const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
 
     this.logger.info('skill.dependencies.complete', {
       skill,
       group,
       total: packages.length,
       success: successCount,
-      failed: failCount
+      failed: failCount,
     });
 
     return results;
@@ -1195,12 +1393,12 @@ export class SkillLoaderTool {
             const content = await fs.readFile(fullPath, 'utf-8');
             templates.push({
               path: relPath,
-              content
+              content,
             });
           } catch (error) {
             this.logger.warn('skill.load.template_read_failed', {
               path: relPath,
-              error: error instanceof Error ? error.message : String(error)
+              error: error instanceof Error ? error.message : String(error),
             });
           }
         }
@@ -1208,11 +1406,10 @@ export class SkillLoaderTool {
     } catch (error) {
       this.logger.error('skill.load.templates_dir_error', {
         dir,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
     }
 
     return templates;
   }
-
 }

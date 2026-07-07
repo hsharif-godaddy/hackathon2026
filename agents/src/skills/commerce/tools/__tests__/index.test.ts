@@ -365,11 +365,17 @@ describe('commerce skill MCP tools', () => {
       };
       mockFindBindingByAppId.mockReturnValue(savedBinding);
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(mockExecuteAction).not.toHaveBeenCalled();
       expect(mockWorkspaceWrite).toHaveBeenCalled();
-      expect(result).toEqual(expect.objectContaining({ status: 'ready', storeId: 'store-1', channelId: 'channel-1' }));
+      expect(result).toEqual(
+        expect.objectContaining({ status: 'ready', storeId: 'store-1', channelId: 'channel-1' })
+      );
     });
 
     it('fast-path store_bound: skips setup, runs channel ensure + env write, returns ready', async () => {
@@ -386,16 +392,22 @@ describe('commerce skill MCP tools', () => {
         .mockReturnValue({ ...savedBinding, channelId: 'channel-1', status: 'channel_ready' });
       mockChannelEnsureResult();
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(mockExecuteAction).toHaveBeenCalledTimes(1);
-      expect(mockExecuteAction).toHaveBeenCalledWith(expect.objectContaining({
-        params: expect.objectContaining({
-          request: expect.objectContaining({
-            params: expect.objectContaining({ name: 'commerce_app_channel_ensure' }),
+      expect(mockExecuteAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({ name: 'commerce_app_channel_ensure' }),
+            }),
           }),
-        }),
-      }));
+        })
+      );
       expect(result).toEqual(expect.objectContaining({ status: 'ready' }));
     });
 
@@ -403,24 +415,41 @@ describe('commerce skill MCP tools', () => {
       mockSetupResult({ storeId: 'store-1', displayName: 'My Shop' });
       mockChannelEnsureResult();
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(mockExecuteAction).toHaveBeenCalledTimes(2);
-      expect(mockUpsertBinding).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'store-1', status: 'store_bound' }));
-      expect(result).toEqual(expect.objectContaining({ status: 'ready', storeId: 'store-1', channelId: 'channel-1' }));
+      expect(mockUpsertBinding).toHaveBeenCalledWith(
+        expect.objectContaining({ storeId: 'store-1', status: 'store_bound' })
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ status: 'ready', storeId: 'store-1', channelId: 'channel-1' })
+      );
     });
 
     it('multi-store: setup returns storeChoiceRequired -> returns needs_store_choice with stores list', async () => {
-      const stores = [{ storeId: 'store-1', displayName: 'Shop A' }, { storeId: 'store-2', displayName: 'Shop B' }];
+      const stores = [
+        { storeId: 'store-1', displayName: 'Shop A' },
+        { storeId: 'store-2', displayName: 'Shop B' },
+      ];
       mockSetupResult({ storeChoiceRequired: true, existingStores: stores });
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'needs_store_choice',
-        stores,
-        instruction: expect.stringContaining('storeId'),
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'needs_store_choice',
+          stores,
+          instruction: expect.stringContaining('storeId'),
+        })
+      );
       expect(mockExecuteAction).toHaveBeenCalledTimes(1);
     });
 
@@ -434,39 +463,54 @@ describe('commerce skill MCP tools', () => {
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
       );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'needs_store_choice',
-        stores,
-        resumeInput: { businessId: 'biz-1' },
-      }));
-      expect(mockExecuteAction).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        params: expect.objectContaining({
-          request: expect.objectContaining({
-            params: {
-              name: 'commerce_store_setup',
-              arguments: { businessId: 'biz-1' },
-            },
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'needs_store_choice',
+          stores,
+          resumeInput: { businessId: 'biz-1' },
+        })
+      );
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: {
+                name: 'commerce_store_setup',
+                arguments: { businessId: 'biz-1' },
+              },
+            }),
           }),
-        }),
-      }));
+        })
+      );
     });
 
     it('multi-business: setup returns businessChoiceRequired -> returns needs_business_choice', async () => {
       const businesses = [{ businessId: 'biz-1', businessName: 'Biz A' }];
       mockSetupResult({ businessChoiceRequired: true, businesses });
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'needs_business_choice',
-        businesses,
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'needs_business_choice',
+          businesses,
+        })
+      );
     });
 
     it('identity needed: setup returns needsOwnerIdentity -> returns needs_identity', async () => {
       mockSetupResult({ needsOwnerIdentity: true });
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(result).toEqual(expect.objectContaining({ status: 'needs_identity' }));
     });
@@ -474,16 +518,28 @@ describe('commerce skill MCP tools', () => {
     it('no existing store: setup returns noExistingStoreFound -> returns needs_identity', async () => {
       mockSetupResult({ noExistingStoreFound: true });
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(result).toEqual(expect.objectContaining({ status: 'needs_identity' }));
     });
 
     it('commerce provisioning continues when only GoDaddy Payments setup is manual', async () => {
-      mockSetupResult({ paymentsManualSetupRequired: true, storeId: 'store-1', manageUrl: 'https://commerce.godaddy.com/manage' });
+      mockSetupResult({
+        paymentsManualSetupRequired: true,
+        storeId: 'store-1',
+        manageUrl: 'https://commerce.godaddy.com/manage',
+      });
       mockChannelEnsureResult();
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(mockExecuteAction).toHaveBeenCalledTimes(2);
       expect(result).toEqual(expect.objectContaining({ status: 'ready', storeId: 'store-1' }));
@@ -552,23 +608,29 @@ describe('commerce skill MCP tools', () => {
       );
 
       expect(mockExecuteAction).toHaveBeenCalledTimes(2);
-      expect(mockExecuteAction).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        params: expect.objectContaining({
-          request: expect.objectContaining({
-            params: {
-              name: 'commerce_store_setup',
-              arguments: { storeId: 'store-1' },
-            },
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: {
+                name: 'commerce_store_setup',
+                arguments: { storeId: 'store-1' },
+              },
+            }),
           }),
-        }),
-      }));
-      expect(mockExecuteAction).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        params: expect.objectContaining({
-          request: expect.objectContaining({
-            params: expect.objectContaining({ name: 'commerce_app_channel_ensure' }),
+        })
+      );
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({ name: 'commerce_app_channel_ensure' }),
+            }),
           }),
-        }),
-      }));
+        })
+      );
       expect(result).toEqual(expect.objectContaining({ status: 'ready' }));
     });
 
@@ -582,16 +644,19 @@ describe('commerce skill MCP tools', () => {
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
       );
 
-      expect(mockExecuteAction).toHaveBeenNthCalledWith(1, expect.objectContaining({
-        params: expect.objectContaining({
-          request: expect.objectContaining({
-            params: {
-              name: 'commerce_store_setup',
-              arguments: { businessId: 'biz-1' },
-            },
+      expect(mockExecuteAction).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            request: expect.objectContaining({
+              params: {
+                name: 'commerce_store_setup',
+                arguments: { businessId: 'biz-1' },
+              },
+            }),
           }),
-        }),
-      }));
+        })
+      );
       expect(result).toEqual(expect.objectContaining({ status: 'ready' }));
     });
 
@@ -617,21 +682,33 @@ describe('commerce skill MCP tools', () => {
       };
       mockFindBindingByAppId.mockReturnValue(savedBinding);
 
-      await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
-      expect(mockWorkspaceWrite).toHaveBeenCalledWith(expect.objectContaining({
-        path: '.env',
-        content: expect.stringContaining('PORT=3000'),
-      }));
-      expect(mockWorkspaceWrite).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining('VITE_GODADDY_STORE_ID=store-1'),
-      }));
-      expect(mockWorkspaceWrite).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining('GODADDY_STORE_ID=store-1'),
-      }));
-      expect(mockWorkspaceWrite).toHaveBeenCalledWith(expect.objectContaining({
-        content: expect.stringContaining('NEXT_PUBLIC_FOO=bar'),
-      }));
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: '.env',
+          content: expect.stringContaining('PORT=3000'),
+        })
+      );
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('VITE_GODADDY_STORE_ID=store-1'),
+        })
+      );
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('GODADDY_STORE_ID=store-1'),
+        })
+      );
+      expect(mockWorkspaceWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining('NEXT_PUBLIC_FOO=bar'),
+        })
+      );
     });
 
     it('idempotent re-call: after user picks store, provision resumes from store_bound binding', async () => {
@@ -648,7 +725,11 @@ describe('commerce skill MCP tools', () => {
         .mockReturnValue({ ...storeBoundBinding, channelId: 'channel-1', status: 'channel_ready' });
       mockChannelEnsureResult();
 
-      const result = await runTool(commerceProvisionTool, {}, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        commerceProvisionTool,
+        {},
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(mockExecuteAction).toHaveBeenCalledTimes(1);
       expect(result).toEqual(expect.objectContaining({ status: 'ready', storeId: 'store-1' }));
@@ -666,30 +747,36 @@ describe('commerce skill MCP tools', () => {
       mockSetupResult({ storeId: 'store-1', commerceHomeUrl });
       mockChannelEnsureResult({ ...channelResult, commerceHomeUrl });
 
-      const result = await runTool(
+      const result = (await runTool(
         commerceProvisionTool,
         {},
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'ready',
-        commerceHomeUrl,
-        commerceSetupReady: true,
-        NEXT_STEP: expect.stringContaining("skill({ action: 'load', skill: 'commerce/ui' })"),
-        capabilityChecklists: expect.objectContaining({
-          fullShopWithCheckout: expect.arrayContaining([
-            expect.objectContaining({ id: 'commerce_ui_templates_installed' }),
-            expect.objectContaining({ id: 'catalog_data_decision' }),
-            expect.objectContaining({ id: 'godaddy_payments_provisioned' }),
-            expect.objectContaining({ id: 'godaddy_payments_templates_installed' }),
-            expect.objectContaining({
-              id: 'cart_checkout_wired_to_installed_route',
-              contract: expect.objectContaining({ redirectField: 'url' }),
-            }),
-          ]),
-        }),
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'ready',
+          commerceHomeUrl,
+          commerceSetupReady: true,
+          NEXT_STEP: expect.stringContaining("skill({ action: 'load', skill: 'commerce/ui' })"),
+          capabilityChecklists: expect.objectContaining({
+            fullShopWithCheckout: expect.arrayContaining([
+              expect.objectContaining({ id: 'commerce_ui_templates_installed' }),
+              expect.objectContaining({ id: 'catalog_data_decision' }),
+              expect.objectContaining({ id: 'payment_region_checked_before_provider_selection' }),
+              expect.objectContaining({ id: 'eligible_payment_provider_provisioned' }),
+              expect.objectContaining({ id: 'eligible_payment_provider_templates_installed' }),
+              expect.objectContaining({
+                id: 'us_ca_godaddy_payments_cart_checkout_wired_to_installed_route',
+                contract: expect.objectContaining({
+                  supportedProvider: 'GoDaddy Payments for confirmed US/CA merchants only',
+                  redirectField: 'url',
+                }),
+              }),
+            ]),
+          }),
+        })
+      );
       expect(result).not.toHaveProperty('requiredCapabilities');
       expect(result).not.toHaveProperty('requiredNextActions');
       expect(result).not.toHaveProperty('catalogDataDecision');
@@ -761,20 +848,26 @@ describe('commerce skill MCP tools', () => {
       );
     });
 
-    it('documents that cart checkout must install GoDaddy Payments templates', () => {
+    it('documents that cart checkout must route through payment eligibility before templates', () => {
       const commerceUiSkill = readFileSync(
         resolve(process.cwd(), 'src/skills/commerce/ui/skill.md'),
         'utf-8'
       );
 
+      expect(commerceUiSkill).toContain("skill({ action: 'load', skill: 'payment' })");
+      expect(commerceUiSkill).toContain('merchant selling country before provider selection');
       expect(commerceUiSkill).toContain(
-        "skill({ action: 'load', skill: 'payment/godaddy-payments' })"
+        'Commerce cart checkout is supported only through GoDaddy Payments for confirmed US/CA merchants'
       );
-      expect(commerceUiSkill).toContain('godaddy-payments__provision');
+      expect(commerceUiSkill).toContain('block before checkout UI and recommend Stripe');
       expect(commerceUiSkill).toContain(
-        "skill({ action: 'install', skill: 'payment/godaddy-payments' })"
+        "skill({ action: 'load', skill: 'payment/godaddy-payments', sellingCountry: 'US' })"
       );
-      expect(commerceUiSkill).toContain("POST /api/commerce/checkout");
+      expect(commerceUiSkill).toContain('godaddy-payments__provision({ sellingCountry:');
+      expect(commerceUiSkill).toContain(
+        "skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' })"
+      );
+      expect(commerceUiSkill).toContain('POST /api/commerce/checkout');
       expect(commerceUiSkill).toContain('draftOrderId');
       expect(commerceUiSkill).toContain('data.url');
       expect(commerceUiSkill).toContain('Create starter products with the agent');
@@ -825,23 +918,27 @@ describe('commerce skill MCP tools', () => {
         )
       );
 
-      const result = await runTool(
+      const result = (await runTool(
         validateCheckoutTool,
         { expectCheckout: true },
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'failed',
-        paymentTemplatesInstalled: false,
-        commerceUiTemplatesInstalled: false,
-      }));
-      expect(result.findings).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: 'payment_templates_missing' }),
-        expect.objectContaining({ code: 'checkout_response_redirect_url' }),
-        expect.objectContaining({ code: 'replacement_checkout_api' }),
-        expect.objectContaining({ code: 'manual_checkout_route' }),
-      ]));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          paymentTemplatesInstalled: false,
+          commerceUiTemplatesInstalled: false,
+        })
+      );
+      expect(result.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'payment_templates_missing' }),
+          expect.objectContaining({ code: 'checkout_response_redirect_url' }),
+          expect.objectContaining({ code: 'replacement_checkout_api' }),
+          expect.objectContaining({ code: 'manual_checkout_route' }),
+        ])
+      );
     });
 
     it('passes checkout validation when payment templates are installed, checkout redirects to data.url, and order-status is wired', async () => {
@@ -918,12 +1015,14 @@ describe('commerce skill MCP tools', () => {
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
       );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'passed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-        findings: [],
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'passed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+          findings: [],
+        })
+      );
     });
 
     it('fails checkout validation when payment templates are installed but order-status is not wired', async () => {
@@ -976,20 +1075,22 @@ describe('commerce skill MCP tools', () => {
         "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.url);"
       );
 
-      const result = await runTool(
+      const result = (await runTool(
         validateCheckoutTool,
         { expectCheckout: true },
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'failed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-      }));
-      expect(result.findings).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: 'order_status_not_wired' }),
-      ]));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+        })
+      );
+      expect(result.findings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'order_status_not_wired' })])
+      );
     });
 
     it('warns when order-status is wired but success page never checks for Paid status', async () => {
@@ -1030,8 +1131,18 @@ describe('commerce skill MCP tools', () => {
       mockWorkspaceTree.mockResolvedValue({
         truncated: false,
         entries: [
-          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/order-success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
@@ -1044,20 +1155,27 @@ describe('commerce skill MCP tools', () => {
         return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
       });
 
-      const result = await runTool(
+      const result = (await runTool(
         validateCheckoutTool,
         { expectCheckout: true },
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'passed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-      }));
-      expect(result.findings).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: 'success_page_missing_paid_status_gate', severity: 'warning' }),
-      ]));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'passed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+        })
+      );
+      expect(result.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'success_page_missing_paid_status_gate',
+            severity: 'warning',
+          }),
+        ])
+      );
     });
 
     it('passes when order-status is wired and success page gates on fulfilled status', async () => {
@@ -1098,8 +1216,18 @@ describe('commerce skill MCP tools', () => {
       mockWorkspaceTree.mockResolvedValue({
         truncated: false,
         entries: [
-          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/order-success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
@@ -1118,28 +1246,65 @@ describe('commerce skill MCP tools', () => {
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
       );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'passed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-        findings: [],
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'passed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+          findings: [],
+        })
+      );
     });
 
     it('passes when success page gates on uppercase PAID (real GoDaddy API casing)', async () => {
       const allTemplateEntries = [
-        { path: 'src/server/api/commerce/checkout/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/order-status/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/lib/commerce/create-checkout-session.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/cart/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/products/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        {
+          path: 'src/server/api/commerce/checkout/POST.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/order-status/GET.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/lib/commerce/create-checkout-session.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/cart/POST.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/products/GET.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
       ];
       mockWorkspaceStat.mockResolvedValue({ entries: allTemplateEntries });
       mockWorkspaceTree.mockResolvedValue({
         truncated: false,
         entries: [
-          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/order-success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
@@ -1152,25 +1317,64 @@ describe('commerce skill MCP tools', () => {
         return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
       });
 
-      const result = await runTool(validateCheckoutTool, { expectCheckout: true }, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(result).toEqual(expect.objectContaining({ status: 'passed', findings: [] }));
     });
 
     it('passes when success page normalizes with toLowerCase and checks paid', async () => {
       const allTemplateEntries = [
-        { path: 'src/server/api/commerce/checkout/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/order-status/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/lib/commerce/create-checkout-session.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/cart/POST.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-        { path: 'src/server/api/commerce/products/GET.ts', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+        {
+          path: 'src/server/api/commerce/checkout/POST.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/order-status/GET.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/lib/commerce/create-checkout-session.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/cart/POST.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
+        {
+          path: 'src/server/api/commerce/products/GET.ts',
+          kind: 'file',
+          size: 100,
+          modifiedAt: '2026-06-24T00:00:00.000Z',
+        },
       ];
       mockWorkspaceStat.mockResolvedValue({ entries: allTemplateEntries });
       mockWorkspaceTree.mockResolvedValue({
         truncated: false,
         entries: [
-          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/order-success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
@@ -1183,7 +1387,11 @@ describe('commerce skill MCP tools', () => {
         return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
       });
 
-      const result = await runTool(validateCheckoutTool, { expectCheckout: true }, { socketId: 'socket-1', metadata: { appId: 'app-1' } });
+      const result = await runTool(
+        validateCheckoutTool,
+        { expectCheckout: true },
+        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
+      );
 
       expect(result).toEqual(expect.objectContaining({ status: 'passed', findings: [] }));
     });
@@ -1215,9 +1423,24 @@ describe('commerce skill MCP tools', () => {
       mockWorkspaceTree.mockResolvedValue({
         truncated: false,
         entries: [
-          { path: 'src/routes/products.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/cart.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
-          { path: 'src/routes/order-success.tsx', kind: 'file', size: 100, modifiedAt: '2026-06-24T00:00:00.000Z' },
+          {
+            path: 'src/routes/products.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/cart.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
+          {
+            path: 'src/routes/order-success.tsx',
+            kind: 'file',
+            size: 100,
+            modifiedAt: '2026-06-24T00:00:00.000Z',
+          },
         ],
       });
       mockWorkspaceReadText.mockImplementation(({ path }: { path: string }) => {
@@ -1232,20 +1455,22 @@ describe('commerce skill MCP tools', () => {
         return Promise.resolve(contentMap[path] ?? 'export default async function handler() {}');
       });
 
-      const result = await runTool(
+      const result = (await runTool(
         validateCheckoutTool,
         { expectCheckout: true },
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'failed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: false,
-      }));
-      expect(result.findings).toEqual(expect.arrayContaining([
-        expect.objectContaining({ code: 'commerce_ui_templates_missing' }),
-      ]));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: false,
+        })
+      );
+      expect(result.findings).toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'commerce_ui_templates_missing' })])
+      );
     });
 
     it('ignores redirectUrl mentions in installed route comments', async () => {
@@ -1313,11 +1538,14 @@ describe('commerce skill MCP tools', () => {
           'src/routes/checkout/success.tsx':
             "const res = await fetch('/api/commerce/order-status?orderId=' + orderId).then(r => r.json()); if (res.order.status === 'Paid') { showConfirmation(); }",
         };
-        return Promise.resolve(contentMap[path] ?? `/**
+        return Promise.resolve(
+          contentMap[path] ??
+            `/**
                    * Checkout returns { url, id, draftOrderId }.
                    * It does not return redirectUrl.
                    */
-                  export async function POST() {}`);
+                  export async function POST() {}`
+        );
       });
 
       const result = await runTool(
@@ -1326,12 +1554,14 @@ describe('commerce skill MCP tools', () => {
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
       );
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'passed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-        findings: [],
-      }));
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'passed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+          findings: [],
+        })
+      );
     });
 
     it('finds redirectUrl checkout bugs outside checkout-named files', async () => {
@@ -1384,23 +1614,27 @@ describe('commerce skill MCP tools', () => {
         "const data = await fetch('/api/commerce/checkout'); window.location.assign(data.redirectUrl);"
       );
 
-      const result = await runTool(
+      const result = (await runTool(
         validateCheckoutTool,
         { expectCheckout: true },
         { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      ) as Record<string, unknown>;
+      )) as Record<string, unknown>;
 
-      expect(result).toEqual(expect.objectContaining({
-        status: 'failed',
-        paymentTemplatesInstalled: true,
-        commerceUiTemplatesInstalled: true,
-      }));
-      expect(result.findings).toEqual(expect.arrayContaining([
+      expect(result).toEqual(
         expect.objectContaining({
-          code: 'checkout_response_redirect_url',
-          path: 'src/components/BuyButton.tsx',
-        }),
-      ]));
+          status: 'failed',
+          paymentTemplatesInstalled: true,
+          commerceUiTemplatesInstalled: true,
+        })
+      );
+      expect(result.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'checkout_response_redirect_url',
+            path: 'src/components/BuyButton.tsx',
+          }),
+        ])
+      );
     });
   });
 });

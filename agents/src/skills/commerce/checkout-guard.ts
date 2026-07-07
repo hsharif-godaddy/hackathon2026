@@ -177,7 +177,7 @@ export function validateCommerceCheckoutImplementation(
       code: 'payment_templates_missing',
       severity: 'error',
       message:
-        'Cart checkout requires payment/godaddy-payments templates before checkout UI or server routes are written.',
+        'Commerce cart checkout is currently supported only through GoDaddy Payments templates for confirmed US/CA merchants. If the merchant is outside the US/Canada, do not build Commerce checkout UI; block before checkout and recommend Stripe or another third-party processor for a non-Commerce payment flow.',
     });
   }
 
@@ -258,7 +258,7 @@ export function validateCommerceCheckoutImplementation(
         severity: 'error',
         path,
         message:
-          'This file calls /api/commerce/checkout, but the GoDaddy Payments checkout templates are not installed.',
+          'This file calls /api/commerce/checkout, but the confirmed US/CA GoDaddy Payments checkout templates are not installed. For non-US/CA merchants, do not build Commerce checkout UI; block before checkout and recommend Stripe or another third-party processor for a non-Commerce payment flow.',
       });
     }
 
@@ -268,7 +268,7 @@ export function validateCommerceCheckoutImplementation(
         severity: 'error',
         path,
         message:
-          'Do not create Commerce checkout or order-status routes manually. Install payment/godaddy-payments templates instead.',
+          'Do not create Commerce checkout or order-status routes manually. Use confirmed US/CA GoDaddy Payments templates, or block Commerce checkout for non-US/CA merchants and recommend Stripe or another third-party processor for a non-Commerce payment flow.',
       });
     }
 

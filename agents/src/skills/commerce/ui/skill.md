@@ -2,7 +2,7 @@
 name: ui
 description: Internal Commerce UI/routes implementation pack for product catalog UI, product detail pages, and cart management. The commerce router decides when to load and install it.
 whenToUse: Do not load directly for user intent. Load `commerce` first for store/catalog/cart requests; `commerce` loads and installs this pack only after store/channel setup.
-post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are NOT included in this pack — if any cart checkout, buy button, or checkout page is needed, you MUST load and install payment/godaddy-payments before building checkout UI. Do not build a Checkout button without completing that sequence first.'
+post-install-notes: 'Commerce catalog/cart routes and helpers are included in the templates. Do NOT create replacement src/server/api/commerce/products, src/server/api/commerce/cart, useProducts, or cart proxy files manually. Build UI against the installed routes/helpers. Checkout routes are NOT included in this pack — if any cart checkout, buy button, or checkout page is needed, you MUST load the payment router and confirm region before provider selection. Commerce cart checkout is supported only through GoDaddy Payments for confirmed US/CA merchants; block checkout for non-US/CA merchants before building checkout UI and recommend Stripe or another third-party processor for a non-Commerce payment flow.'
 ---
 
 # Commerce UI Template Pack
@@ -164,17 +164,22 @@ Override any of these if the user's prompt is explicit; otherwise these are the 
 
 **STOP all cart/storefront work now and run this sequence exactly, in order, before writing a single line of checkout UI, checkout-adjacent buttons, or order pages:**
 
-1. Load the payment skill:
+1. Load the payment router:
 ```ts
-skill({ action: 'load', skill: 'payment/godaddy-payments' });
+skill({ action: 'load', skill: 'payment' });
 ```
-2. Call `godaddy-payments__provision` (no params). Handle any `needs_*` responses per that skill's flow.
-3. When provision returns `status: "ready"`, install templates immediately:
+2. Follow the router to determine or ask for the merchant selling country before provider selection. Commerce cart checkout is supported only through GoDaddy Payments for confirmed US/CA merchants. For non-US/Canada merchants, stop before building checkout UI, explain that GoDaddy Payments checkout is unavailable in their region, and recommend Stripe or another third-party processor for a non-Commerce payment flow; do not load, provision, or install `payment/godaddy-payments` for them.
+3. Only when the router selects GoDaddy Payments for a confirmed US/CA merchant, load it with the confirmed country and call provision with the same country:
 ```ts
-skill({ action: 'install', skill: 'payment/godaddy-payments' });
+skill({ action: 'load', skill: 'payment/godaddy-payments', sellingCountry: 'US' });
+godaddy-payments__provision({ sellingCountry: 'US' });
 ```
-4. Wire the cart checkout button to `POST /api/commerce/checkout` with `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
-5. Call `commerce__validate_checkout` and fix every finding before continuing.
+4. When GoDaddy Payments provision returns `status: "ready"`, install templates immediately with the same confirmed country:
+```ts
+skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' });
+```
+5. For confirmed US/CA GoDaddy Payments only, wire the cart checkout button to `POST /api/commerce/checkout` with `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
+6. Call `commerce__validate_checkout` and fix every finding before continuing.
 
 **FORBIDDEN before this sequence is complete:**
 - Do NOT create a Checkout button that navigates anywhere
@@ -210,6 +215,7 @@ window.location.assign(data.url);
 5. Passing SKU-based `lineItems` directly to `addDraftOrder`. The shipped route creates an empty cart, then calls `addLineItemBySkuId`.
 6. Reading wrong response keys. Cart proxy routes expose `{ cart }`, not upstream GraphQL field names.
 7. Expecting checkout routes from this skill. Checkout and order status routes are not included.
-8. Loading `payment/godaddy-payments` but forgetting to call `godaddy-payments__provision` and install its templates before building checkout.
-9. Inventing a Commerce native checkout URL from the cart. The cart is a draft order; hosted checkout URL creation comes from `/api/commerce/checkout` installed by `payment/godaddy-payments`.
-10. Building custom checkout, shipping, place-order, or order-status routes by hand instead of installing `payment/godaddy-payments`.
+8. Building Commerce cart checkout for a non-US/Canada merchant. This implementation does not support Stripe-backed Commerce cart checkout; block before checkout UI and recommend Stripe or another third-party processor for a non-Commerce payment flow.
+9. Loading `payment/godaddy-payments` but forgetting to call `godaddy-payments__provision` and install its templates before building confirmed US/CA checkout.
+10. Inventing a Commerce native checkout URL from the cart. The cart is a draft order; hosted checkout URL creation comes from `/api/commerce/checkout` installed by `payment/godaddy-payments` for confirmed US/CA checkout.
+11. Building custom checkout, shipping, place-order, or order-status routes by hand instead of using the confirmed eligible provider path.
