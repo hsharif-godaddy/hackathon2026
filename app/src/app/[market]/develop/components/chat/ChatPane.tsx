@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { isEmployeeAuthType } from '@airo/shared/auth';
 import type { ContextAttachment } from '@airo/shared/context-attachment';
+import Button from '@ux/button';
 import Growl from '@ux/growl';
+import MobilePhoneIcon from '@ux/icon/mobile-phone';
 
 import { CanvasActionsVariant } from '@/app/[market]/commander/canvas/actions';
 import CanvasActionsHost from '@/app/[market]/commander/components/chat/CanvasActionsHost';
@@ -112,7 +114,7 @@ import {
   UPLOAD_TIMEOUT_SECONDS,
   validateForStaging,
 } from '@/utils/file-upload-validation';
-import { getInstrumentationIntentCategory, logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
+import { generateClickEID, getInstrumentationIntentCategory, logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { postMessageToIframe } from '@/utils/postMessage';
 
 // Lazy-load features that are conditionally rendered or behind user interaction
@@ -166,6 +168,8 @@ interface ChatPaneProps {
    * no tab switching. Desktop only — the mobile layout has no in-pane toolbar.
    */
   hideToolbar?: boolean;
+  showBuildCompleteNudge?: boolean;
+  onBuildCompleteNudgeTap?: () => void;
 }
 
 interface SocialPostTargetData {
@@ -269,6 +273,8 @@ function ChatPaneInner({
   layout = BuilderLayout.Develop,
   onPreviewRefresh,
   hideToolbar = false,
+  showBuildCompleteNudge = false,
+  onBuildCompleteNudgeTap,
 }: ChatPaneProps) {
   const t = useTranslations();
   useDebugStatsBridge();
@@ -1796,6 +1802,25 @@ function ChatPaneInner({
             </div>
           )}
           {isQueueEnabled && <QueuedMessagesStrip />}
+          {showBuildCompleteNudge && !isCommanderChatEnabled && (
+            <div className="sticky bottom-2 mb-1 px-2 sm:px-3">
+              <div className="w-full">
+                <Button
+                  design="primary"
+                  size="sm"
+                  className="w-full"
+                  onClick={onBuildCompleteNudgeTap}
+                  aria-label={t('builder_mobile_firstbuild_preview_cta', undefined, 'Project ready — tap to preview')}
+                  data-eid={generateClickEID('develop.mobile_firstbuild.preview_cta')}
+                >
+                  <span className="flex w-full items-center justify-center gap-1.5">
+                    <span>{t('builder_mobile_firstbuild_preview_cta', undefined, 'Project ready — tap to preview')}</span>
+                    <MobilePhoneIcon className="size-3" />
+                  </span>
+                </Button>
+              </div>
+            </div>
+          )}
           <ChatComposerSlot
             activeColorSchemeSuggest={activeColorSchemeSuggest}
             activeFontThemeSuggest={activeFontThemeSuggest}
@@ -1946,6 +1971,25 @@ function ChatPaneInner({
               </div>
             )}
             {isQueueEnabled && <QueuedMessagesStrip />}
+            {showBuildCompleteNudge && !isCommanderChatEnabled && (
+              <div className="sticky bottom-2 mb-1 px-2 sm:px-3 md:px-0">
+                <div className="w-full">
+                  <Button
+                    design="primary"
+                    size="sm"
+                    className="w-full"
+                    onClick={onBuildCompleteNudgeTap}
+                    aria-label={t('builder_mobile_firstbuild_preview_cta', undefined, 'Project ready — tap to preview')}
+                    data-eid={generateClickEID('develop.mobile_firstbuild.preview_cta')}
+                  >
+                    <span className="flex w-full items-center justify-center gap-1.5">
+                      <span>{t('builder_mobile_firstbuild_preview_cta', undefined, 'Project ready — tap to preview')}</span>
+                      <MobilePhoneIcon className="size-3" />
+                    </span>
+                  </Button>
+                </div>
+              </div>
+            )}
             <ChatComposerSlot
               activeColorSchemeSuggest={activeColorSchemeSuggest}
               activeFontThemeSuggest={activeFontThemeSuggest}

@@ -161,6 +161,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const todoListIdParam = searchParams.get('todoListId')
   const router = useRouter()
   const appId = useAppIdFromParams()
+  const BUILD_CTA_SEEN_KEY = `airo_mobile_build_cta_seen_${appId}`
   const isJobId = searchParams.get('type') === 'job'
   const { data: subscription } = useSubscription()
   const planType = getEffectivePlan(subscription?.plan, subscription?.hadAiroPlus) ?? null
@@ -436,6 +437,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const isChatPaneCollapsed = useDevelopPageStore((state) => state.isChatPaneCollapsed)
   const isMobile = useDevelopPageStore((state) => state.isMobile)
   const mobileMode = useDevelopPageStore((state) => state.mobileMode)
+  const handleMobileModeChange = useDevelopPageStore((state) => state.handleMobileModeChange)
   const { activeChatTab, setActiveChatTab, activeSettingsSection } = useChatTabs()
   const { sections: notifiedSettingsSections } = useSettingsNotifications(isSecurityScanUiEnabled ? appId : undefined)
 
@@ -454,6 +456,9 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const feedbackOrigin = useDevelopPageStore((state) => state.feedbackOrigin)
   const feedbackInitialStep = useDevelopPageStore((state) => state.feedbackInitialStep)
   const showIntroTour = useDevelopPageStore((state) => state.showIntroTour)
+  const isInitialBuildComplete = useDevelopPageStore((state) =>
+    state.app?.id === appId ? (state.app?.initialBuildComplete ?? false) : false
+  )
 
   const setChatPaneWidth = useDevelopPageStore((state) => state.setChatPaneWidth)
   const closeFeedbackModal = useDevelopPageStore((state) => state.closeFeedbackModal)
@@ -600,6 +605,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   // Optimistic mobile tab state for instant transitions
   const [optimisticMobileTab, setOptimisticMobileTab] = useState<ChatTab>(activeChatTab)
+  const [showBuildCompleteNudge, setShowBuildCompleteNudge] = useState(false)
   const visitedTabs = useVisitedTabs(optimisticMobileTab)
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
   const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
@@ -643,6 +649,9 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   }>({})
   const pendingAutoSendRef = useRef<string | null>(null)
   const autoSendInFlightRef = useRef(false)
+  const hasSeenBuildStartForCTARef = useRef(false)
+  const buildCTAFiredRef = useRef(false)
+  const hasCompletedFirstBuildNudgeRef = useRef(false)
   const [isCreateFlowSession, setIsCreateFlowSession] = useState(false)
   const [isDeletingMedia, setIsDeletingMedia] = useState(false)
   const [mediaDeleteError, setMediaDeleteError] = useState<string | null>(null)
@@ -857,6 +866,52 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const isProcessing = isLoading || isStreaming
   const isProcessingRef = useRef(isProcessing)
   isProcessingRef.current = isProcessing
+
+  useEffect(function resetBuildCompleteNudgeTrackingOnAppChange() {
+    hasSeenBuildStartForCTARef.current = false
+    buildCTAFiredRef.current = false
+    hasCompletedFirstBuildNudgeRef.current = false
+    setShowBuildCompleteNudge(false)
+  }, [appId])
+
+  useEffect(function syncFirstBuildCompletionGate() {
+    if (!hasSeenBuildStartForCTARef.current && isInitialBuildComplete) {
+      hasCompletedFirstBuildNudgeRef.current = true
+      setShowBuildCompleteNudge(false)
+    }
+  }, [isInitialBuildComplete])
+
+  useEffect(function syncBuildCompleteNudge() {
+    if (!isMobile) return
+    if (hasCompletedFirstBuildNudgeRef.current) {
+      setShowBuildCompleteNudge(false)
+      return
+    }
+    if (init.ui.showPreviewLoader || isProcessing) {
+      hasSeenBuildStartForCTARef.current = true
+      buildCTAFiredRef.current = false
+      setShowBuildCompleteNudge(false)
+      return
+    }
+    if (!hasSeenBuildStartForCTARef.current) return
+    if (buildCTAFiredRef.current) return
+    buildCTAFiredRef.current = true
+    hasCompletedFirstBuildNudgeRef.current = true
+    if (localStorage.getItem(BUILD_CTA_SEEN_KEY)) return
+    setShowBuildCompleteNudge(true)
+  }, [BUILD_CTA_SEEN_KEY, init.ui.showPreviewLoader, isProcessing, isMobile])
+
+  useEffect(function hideCTAOnPreview() {
+    if (mobileMode === MobileMode.PREVIEW) {
+      setShowBuildCompleteNudge(false)
+    }
+  }, [mobileMode])
+
+  const onBuildCompleteNudgeTap = useCallback(() => {
+    localStorage.setItem(BUILD_CTA_SEEN_KEY, 'true')
+    handleMobileModeChange(MobileMode.PREVIEW)
+    setShowBuildCompleteNudge(false)
+  }, [BUILD_CTA_SEEN_KEY, handleMobileModeChange])
 
   const isMutatingFiles = useMemo(
     () => !!activeStream?.toolCalls?.some(mutatesFiles),
@@ -1746,6 +1801,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                       <ChatPane
                         sendMessage={ws.actions.send}
                         stopGeneration={ws.actions.stop}
+                        showBuildCompleteNudge={showBuildCompleteNudge}
+                        onBuildCompleteNudgeTap={onBuildCompleteNudgeTap}
                         isCreateFlowSession={isCreateFlowSession}
                         hasInitialPrompt={init.context.hasInitialPrompt}
                         isAwaitingStream={isAwaitingStream}
