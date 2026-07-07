@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { uuidv7 } from "uuidv7";
 import { eq } from "drizzle-orm";
+import { getSecret } from "#airo/secrets";
 import { db } from "../../../../db/client";
 import { booking, service, transaction, bookingAddon } from "../../../../db/schema";
 import { validateCoupon } from "../../services/coupons/validate.service";
@@ -11,6 +12,14 @@ const schema = z.object({
   bookingId: z.string().min(1),
   serviceId: z.string().min(1),
 });
+
+function getStripe(): Stripe {
+  const secretKey = getSecret("STRIPE_SECRET_KEY");
+  if (!secretKey || typeof secretKey !== "string") {
+    throw new Error("STRIPE_SECRET_KEY not provisioned. Re-run Stripe setup or contact support.");
+  }
+  return new Stripe(secretKey);
+}
 
 export default async function handler(req: Request, res: Response) {
   const parsed = schema.safeParse(req.body);
@@ -22,9 +31,14 @@ export default async function handler(req: Request, res: Response) {
 
   const { bookingId, serviceId } = parsed.data;
 
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey) {
-    return res.status(500).json({ error: "Stripe is not configured" });
+  try {
+    // Validate Stripe is configured by attempting to get the instance
+    getStripe();
+  } catch (err) {
+    return res.status(500).json({
+      error: "Stripe is not configured",
+      message: err instanceof Error ? err.message : "Unable to initialize Stripe"
+    });
   }
 
   // SECURITY: Validate booking exists and its serviceId matches the requested serviceId
@@ -109,7 +123,7 @@ export default async function handler(req: Request, res: Response) {
   const successUrl = `${base}/book/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${bookingId}`;
   const cancelUrl = `${base}/book/payment-cancel?booking_id=${bookingId}`;
 
-  const stripe = new Stripe(secretKey);
+  const stripe = getStripe();
 
   const sessionParams: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",

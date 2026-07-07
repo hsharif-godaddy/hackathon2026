@@ -1,16 +1,36 @@
 import type { Request, Response } from "express";
 import Stripe from "stripe";
 import { eq } from "drizzle-orm";
+import { getSecret } from "#airo/secrets";
 import { db } from "../../../../db/client";
 import { booking, transaction } from "../../../../db/schema";
 
-export default async function handler(req: Request, res: Response) {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+function getStripe(): Stripe {
+  const secretKey = getSecret("STRIPE_SECRET_KEY");
+  if (!secretKey || typeof secretKey !== "string") {
+    throw new Error("STRIPE_SECRET_KEY not provisioned. Re-run Stripe setup or contact support.");
+  }
+  return new Stripe(secretKey);
+}
 
-  if (!secretKey || !webhookSecret) {
+export default async function handler(req: Request, res: Response) {
+  let stripe: Stripe;
+  let webhookSecret: string;
+
+  try {
+    stripe = getStripe();
+  } catch (err) {
+    console.error("[Stripe webhook] Failed to get Stripe instance:", err instanceof Error ? err.message : String(err));
     return res.status(500).json({ error: "Stripe is not configured" });
   }
+
+  // STRIPE_WEBHOOK_SECRET is user-provided via requestSecrets (not auto-provisioned)
+  const secret = getSecret("STRIPE_WEBHOOK_SECRET");
+  if (!secret || typeof secret !== "string") {
+    console.error("[Stripe webhook] STRIPE_WEBHOOK_SECRET not configured");
+    return res.status(500).json({ error: "Stripe webhook secret is not configured" });
+  }
+  webhookSecret = secret;
 
   const sig = req.headers["stripe-signature"] as string;
   const { rawBody } = req as Request & { rawBody?: Buffer };
@@ -19,8 +39,6 @@ export default async function handler(req: Request, res: Response) {
     console.error("[Stripe webhook] rawBody missing — ensure express.json verify is set up");
     return res.status(400).json({ error: "Missing raw body" });
   }
-
-  const stripe = new Stripe(secretKey);
 
   let event: Stripe.Event;
   try {
