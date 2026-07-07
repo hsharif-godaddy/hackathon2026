@@ -11,12 +11,14 @@ const {
   mockDeploySite,
   mockEnforce,
   mockResolveMultiUserFlag,
+  mockIsSsoConfigured,
   mockLogger,
 } = vi.hoisted(() => ({
   mockGetSite: vi.fn(),
   mockDeploySite: vi.fn(),
   mockEnforce: vi.fn(),
   mockResolveMultiUserFlag: vi.fn(),
+  mockIsSsoConfigured: vi.fn(),
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -33,6 +35,8 @@ vi.mock('@/lib/authz-fga/multi-user-flag', () => ({
   resolveMultiUserFlag: mockResolveMultiUserFlag,
 }));
 vi.mock('@/lib/request-context', () => ({ logger: mockLogger }));
+vi.mock('@/lib/sso/is-configured', () => ({ isSsoConfigured: mockIsSsoConfigured }));
+vi.mock('@/lib/mgmt-airo', () => ({ AiroMgmtClient: vi.fn() }));
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>
     handler(request, { isAuthenticated: true, jwt: 'test-jwt', user: { customerId: 'cust-1' } }, ...args),
@@ -78,5 +82,83 @@ describe('POST /api/sites/[id]/deploy — FGA publish gate', () => {
     expect(res.status).toBe(200);
     expect(mockEnforce).toHaveBeenCalledTimes(1);
     expect(mockDeploySite).toHaveBeenCalledWith(APP_ID, 'test-jwt', expect.any(Object));
+  });
+});
+
+describe('POST /api/sites/[id]/deploy — SSO enforcement', () => {
+  const SSO_SITE = {
+    id: APP_ID,
+    team_venture_id: 'v1',
+    owner_customer_id: 'owner-9',
+    ssoRequired: true,
+    ssoConfigId: 'sso-config-123',
+    clientIdSecretName: 'GD_SSO_OAUTH_CLIENT_ID',
+    clientSecretSecretName: 'GD_SSO_OAUTH_CLIENT_SECRET',
+    subscription_id: 'sub-1',
+    system_id: 'sys-1',
+  };
+
+  function postReqWithBody(body: Record<string, unknown>): NextRequest {
+    return new NextRequest(`https://airo.test/api/sites/${APP_ID}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveMultiUserFlag.mockResolvedValue(true);
+    mockEnforce.mockResolvedValue(null);
+    mockDeploySite.mockResolvedValue({ success: true });
+  });
+
+  it('returns 403 and releases the lock when publish + ssoRequired + not configured', async () => {
+    mockGetSite.mockResolvedValue(SSO_SITE);
+    mockIsSsoConfigured.mockResolvedValue(false);
+
+    const res = await POST(postReqWithBody({ variant: 'publish' }), params as any);
+    const data: Record<string, unknown> = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.error).toContain('SSO is required but not configured');
+    expect(mockDeploySite).not.toHaveBeenCalled();
+
+    // Lock must be released — a subsequent request should NOT get 409
+    mockGetSite.mockResolvedValue(SSO_SITE);
+    mockIsSsoConfigured.mockResolvedValue(true);
+    const secondRes = await POST(postReqWithBody({ variant: 'publish' }), params as any);
+    expect(secondRes.status).not.toBe(409);
+  });
+
+  it('proceeds to deploySite when publish + ssoRequired + configured', async () => {
+    mockGetSite.mockResolvedValue(SSO_SITE);
+    mockIsSsoConfigured.mockResolvedValue(true);
+
+    const res = await POST(postReqWithBody({ variant: 'publish' }), params as any);
+
+    expect(res.status).toBe(200);
+    expect(mockIsSsoConfigured).toHaveBeenCalledTimes(1);
+    expect(mockDeploySite).toHaveBeenCalledWith(APP_ID, 'test-jwt', expect.objectContaining({ variant: 'publish' }));
+  });
+
+  it('skips SSO gate when variant is preview and ssoRequired is true', async () => {
+    mockGetSite.mockResolvedValue(SSO_SITE);
+
+    const res = await POST(postReqWithBody({ variant: 'preview' }), params as any);
+
+    expect(res.status).toBe(200);
+    expect(mockIsSsoConfigured).not.toHaveBeenCalled();
+    expect(mockDeploySite).toHaveBeenCalled();
+  });
+
+  it('skips SSO gate when variant is undefined and ssoRequired is true', async () => {
+    mockGetSite.mockResolvedValue(SSO_SITE);
+
+    const res = await POST(postReq(), params as any);
+
+    expect(res.status).toBe(200);
+    expect(mockIsSsoConfigured).not.toHaveBeenCalled();
+    expect(mockDeploySite).toHaveBeenCalled();
   });
 });

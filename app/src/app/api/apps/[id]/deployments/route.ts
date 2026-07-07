@@ -9,6 +9,7 @@ import {
 import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
 import { logger } from '@/lib/request-context';
+import { isSsoConfigured } from '@/lib/sso/is-configured';
 
 export const dynamic = 'force-dynamic';
 
@@ -246,6 +247,21 @@ export const POST = withCustomerAuth(async (
     const baseUrl = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
     const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
 
+    if (site.ssoRequired) {
+      const ssoConfigured: boolean = await isSsoConfigured(client, site, siteId);
+      if (!ssoConfigured) {
+        logger.warn('deployments.api.create.blocked-sso-not-configured', {
+          siteId,
+          customerId: authContext.user.customerId,
+          ssoConfigId: site.ssoConfigId,
+        });
+        return NextResponse.json(
+          { error: 'SSO is required but not configured. Configure SSO credentials in Settings before publishing.' },
+          { status: 403 }
+        );
+      }
+    }
+
     logger.info('deployments.api.create.start', {
       siteId,
       subscriptionId: site.subscription_id,
@@ -295,4 +311,3 @@ export const POST = withCustomerAuth(async (
     );
   }
 }, { level: 3 });
-

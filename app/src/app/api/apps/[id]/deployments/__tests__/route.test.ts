@@ -24,7 +24,8 @@ const { mockControlPlaneAdapter, mockAuthenticateCustomer, mockAiroMgmtClient, m
     },
     mockAuthenticateCustomer: vi.fn(),
     mockAiroMgmtClient: {
-      publishApp: vi.fn()
+      publishApp: vi.fn(),
+      getSecrets: vi.fn()
     },
     mockLogger: {
       info: vi.fn(),
@@ -485,6 +486,172 @@ describe('deployments POST', function packageTests() {
       expect(response.status).toBe(429);
       expect(data.error).toBe('Failed to create deployment');
       expect(data.details).toBe('Deployment limit reached');
+    });
+  });
+
+  describe('SSO enforcement', function ssoEnforcement() {
+    const SSO_SITE = {
+      ...MOCK_V2_SITE,
+      ssoRequired: true,
+      ssoConfigId: 'sso-config-123',
+      clientIdSecretName: 'GD_SSO_OAUTH_CLIENT_ID',
+      clientSecretSecretName: 'GD_SSO_OAUTH_CLIENT_SECRET',
+    };
+
+    it('should return 403 when SSO is required but credentials are not configured', async function ssoRequiredNotConfigured() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(SSO_SITE);
+      mockAiroMgmtClient.getSecrets.mockResolvedValue({
+        auth: { secrets: [] },
+      });
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toContain('SSO is required but not configured');
+      expect(mockAiroMgmtClient.publishApp).not.toHaveBeenCalled();
+    });
+
+    it('should return 403 when SSO is required and only client_id is configured', async function ssoPartialConfig() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(SSO_SITE);
+      mockAiroMgmtClient.getSecrets.mockResolvedValue({
+        auth: {
+          secrets: [{ name: 'GD_SSO_OAUTH_CLIENT_ID', systemManaged: false }],
+        },
+      });
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toContain('SSO is required but not configured');
+      expect(mockAiroMgmtClient.publishApp).not.toHaveBeenCalled();
+    });
+
+    it('should allow publish when SSO is required and fully configured', async function ssoConfigured() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(SSO_SITE);
+      mockAiroMgmtClient.getSecrets.mockResolvedValue({
+        auth: {
+          secrets: [
+            { name: 'GD_SSO_OAUTH_CLIENT_ID', systemManaged: false },
+            { name: 'GD_SSO_OAUTH_CLIENT_SECRET', systemManaged: false },
+          ],
+        },
+      });
+      mockAiroMgmtClient.publishApp.mockResolvedValue(MOCK_DEPLOYMENT_RESPONSE);
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.deploymentId).toBe('deployment-123');
+      expect(mockAiroMgmtClient.publishApp).toHaveBeenCalled();
+    });
+
+    it('should allow publish when SSO is not required', async function ssoNotRequired() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(MOCK_V2_SITE);
+      mockAiroMgmtClient.publishApp.mockResolvedValue(MOCK_DEPLOYMENT_RESPONSE);
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.deploymentId).toBe('deployment-123');
+      expect(mockAiroMgmtClient.getSecrets).not.toHaveBeenCalled();
+    });
+
+    it('should block publish when getSecrets call fails (fail-safe)', async function ssoCheckFails() {
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(SSO_SITE);
+      mockAiroMgmtClient.getSecrets.mockRejectedValue(new Error('Network error'));
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toContain('SSO is required but not configured');
+      expect(mockAiroMgmtClient.publishApp).not.toHaveBeenCalled();
+    });
+
+    it('should return 403 when ssoRequired is true but ssoConfigId is missing', async function ssoNoConfigId() {
+      const siteWithSsoNoConfig = {
+        ...MOCK_V2_SITE,
+        ssoRequired: true,
+        ssoConfigId: undefined,
+      };
+      mockAuthenticateCustomer.mockResolvedValue({
+        isAuthenticated: true,
+        user: MOCK_USER,
+        jwt: 'user-jwt-token'
+      });
+      mockControlPlaneAdapter.getSite.mockResolvedValue(siteWithSsoNoConfig);
+
+      const request = new NextRequest(`http://localhost:3000/api/apps/${MOCK_SITE_ID}/deployments`, {
+        method: 'POST',
+        body: JSON.stringify({ gitHash: 'abc1234567890' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const response = await POST(request, { params: Promise.resolve({ id: MOCK_SITE_ID }) });
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data.error).toContain('SSO is required but not configured');
+      expect(mockAiroMgmtClient.publishApp).not.toHaveBeenCalled();
     });
   });
 });

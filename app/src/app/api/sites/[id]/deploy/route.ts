@@ -11,7 +11,9 @@ import {
   customerHasAccount,
   withCustomerAuth,
 } from '@/lib/customer-auth';
+import { AiroMgmtClient } from '@/lib/mgmt-airo';
 import { logger } from '@/lib/request-context';
+import { isSsoConfigured } from '@/lib/sso/is-configured';
 
 // In-memory deployment lock to prevent concurrent deployments
 const deploymentLocks = new Set<string>();
@@ -106,6 +108,24 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
     if (deployDeny) {
       releaseDeploymentLock(siteId);
       return deployDeny;
+    }
+
+    if (variant === 'publish' && site.ssoRequired) {
+      const baseUrl: string = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
+      const client = new AiroMgmtClient({ baseUrl, jwt: authContext.jwt });
+      const ssoConfigured: boolean = await isSsoConfigured(client, site, siteId);
+      if (!ssoConfigured) {
+        releaseDeploymentLock(siteId);
+        logger.warn('deploy.blocked-sso-not-configured', {
+          siteId,
+          customerId: user.customerId,
+          ssoConfigId: site.ssoConfigId,
+        });
+        return NextResponse.json(
+          { error: 'SSO is required but not configured. Configure SSO credentials in Settings before publishing.' },
+          { status: 403 }
+        );
+      }
     }
 
     const result = await adapter.deploySite(siteId, authContext.jwt, {
