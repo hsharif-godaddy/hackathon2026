@@ -149,6 +149,7 @@ const PublishLimitModal = dynamic(importPublishLimitModal)
 const SettingsView = dynamic(importSettingsView, { loading: () => <SettingsLoadingState fullPage /> })
 
 const aotImports = [importFeedback, importFirstPublishCongratsModal, importPublishLimitModal, importSettingsView]
+const PREVIEW_NUDGE_DISMISSED_KEY = 'airo.previewNudgeDismissed'
 
 function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) {
   const t = useTranslations();
@@ -602,6 +603,17 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const visitedTabs = useVisitedTabs(optimisticMobileTab)
   const securityQuickFixFailCountRef = useRef<Map<string, number>>(new Map())
   const [securityHandoffRetryNonce, setSecurityHandoffRetryNonce] = useState(0)
+  const [showPreviewNudgeTooltip, setShowPreviewNudgeTooltip] = useState(false)
+  const [hasFiredPreviewNudgeThisBuild, setHasFiredPreviewNudgeThisBuild] = useState(false)
+  const [isPreviewNudgeDismissed, setIsPreviewNudgeDismissed] = useState(false)
+
+  useEffect(function hydratePreviewNudgeDismissed() {
+    try {
+      setIsPreviewNudgeDismissed(localStorage.getItem(PREVIEW_NUDGE_DISMISSED_KEY) === '1')
+    } catch {
+      setIsPreviewNudgeDismissed(false)
+    }
+  }, [])
 
   // Sync switchboard flag into store and send multi-select state to iframe
   useEffect(() => {
@@ -850,6 +862,39 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     () => !!activeStream?.toolCalls?.some(mutatesFiles),
     [activeStream?.toolCalls],
   )
+  const previousIsProcessingRef = useRef<boolean>(isProcessing)
+  useEffect(function showPreviewNudgeOnProcessingStart() {
+    const previousIsProcessing: boolean = previousIsProcessingRef.current
+    if (
+      !previousIsProcessing &&
+      isProcessing &&
+      isMobile &&
+      init.ui.showPreviewLoader &&
+      !hasFiredPreviewNudgeThisBuild &&
+      !isPreviewNudgeDismissed
+    ) {
+      setShowPreviewNudgeTooltip(true)
+      setHasFiredPreviewNudgeThisBuild(true)
+    }
+  }, [hasFiredPreviewNudgeThisBuild, init.ui.showPreviewLoader, isMobile, isPreviewNudgeDismissed, isProcessing])
+
+  useEffect(function syncPreviewNudgeBuildLifecycle() {
+    previousIsProcessingRef.current = isProcessing
+    if (!init.ui.showPreviewLoader) {
+      setShowPreviewNudgeTooltip(false)
+      setHasFiredPreviewNudgeThisBuild(false)
+    }
+  }, [init.ui.showPreviewLoader, isProcessing])
+
+  const handleDismissPreviewNudge = useCallback(function dismissPreviewNudge() {
+    setShowPreviewNudgeTooltip(false)
+    setIsPreviewNudgeDismissed(true)
+    try {
+      localStorage.setItem(PREVIEW_NUDGE_DISMISSED_KEY, '1')
+    } catch {
+      // ignore storage failures
+    }
+  }, [])
 
   useEffect(() => {
     broadcastProcessingState(isProcessing)
@@ -1371,7 +1416,11 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   if (init.siteNotFound) {
     return (
       <div className="h-[calc(100dvh-var(--dark-release-banner-h,0px))] flex flex-col">
-        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
+        <DevelopHeader
+          onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+          showPreviewNudgeTooltip={isMobile && showPreviewNudgeTooltip}
+          onDismissPreviewNudge={handleDismissPreviewNudge}
+        />
         <AppNotFound />
       </div>
     )
@@ -1481,7 +1530,11 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
           />
         ) : (
           <>
-        <DevelopHeader onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })} />
+        <DevelopHeader
+          onPreviewRefresh={() => handlePreviewRefresh({ lastIframeState })}
+          showPreviewNudgeTooltip={isMobile && showPreviewNudgeTooltip}
+          onDismissPreviewNudge={handleDismissPreviewNudge}
+        />
 
         {/* Desktop Layout */}
         {!isMobile && (

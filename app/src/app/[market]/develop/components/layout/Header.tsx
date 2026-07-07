@@ -30,6 +30,7 @@ import { InboxUnresolvedBadge } from '@/app/[market]/develop/components/layout/I
 import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
+import { PreviewNudgeTooltip } from '@/app/[market]/develop/components/PreviewNudgeTooltip';
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy';
 import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign';
 import { MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
@@ -63,12 +64,19 @@ const PREVIEW_EDIT_TOGGLE_EDIT_ACTIVE_ACCENT =
 
 interface DevelopHeaderProps {
   onPreviewRefresh: () => void;
+  showPreviewNudgeTooltip?: boolean;
+  onDismissPreviewNudge?: () => void;
 }
 
-export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) {
+export default function DevelopHeader({
+  onPreviewRefresh,
+  showPreviewNudgeTooltip,
+  onDismissPreviewNudge,
+}: DevelopHeaderProps) {
   const t = useTranslations();
   const isEditModeCueEnabled = useSwitchboard('appbuilder-edit-mode-cue') === true;
   const editButtonRef = useRef<HTMLDivElement>(null);
+  const previewButtonRef = useRef<HTMLButtonElement>(null);
   const { visible: editNudgeVisible, dismissForever: dismissEditNudge } = useEditNudgeTooltip();
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
   const isInboxEnabled = useSwitchboard('app-builder-inbox-button');
@@ -356,6 +364,7 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
           <ButtonGroup
             value={mobileMode}
             onChange={(value) => {
+              if (value === MobileMode.PREVIEW) onDismissPreviewNudge?.();
               handleMobileModeChange(value as MobileMode);
               if (MOBILE_MODE_EID_MAP[value]) logClickEvent(MOBILE_MODE_EID_MAP[value], clickContext)();
             }}
@@ -366,11 +375,16 @@ export default function DevelopHeader({ onPreviewRefresh }: DevelopHeaderProps) 
               label={t('builder_chat_toolbar_button_chat')}
             />
             <ButtonGroup.Item
+              ref={previewButtonRef}
               value={MobileMode.PREVIEW}
               icon={<MobilePhoneIcon className="size-2.5" />}
               label={t('builder_preview_button_preview')}
             />
           </ButtonGroup>
+          <PreviewNudgeTooltip
+            anchorRef={previewButtonRef}
+            visible={Boolean(showPreviewNudgeTooltip)}
+          />
           <UserMenu location="develop" />
           <IframeCloseButton location="develop" />
         </div>
