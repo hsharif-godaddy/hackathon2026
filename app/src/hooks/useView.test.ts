@@ -4,7 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
+import {
+  CanvasId,
+  COMMANDER_CANVAS_TABS_FLAG,
+  DEFAULT_OPEN_CANVAS_IDS,
+  PINNED_CANVAS_ID,
+} from '@/app/[market]/commander/canvas/registry';
 import { ViewMode } from '@/app/[market]/develop/components/types';
+import { useCommanderStore } from '@/stores/useCommanderStore';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useView, type ViewAvailability } from './useView';
 
@@ -14,6 +21,11 @@ vi.mock('next/navigation', () => ({
 
 // Default: every mode available and resolved.
 const allAvailable = () => ({ available: true, resolving: false });
+
+// Toggle the canvas-tabs switchboard flag that useSwitchboard reads off window.
+const setCanvasTabsFlag = (enabled: boolean): void => {
+  window.gasketData = { switchboard: { [COMMANDER_CANVAS_TABS_FLAG]: enabled } };
+};
 
 describe('useView', () => {
   const pushStateSpy = vi.spyOn(window.history, 'pushState');
@@ -25,6 +37,11 @@ describe('useView', () => {
       viewMode: ViewMode.EDIT,
       viewInitializedForPathname: null,
     });
+    useCommanderStore.setState({
+      openCanvasIds: [...DEFAULT_OPEN_CANVAS_IDS],
+      activeCanvasId: PINNED_CANVAS_ID,
+    });
+    window.gasketData = undefined;
     vi.clearAllMocks();
   });
 
@@ -156,6 +173,70 @@ describe('useView', () => {
     await waitFor(() => {
       expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.EDIT);
     });
+  });
+
+  it('opens and activates the Inbox canvas tab on deep link when canvas tabs are enabled', async () => {
+    setCanvasTabsFlag(true);
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+    // Precondition: Inbox is not open by default, so setActiveCanvas alone would no-op.
+    expect(useCommanderStore.getState().openCanvasIds).not.toContain(CanvasId.Inbox);
+
+    renderHook(() => useView({ getViewAvailability: allAvailable }));
+
+    await waitFor(() => {
+      expect(useCommanderStore.getState().activeCanvasId).toBe(CanvasId.Inbox);
+    });
+    expect(useCommanderStore.getState().openCanvasIds).toContain(CanvasId.Inbox);
+    expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+  });
+
+  it('does not touch the commander store when canvas tabs are disabled', async () => {
+    setCanvasTabsFlag(false);
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+    renderHook(() => useView({ getViewAvailability: allAvailable }));
+
+    await waitFor(() => {
+      expect(useDevelopPageStore.getState().viewMode).toBe(ViewMode.INBOX);
+    });
+    expect(useCommanderStore.getState().activeCanvasId).toBe(PINNED_CANVAS_ID);
+    expect(useCommanderStore.getState().openCanvasIds).not.toContain(CanvasId.Inbox);
+  });
+
+  it('does not open the Inbox tab when the deep link is unavailable', async () => {
+    setCanvasTabsFlag(true);
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+
+    const getViewAvailability = (mode: ViewMode): ViewAvailability =>
+      mode === ViewMode.INBOX ? { available: false, resolving: false } : allAvailable();
+
+    renderHook(() => useView({ getViewAvailability }));
+
+    await waitFor(() => {
+      expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+    });
+    expect(useCommanderStore.getState().activeCanvasId).toBe(PINNED_CANVAS_ID);
+    expect(useCommanderStore.getState().openCanvasIds).not.toContain(CanvasId.Inbox);
+  });
+
+  it('activates the Inbox tab on popstate to an inbox URL when canvas tabs are enabled', async () => {
+    setCanvasTabsFlag(true);
+    renderHook(() => useView({ getViewAvailability: allAvailable }));
+
+    await waitFor(() => {
+      expect(useDevelopPageStore.getState().viewInitializedForPathname).toBe('/develop/app-123');
+    });
+
+    window.history.replaceState(null, '', '/develop/app-123?view=inbox');
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await waitFor(() => {
+      expect(useCommanderStore.getState().activeCanvasId).toBe(CanvasId.Inbox);
+    });
+    expect(useCommanderStore.getState().openCanvasIds).toContain(CanvasId.Inbox);
   });
 
   it('does not clobber a coexisting tab param', async () => {

@@ -1,8 +1,10 @@
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useRef } from 'react'
 
+import { CANVAS_REGISTRY, type CanvasId } from '@/app/[market]/commander/canvas/registry'
 import { ViewMode } from '@/app/[market]/develop/components/types'
 import { CONVERSATION_ID_PARAM } from '@/hooks/useConversationId'
+import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 /** Per-mode availability supplied by the caller. */
@@ -27,9 +29,37 @@ const DEFAULT_VIEW_MODE = ViewMode.EDIT
 
 const VIEW_PARAM = 'view'
 
+/**
+ * Reverse of `CANVAS_REGISTRY[*].activation.viewMode`: maps a view mode back to the
+ * canvas tab that owns it. Derived from the registry so it can't drift from the
+ * forward mapping. Used to reconcile the commander canvas-tab state when a deep link
+ * drives `viewMode` directly (which otherwise bypasses the tab strip entirely).
+ */
+const CANVAS_ID_BY_VIEW_MODE: ReadonlyMap<ViewMode, CanvasId> = new Map(
+  Object.values(CANVAS_REGISTRY).flatMap((descriptor) =>
+    descriptor.activation.viewMode ? [[descriptor.activation.viewMode, descriptor.id] as const] : [],
+  ),
+)
+
 const buildUrl = (pathname: string, params: URLSearchParams): string => {
   const query = params.toString()
   return query ? `${pathname}?${query}` : pathname
+}
+
+/**
+ * Reconcile the commander canvas-tab strip with a deep-linked view mode. A deep link
+ * drives only the develop store's `viewMode`; without this the owning tab is never
+ * opened/activated (and `setActiveCanvas` no-ops while the tab isn't open). `openCanvas`
+ * both makes the tab visible and sets it active — mirroring a menu selection — and is a
+ * no-op if already open. Gated on the canvas-tabs feature so nothing happens when the
+ * strip isn't rendered (e.g. PaaS / flag off).
+ */
+const activateCanvasForViewMode = (mode: ViewMode, canvasTabsEnabled: boolean): void => {
+  if (!canvasTabsEnabled) return
+  const canvasId = CANVAS_ID_BY_VIEW_MODE.get(mode)
+  if (canvasId) {
+    useCommanderStore.getState().openCanvas(canvasId)
+  }
 }
 
 const parseViewMode = (value: string | null): ViewMode | null => {
@@ -57,10 +87,14 @@ export function useView({ getViewAvailability }: UseViewOptions): void {
   const setViewMode = useDevelopPageStore((state) => state.setViewMode)
   const markViewInitialized = useDevelopPageStore((state) => state.markViewInitialized)
 
-  // Keep the latest availability fn for the stable popstate handler without
-  // re-registering the listener whenever availability changes.
+  const canvasTabsEnabled = useCommanderCanvasTabsEnabled()
+
+  // Keep the latest availability fn and flag for the stable popstate handler
+  // without re-registering the listener whenever either changes.
   const getAvailabilityRef = useRef(getViewAvailability)
   getAvailabilityRef.current = getViewAvailability
+  const canvasTabsEnabledRef = useRef(canvasTabsEnabled)
+  canvasTabsEnabledRef.current = canvasTabsEnabled
 
   // URL -> store (deep linking), guarded per-pathname. Re-runs when
   // getViewAvailability identity changes (i.e. when availability resolves).
@@ -81,6 +115,7 @@ export function useView({ getViewAvailability }: UseViewOptions): void {
         if (viewMode !== urlMode) {
           setViewMode(urlMode)
         }
+        activateCanvasForViewMode(urlMode, canvasTabsEnabled)
         markViewInitialized(pathname)
         return
       }
@@ -98,7 +133,7 @@ export function useView({ getViewAvailability }: UseViewOptions): void {
 
     // No / invalid view param: nothing to restore, just mark initialized.
     markViewInitialized(pathname)
-  }, [pathname, viewInitializedForPathname, viewMode, getViewAvailability, setViewMode, markViewInitialized])
+  }, [pathname, viewInitializedForPathname, viewMode, getViewAvailability, setViewMode, markViewInitialized, canvasTabsEnabled])
 
   // store -> URL. Invariant: ?view=<mode> present iff viewMode is URL-synced.
   // Always replaceState: the URL reflects the current view without adding
@@ -137,6 +172,7 @@ export function useView({ getViewAvailability }: UseViewOptions): void {
 
     if (urlMode && getAvailabilityRef.current(urlMode).available) {
       setViewMode(urlMode)
+      activateCanvasForViewMode(urlMode, canvasTabsEnabledRef.current)
       return
     }
 
