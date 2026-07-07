@@ -8,3 +8,7 @@ suite:
     - "airo-batch-intent-resolution-status"
     - "airo-batch-rebuild-execution"
     - "airo-batch-skill-authentication"
+    - "airo-batch-website-task-completion"
+    - "airo-batch-website-intent-alignment"
+    - "airo-batch-website-content-quality"
+    - "airo-batch-website-business-fit"

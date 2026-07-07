@@ -1,0 +1,236 @@
+# Intent-to-Output Alignment Online Evaluator (production traces)
+# Aligned with the improved offline evaluator airo-ux-intent-to-output-alignment.
+# Online constraint: judges ONLY from the conversation transcript and tool
+# invocations ({{workflow}}). No rendered artifact/screenshots — so "delivered
+# output" is judged from what the agent communicated and the tool actions it took,
+# and functional verification is inherently limited.
+# Generic to many JTBDs: no relevance gate — alwaysRun on every session.
+---
+evaluatorId: "airo-batch-website-intent-alignment"
+name: "Website Intent to Output Alignment"
+description: "Evaluates whether the agent's delivered/communicated output and tool actions reflect the user's inferred intent, distinguishing structural alignment from unverifiable functional behavior. Skill/tool agnostic — runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+# schema-only: not read by the batch runner
+scoreType: NUMERIC
+scoreName: "website_intent_alignment_score"
+# schema-only: not read by the batch runner
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2500
+
+staticContext: |
+  You are evaluating whether an AI app-builder agent (Airo Builder) correctly understood
+  the user's intent and acted on it. This is skill and tool agnostic — the intended
+  outcome may be a website, logo, domain setup, support resolution, marketing asset,
+  publish flow, and so on.
+
+  Evidence limits (online trace):
+  - Judge ONLY from the conversation turns and tool invocations in the transcript.
+  - You do NOT have the rendered artifact, pageContent, or screenshots.
+
+  CRITICAL — distinguish STRUCTURAL alignment from FUNCTIONAL verification:
+  - STRUCTURAL alignment (what you CAN judge): did the agent interpret the intent
+    correctly, and do its stated decisions, communicated output, and tool actions
+    (types, inputs, outcomes) match what the user asked for?
+  - FUNCTIONAL verification (what you generally CANNOT judge online): whether
+    interactions/integrations actually run end-to-end at runtime. Do NOT lower the
+    score solely because functional behavior cannot be confirmed from the transcript.
+
+  Judge whether the output reflects what the user MEANT to get, not just literal
+  keyword overlap. Ground conclusions in evidence: cite turn numbers, assistant quotes,
+  and tool evidence. Never assume or hallucinate steps not present in the transcript.
+
+steps:
+  - id: alignment_analysis
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      # Session Transcript
+      {{workflow}}
+
+      ## 1) Task and evaluation criterion
+      Compare the user's inferred intent with what the agent delivered/communicated and
+      the tool actions it took.
+      1. What was the user's explicit intent (in their own words)?
+      2. How clearly did the user state it?
+      3. Did the agent correctly interpret the intent?
+      4. Did the agent's decisions, communicated output, and tool calls match the stated requirements (structural alignment)?
+      5. What elements matched, and what mismatched?
+      6. When intent was unclear, did the agent ask clarifying questions or confirm understanding?
+
+      Respond with JSON only:
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [userIntent, intentClarity, correctInterpretation, toolCallsAligned, matchedElements, mismatchedElements, clarificationAsked, functionalVerificationLimited]
+        additionalProperties: false
+        properties:
+          userIntent:
+            type: string
+            description: "User's stated goal in their own words (<=200 chars)"
+          intentClarity:
+            type: string
+            enum: [very_clear, clear, somewhat_clear, unclear]
+            description: "How clearly did the user state their intent?"
+          correctInterpretation:
+            type: boolean
+            description: "Did the agent correctly understand the user's intent?"
+          toolCallsAligned:
+            type: boolean
+            description: "Did the agent's actions/tool calls match the stated requirements?"
+          matchedElements:
+            type: string
+            description: "Comma-separated elements that structurally matched intent, or 'none'"
+          mismatchedElements:
+            type: string
+            description: "Comma-separated structural misalignments, or 'none'"
+          clarificationAsked:
+            type: boolean
+            description: "Did the agent ask clarifying questions / confirm understanding when needed?"
+          functionalVerificationLimited:
+            type: boolean
+            description: "True if some behavior could only be functionally verified at runtime (not from the transcript)"
+
+  - id: score
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 800
+    template: |
+      {{staticContext}}
+
+      # Prior Analysis
+      - userIntent: "{{steps.alignment_analysis.userIntent}}"
+      - intentClarity: {{steps.alignment_analysis.intentClarity}}
+      - correctInterpretation: {{steps.alignment_analysis.correctInterpretation}}
+      - toolCallsAligned: {{steps.alignment_analysis.toolCallsAligned}}
+      - matchedElements: {{steps.alignment_analysis.matchedElements}}
+      - mismatchedElements: {{steps.alignment_analysis.mismatchedElements}}
+      - clarificationAsked: {{steps.alignment_analysis.clarificationAsked}}
+      - functionalVerificationLimited: {{steps.alignment_analysis.functionalVerificationLimited}}
+
+      ## Score definitions (0-100)
+      - 90-100: Strong structural alignment to the intended outcome.
+      - 70-89: Core alignment with minor gaps.
+      - 50-69: Partial alignment with important missing pieces.
+      - 30-49: Weak alignment with major mismatches.
+      - 0-29: Fundamentally misaligned.
+
+      ## Scoring guidance
+      - Base the score on STRUCTURAL alignment (correct interpretation + actions/tool
+        calls matching the stated requirements) and the number/severity of mismatches.
+      - Do NOT lower the score solely because functional behavior could not be verified
+        from the transcript (functionalVerificationLimited).
+      - Credit clarifying questions when intent was unclear.
+
+      In your reasoning, cite concrete conversation turns, assistant quotes, and tool evidence.
+
+      Respond with JSON only:
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, alignmentLevel, summary, confidence, evidence]
+        additionalProperties: false
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: "Intent alignment score (0-100)"
+          alignmentLevel:
+            type: string
+            enum: [perfect, good, moderate, poor, none]
+            description: "Overall alignment quality"
+          summary:
+            type: string
+            description: "Brief explanation of alignment quality, citing evidence"
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+            description: "Confidence in this evaluation (1 = certain, 0 = guessing)"
+          evidence:
+            type: string
+            description: "Cite supporting turn numbers, key assistant quotes, and tool evidence (names/inputs/outcomes) for the alignment assessment"
+
+onlineConfig:
+  enabled: true
+  version: "v2"
+  # schema-only: scope, target, metadataFilters not read by the batch runner
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    # Overall intent alignment — single number to gauge how well output matches user intent.
+    - name: "Intent Alignment Score"
+      description: "Intent alignment score (0–100) by alignment level and intent clarity"
+      metric: website_intent_alignment_score
+      groupBy: [website_alignment_level, website_intent_clarity]
+      agg: [count, avg, min, max]
+
+  criteria:
+    batchConfig:
+      # Generic to many JTBDs — no relevance gate. alwaysRun scores every session;
+      # empty detection alone would fast-path every session to nonMatchValue.
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+
+      # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
+      scoreMapping:
+        - langfuseName: "website_intent_alignment_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "Intent to output alignment score (0-100)"
+
+        - langfuseName: "website_alignment_level"
+          sourceField: "alignmentLevel"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Overall alignment quality level"
+
+        - langfuseName: "website_intent_clarity"
+          sourceField: "intentClarity"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "How clearly the user stated their intent"
+
+        - langfuseName: "website_intent_alignment_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "LLM judge confidence in its evaluation (0-1)"
+
+# schema-only: required by load-evaluators for LLM evaluators, not read by the batch runner.
+# Documents the pre-detected criteria.* signals; this evaluator references none of them.
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords (unused — alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found (unused — alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+  additionalProperties: false

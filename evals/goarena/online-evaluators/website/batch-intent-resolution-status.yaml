@@ -170,7 +170,7 @@ onlineConfig:
   scope: trace
   target:
     langfuseProjectIds:
-      - cmj7ew7m20026tr41gsi9knd4
+      - REPLACE_LANGFUSE_PROJECT_ID
   metadataFilters:
     tagsAnyOf:
       - airo-app-builder

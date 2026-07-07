@@ -16,6 +16,11 @@ on:
         description: 'Langfuse project ID to target (prod: cmj7ew7m20026tr41gsi9knd4)'
         required: true
         type: string
+      config-path:
+        description: 'Path to evaluators (use subfolder like website/ to load only those evaluators)'
+        required: false
+        default: 'evals/goarena/online-evaluators'
+        type: string
 
 permissions:
   contents: read
@@ -39,17 +44,20 @@ jobs:
       - name: Inject Langfuse project ID
         env:
           LANGFUSE_PROJECT_ID: ${{ inputs.langfuse-project-id }}
+          CONFIG_PATH: ${{ inputs.config-path }}
         run: |
-          sed -i "s/REPLACE_LANGFUSE_PROJECT_ID/${LANGFUSE_PROJECT_ID}/g" \
-            evals/goarena/online-evaluators/*.yaml
+          # Support both flat and nested directory structures
+          find "${CONFIG_PATH}" -name "*.yaml" -type f -exec \
+            sed -i "s/REPLACE_LANGFUSE_PROJECT_ID/${LANGFUSE_PROJECT_ID}/g" {} +
           echo "--- Verifying injection ---"
-          grep -A1 "langfuseProjectIds" evals/goarena/online-evaluators/*.yaml
+          find "${CONFIG_PATH}" -name "*.yaml" -type f -exec \
+            grep -l "langfuseProjectIds" {} + | head -5
 
       - name: Load Online Evaluators
         id: load-evaluators
         uses: gdcorp-dna/synthia/actions/load-evaluators@main
         with:
-          config-path: evals/goarena/online-evaluators
+          config-path: ${{ inputs.config-path }}
           synthia-env: ${{ inputs.synthia-env }}
 
       - name: Load Online Suites

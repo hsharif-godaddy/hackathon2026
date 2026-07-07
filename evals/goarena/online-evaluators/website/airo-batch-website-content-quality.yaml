@@ -1,0 +1,252 @@
+# Content Quality Online Evaluator (production traces)
+# Aligned with the improved offline evaluator airo-ux-content-quality.
+# Online constraint: judges ONLY from the conversation transcript and tool
+# invocations ({{workflow}}). There is no rendered artifact, pageContent, or
+# screenshot — customer-facing content is judged from copy the agent produced
+# or discussed in the transcript and from tool inputs/outputs.
+# Generic to many JTBDs: no relevance gate — alwaysRun on every session.
+---
+evaluatorId: "airo-batch-website-content-quality"
+name: "Website Content Quality"
+description: "Scores whether customer-facing content the agent produced/discussed is specific, authentic, and aligned with user-provided context. Skill/tool agnostic — runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+# schema-only: not read by the batch runner
+scoreType: NUMERIC
+scoreName: "website_content_quality_score"
+# schema-only: not read by the batch runner
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2500
+
+staticContext: |
+  You are evaluating the quality of customer-facing content in an AI app-builder
+  (Airo Builder) production session. This is skill and tool agnostic — content may
+  be website copy, logo/brand text, marketing content, support replies, confirmation
+  messages, or any other customer-facing output.
+
+  Evidence limits (online trace):
+  - Judge ONLY from the conversation turns and tool invocations in the transcript.
+  - You do NOT have the rendered artifact, pageContent, or screenshots. Judge the
+    content the agent actually produced or specified in the transcript (assistant
+    messages and tool inputs/outputs). Do not treat uncaptured downstream content as
+    a failure — but do not invent content that is not evidenced either.
+
+  Fair attribution (CRITICAL):
+  - Measure content specificity RELATIVE to how specific the user's requirements were.
+  - Do NOT over-penalize generic copy when the user's requirements were vague.
+  - DO penalize generic/filler copy when the user provided concrete details.
+
+  Ground every conclusion in concrete evidence: quote concrete phrases and cite turn
+  numbers and tool evidence. Never assume or hallucinate content not in the transcript.
+
+steps:
+  - id: content_analysis
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      # Session Transcript
+      {{workflow}}
+
+      ## 1) Task and evaluation criterion
+      Analyze the customer-facing content the agent produced or specified.
+
+      ### Requirement specificity (what the user provided)
+      - vague (10-30% detail): business type only, no specifics
+      - moderate (40-60%): type + some detail (industry, location, or audience)
+      - specific (70-90%): type + multiple details
+      - very_specific (90-100%): comprehensive detail (industry, niche, location, audience, services, differentiators)
+
+      ### Content specificity (what the agent produced)
+      Highly specific copy is grounded in actual business/service, audience, concrete
+      services/products, location/service area, specific outcomes, category terminology,
+      and unique value props. Generic filler lacks business-specific details and just
+      uses buzzwords that fit any business.
+      - generic: 0-30% | somewhat_specific: 40-60% | mostly_specific: 70-90% | highly_specific: 90-100%
+
+      ### Authenticity checks
+      - Customer stated preferences (tone/style, requested inclusions/exclusions, corrections, business details).
+      - Placeholder detection: lorem ipsum, bracketed placeholders ([Insert X]), generic fillers ("Your business name"), incomplete markers ("Coming soon"), missing core specifics when expected. Record in placeholdersFound.
+      - Invented social proof detection: unverified logos/endorsements/awards/rankings/testimonials/ratings/count claims. Record in inventedSocialProofFound.
+
+      Respond with JSON only:
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [contentDiscussed, contentElements, requirementSpecificity, contentSpecificity, statedPreferences, preferenceMismatches, placeholdersFound, inventedSocialProofFound]
+        additionalProperties: false
+        properties:
+          contentDiscussed:
+            type: boolean
+            description: "Was customer-facing content produced or discussed?"
+          contentElements:
+            type: string
+            description: "Comma-separated content elements present (headlines, body_text, cta, navigation, forms, brand_text, other), or 'none'"
+          requirementSpecificity:
+            type: string
+            enum: [vague, moderate, specific, very_specific]
+            description: "How specific were the user's requirements?"
+          contentSpecificity:
+            type: string
+            enum: [generic, somewhat_specific, mostly_specific, highly_specific]
+            description: "How specific/authentic was the produced content?"
+          statedPreferences:
+            type: string
+            description: "Comma-separated customer content preferences mined from the conversation, or 'none'"
+          preferenceMismatches:
+            type: string
+            description: "Comma-separated preferences the content ignored/contradicted, or 'none'"
+          placeholdersFound:
+            type: string
+            description: "Comma-separated placeholder/filler instances, or 'none'"
+          inventedSocialProofFound:
+            type: string
+            description: "Comma-separated fabricated social-proof claims, or 'none'"
+
+  - id: score
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 800
+    template: |
+      {{staticContext}}
+
+      # Prior Analysis
+      - contentDiscussed: {{steps.content_analysis.contentDiscussed}}
+      - contentElements: {{steps.content_analysis.contentElements}}
+      - requirementSpecificity: {{steps.content_analysis.requirementSpecificity}}
+      - contentSpecificity: {{steps.content_analysis.contentSpecificity}}
+      - statedPreferences: {{steps.content_analysis.statedPreferences}}
+      - preferenceMismatches: {{steps.content_analysis.preferenceMismatches}}
+      - placeholdersFound: {{steps.content_analysis.placeholdersFound}}
+      - inventedSocialProofFound: {{steps.content_analysis.inventedSocialProofFound}}
+
+      ## Score definitions (0-100)
+      - 90-100: Specific, authentic, preference-aligned content with strong business grounding.
+      - 70-89: Good content with minor specificity/authenticity gaps.
+      - 50-69: Mixed quality; notable vagueness or preference misses.
+      - 30-49: Mostly generic/filler or misleading.
+      - 0-29: Placeholder-heavy or deceptive content.
+
+      ## Scoring guidance
+      - Base score tracks content specificity, adjusted for the expectation match vs
+        requirement specificity: reward when content meets/exceeds what the user's
+        requirements warranted; apply a penalty when content specificity falls well
+        below requirement specificity (>30% gap).
+      - Do NOT penalize concise-but-complete content; do NOT reward padding.
+
+      ## Caps (apply after the base score)
+      - If placeholdersFound is non-empty, cap the score at 60.
+      - If inventedSocialProofFound is non-empty, cap the score at 60.
+      - If content was neither produced nor discussed anywhere in the session, score low and set contentQualityLevel to "none".
+
+      In your reasoning, cite concrete phrases plus relevant conversation turns and tool evidence.
+
+      Respond with JSON only:
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, contentQualityLevel, summary, confidence, evidence]
+        additionalProperties: false
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: "Content quality score (0-100)"
+          contentQualityLevel:
+            type: string
+            enum: [excellent, good, adequate, poor, none]
+            description: "Overall content quality level"
+          summary:
+            type: string
+            description: "Brief explanation of content quality, citing evidence"
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+            description: "Confidence in this evaluation (1 = certain, 0 = guessing)"
+          evidence:
+            type: string
+            description: "Cite supporting turn numbers, concrete quotes of the produced content, and tool evidence (names/inputs/outcomes)"
+
+onlineConfig:
+  enabled: true
+  version: "v2"
+  # schema-only: scope, target, metadataFilters not read by the batch runner
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    # Overall content quality — single number to gauge content authenticity and specificity.
+    - name: "Content Quality Score"
+      description: "Content quality score (0–100) by quality level and discussion status"
+      metric: website_content_quality_score
+      groupBy: [website_content_quality_level, website_content_discussed]
+      agg: [count, avg, min, max]
+
+  criteria:
+    batchConfig:
+      # Generic to many JTBDs — no relevance gate. alwaysRun scores every session;
+      # empty detection alone would fast-path every session to nonMatchValue.
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+
+      # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
+      scoreMapping:
+        - langfuseName: "website_content_quality_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "Content quality score (0-100)"
+
+        - langfuseName: "website_content_quality_level"
+          sourceField: "contentQualityLevel"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Overall content quality level"
+
+        - langfuseName: "website_content_discussed"
+          sourceField: "contentDiscussed"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Was content produced/discussed in session?"
+
+        - langfuseName: "website_content_quality_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "LLM judge confidence in its evaluation (0-1)"
+
+# schema-only: required by load-evaluators for LLM evaluators, not read by the batch runner.
+# Documents the pre-detected criteria.* signals; this evaluator references none of them.
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords (unused — alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found (unused — alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+  additionalProperties: false

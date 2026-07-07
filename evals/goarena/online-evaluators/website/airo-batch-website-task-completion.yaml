@@ -1,0 +1,285 @@
+# Task Completion Online Evaluator (production traces)
+# Aligned with the improved offline evaluator airo-ux-task-completion-status.
+# Online constraint: judges ONLY from the conversation transcript and tool
+# invocations ({{workflow}}). No rendered artifact/screenshots — which is exactly
+# what the improved rubric is built for: evaluate the customer's JOB, credit
+# successful tool execution, and never treat missing visual evidence as failure.
+# Generic to many JTBDs: no relevance gate — alwaysRun on every session.
+---
+evaluatorId: "airo-batch-website-task-completion"
+name: "Website Task Completion Status"
+description: "Measures whether the AI helped the customer complete their primary job, with graduated 0-100 scoring based on outcome delivery, correct routing, tool execution, and absence of unresolved blockers. Skill/tool agnostic — runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+# schema-only: not read by the batch runner
+scoreType: NUMERIC
+scoreName: "website_task_completion_score"
+# schema-only: not read by the batch runner
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2600
+
+staticContext: |
+  You are a senior QA analyst evaluating whether an AI app-builder agent (Airo Builder)
+  helped the customer complete their primary job in a production session. This is skill
+  and tool agnostic — the job may be to create, edit, find information, resolve an issue,
+  complete a transaction, configure a service, connect systems, publish, purchase, or
+  route to the correct workflow.
+
+  CRITICAL RULE — EVALUATE THE CUSTOMER'S JOB, NOT AN ARTIFACT.
+  Evidence limits (online trace): you have only the conversation turns, tool names,
+  tool inputs/outcomes, and tool result text. You do NOT have screenshots, rendered
+  pages, or pageContent.
+
+  YOU MUST:
+  - Identify the customer's primary job from the conversation.
+  - Evaluate whether the AI helped the customer accomplish that job.
+  - Give credit when tool invocations show successful completion of required work.
+  - Give credit when the AI routes the customer to the correct workflow, or completes
+    all actions within its control and clearly communicates remaining steps.
+
+  YOU MUST NOT:
+  - Treat missing visual evidence as proof the capability does not exist.
+  - Fail a task solely because a downstream page/asset/confirmation is not visible.
+  - Treat absence of evidence as evidence of absence.
+
+  Important nuances:
+  - Tool success/exit status is NOT by itself goal completion. "SUCCESS"/"OK" only means
+    the call did not error. Weigh the actual tool RESULT text and the assistant's output.
+  - A FAILURE outcome, an error in tool results, or repeated user corrections/re-requests
+    on the same goal are strong evidence the goal was not met — weigh them heavily.
+  - A plan or stated intention with no executed result is NOT resolution.
+
+  Ground every conclusion in evidence: cite turn numbers, tool outcomes, and assistant
+  quotes. Never assume or hallucinate steps not present in the transcript.
+
+steps:
+  - id: completion_analysis
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      # Session Transcript
+      {{workflow}}
+
+      ## 1) Task and evaluation criterion
+      Analyze completion of the customer's primary job.
+
+      Completion definitions:
+      - COMPLETE when the requested outcome is delivered, OR the customer is clearly
+        positioned to complete it, OR the AI completes all actions within its control
+        and clearly explains any remaining steps.
+      - NOT COMPLETE when the AI delivers the wrong outcome, routes to the wrong
+        workflow, ignores critical requirements, leaves the customer unable to continue,
+        hits an unresolved blocker, or the output contradicts the user's stated goal.
+
+      Multi-skill / flow-efficiency: do NOT penalize necessary skill transitions,
+      expected handoffs, or optional recommendations that do not block progress. DO
+      penalize incorrect routing, unnecessary skill/tool calls before the primary job,
+      detours that delay completion, and handoffs that lose context. Record detours in
+      flowEfficiencyIssues.
+
+      Assess these critical items explicitly:
+      - requested_outcome_delivered: was the primary outcome delivered or the customer clearly positioned to complete it?
+      - correct_workflow_used: did the AI use/route to the correct skill, tool, or workflow?
+      - no_unresolved_blocker: can the customer proceed/complete, with no unresolved blocker?
+
+      Respond with JSON only:
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [userGoal, goalDescription, conversationOutcome, requestedOutcomeDelivered, correctWorkflowUsed, noUnresolvedBlocker, toolFailures, userCorrections, flowEfficiencyIssues, unresolvedIssues]
+        additionalProperties: false
+        properties:
+          userGoal:
+            type: string
+            enum: [create_new, modify_existing, add_feature, fix_issue, publish_connect, other]
+            description: "Category of what the customer wanted to accomplish"
+          goalDescription:
+            type: string
+            description: "The inferred primary job in the customer's terms (<=200 chars)"
+          conversationOutcome:
+            type: string
+            enum: [completed, in_progress, user_abandoned, agent_error, unclear]
+            description: "How did the session end?"
+          requestedOutcomeDelivered:
+            type: boolean
+            description: "Critical: was the primary outcome delivered or the customer clearly positioned to complete it?"
+          correctWorkflowUsed:
+            type: boolean
+            description: "Critical: did the AI use/route to the correct skill/tool/workflow?"
+          noUnresolvedBlocker:
+            type: boolean
+            description: "Critical: true if the customer can proceed (no unresolved blocker)"
+          toolFailures:
+            type: integer
+            minimum: 0
+            description: "Count of tool failures/errors that blocked progress"
+          userCorrections:
+            type: integer
+            minimum: 0
+            description: "Count of user corrections/re-requests on the same goal"
+          flowEfficiencyIssues:
+            type: string
+            description: "Comma-separated flow detours / unnecessary calls, or 'none'"
+          unresolvedIssues:
+            type: string
+            description: "Comma-separated unresolved issues at session end, or 'none'"
+
+  - id: score
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 900
+    template: |
+      {{staticContext}}
+
+      # Prior Analysis
+      - userGoal: {{steps.completion_analysis.userGoal}}
+      - goalDescription: "{{steps.completion_analysis.goalDescription}}"
+      - conversationOutcome: {{steps.completion_analysis.conversationOutcome}}
+      - requestedOutcomeDelivered: {{steps.completion_analysis.requestedOutcomeDelivered}}
+      - correctWorkflowUsed: {{steps.completion_analysis.correctWorkflowUsed}}
+      - noUnresolvedBlocker: {{steps.completion_analysis.noUnresolvedBlocker}}
+      - toolFailures: {{steps.completion_analysis.toolFailures}}
+      - userCorrections: {{steps.completion_analysis.userCorrections}}
+      - flowEfficiencyIssues: {{steps.completion_analysis.flowEfficiencyIssues}}
+      - unresolvedIssues: {{steps.completion_analysis.unresolvedIssues}}
+
+      ## Score definitions (0-100)
+      - 90-100 Excellent: customer can complete their primary job; correct workflow used; no unresolved blockers; any remaining steps clear.
+      - 80-89 Good: customer can complete the job; minor gaps; no meaningful blocker.
+      - 70-79 Acceptable: mostly complete; one key element incomplete/unclear; reasonable path forward.
+      - 60-69 Fair: customer can attempt the job; path partially unclear; meaningful friction.
+      - 40-59 Poor: customer likely cannot complete; major gaps, wrong routing, or missing outcome.
+      - 20-39 Very Poor: output does not match the request; wrong skill/tool/workflow used.
+      - 0-19 Failed: unusable, blank, broken, blocked, or entirely unrelated.
+
+      ## Scoring formula
+      1. Start from how fully the primary job was accomplished per the bands above.
+      2. Critical penalties: multiply by 0.7 for each failed critical item
+         (requestedOutcomeDelivered false, correctWorkflowUsed false, noUnresolvedBlocker false);
+         multiply by 0.5 if two or more critical items failed.
+      3. Flow-efficiency cap: cap at 85 for one minor optional detour that did not block;
+         cap at 70 for one unnecessary secondary skill/tool call before the primary job;
+         cap at 50 for multiple unnecessary calls that delayed the job;
+         cap at 30 if the AI never started the workflow that fulfills the primary job.
+      4. Lower for repeated user corrections on the same goal (each indicates a prior attempt did not satisfy the user).
+      5. Technical-blocker bonus: if external tool failures occurred, the AI attempted
+         reasonable workarounds, and the customer is still positioned to complete the job, add up to 10 (max 100).
+      6. Round to the nearest integer.
+
+      ## Self-check before submitting (recompute if any are true)
+      - Did you judge an artifact instead of the customer's job?
+      - Did you treat missing evidence as failure, or ignore successful tool execution?
+      - Did you overlook wrong routing or unnecessary skill detours?
+
+      In your reasoning, cite turn numbers, tool outcomes, and assistant quotes.
+
+      Respond with JSON only:
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, completionStatus, summary, confidence, evidence]
+        additionalProperties: false
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: "Task completion score (0-100)"
+          completionStatus:
+            type: string
+            enum: [fully_completed, partially_completed, failed, abandoned]
+            description: "Overall completion status"
+          summary:
+            type: string
+            description: "Brief explanation of the score, citing evidence"
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+            description: "Confidence in this evaluation (1 = certain, 0 = guessing)"
+          evidence:
+            type: string
+            description: "Cite supporting turn numbers, key assistant quotes, and tool evidence (names/outcomes/results) for the completion assessment"
+
+onlineConfig:
+  enabled: true
+  version: "v2"
+  # schema-only: scope, target, metadataFilters not read by the batch runner
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    # Overall task completion — single number to gauge task success rate.
+    - name: "Task Completion Score"
+      description: "Task completion score (0–100) by completion status and user goal"
+      metric: website_task_completion_score
+      groupBy: [website_completion_status, website_user_goal]
+      agg: [count, avg, min, max]
+
+  criteria:
+    batchConfig:
+      # Generic to many JTBDs — no relevance gate. alwaysRun scores every session;
+      # empty detection alone would fast-path every session to nonMatchValue.
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+
+      # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
+      scoreMapping:
+        - langfuseName: "website_task_completion_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "Task completion score (0-100)"
+
+        - langfuseName: "website_completion_status"
+          sourceField: "completionStatus"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Overall task completion status"
+
+        - langfuseName: "website_user_goal"
+          sourceField: "userGoal"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Category of the customer's primary job"
+
+        - langfuseName: "website_task_completion_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "LLM judge confidence in its evaluation (0-1)"
+
+# schema-only: required by load-evaluators for LLM evaluators, not read by the batch runner.
+# Documents the pre-detected criteria.* signals; this evaluator references none of them.
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords (unused — alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found (unused — alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+  additionalProperties: false

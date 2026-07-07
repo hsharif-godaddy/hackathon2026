@@ -1,0 +1,250 @@
+# Business Fit Online Evaluator (production traces)
+# Aligned with the improved offline evaluator airo-ux-business-fit.
+# Online constraint: judges ONLY from the conversation transcript and tool
+# invocations ({{workflow}}). There is no rendered artifact, pageContent, or
+# screenshot available — so business fit is judged from what the agent
+# gathered, understood, and reflected in its decisions and tool calls.
+# Generic to many JTBDs: no relevance gate — alwaysRun on every session.
+---
+evaluatorId: "airo-batch-website-business-fit"
+name: "Website Business Fit"
+description: "Evaluates whether the agent understood the business context and reflected it in its decisions and tool actions. Skill/tool agnostic — runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+# schema-only: not read by the batch runner
+scoreType: NUMERIC
+scoreName: "website_business_fit_score"
+# schema-only: not read by the batch runner
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 2500
+
+staticContext: |
+  You are evaluating whether an AI app-builder agent (Airo Builder) understood the
+  customer's business context and reflected it in the experience it built.
+
+  Evidence limits (online trace):
+  - Judge ONLY from the conversation turns and tool invocations in the transcript.
+  - You do NOT have the rendered website, pageContent, or screenshots. Do not treat
+    missing visual evidence as proof of failure; credit business alignment shown in
+    the conversation, the agent's stated decisions, and tool inputs/outputs.
+
+  Fair attribution (CRITICAL):
+  - Judge business alignment RELATIVE to how much business context the user provided.
+    If the user gave little business detail, a reasonable generic default is not a
+    failure. If the user provided specific business detail, the agent's decisions
+    should reflect that specificity.
+  - Reward the agent for eliciting business context when the user was vague.
+
+  Ground every conclusion in concrete evidence: cite turn numbers, assistant quotes,
+  and tool evidence. Never assume or hallucinate steps not present in the transcript.
+
+steps:
+  - id: business_context_analysis
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      # Session Transcript
+      {{workflow}}
+
+      ## 1) Task and evaluation criterion
+      Analyze how well the agent understood and aligned to the customer's business.
+      1. What business/site type is implied (e.g. restaurant, SaaS, portfolio, ecommerce, local service, blog, unclear)?
+      2. What is the primary business purpose (marketing, lead generation, ecommerce, portfolio, information, personal)?
+      3. How specific was the business context the USER provided?
+         - vague (business type only, no specifics)
+         - moderate (type + some detail: industry, location, or audience)
+         - specific (type + multiple details)
+         - very_specific (comprehensive: industry, niche, location, audience, services, differentiators)
+      4. Did the agent gather or acknowledge: business type/industry, target customers/market, business goals, key value propositions?
+      5. Did the agent make decisions (structure, sections, features, copy direction, tool inputs) aligned with the business need?
+
+      Respond with JSON only:
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [businessContextDiscussed, businessType, businessPurpose, requirementSpecificity, targetMarketDiscussed, goalsDefined, valuePropsConsidered, businessAlignedDecisions, businessFitIssues]
+        additionalProperties: false
+        properties:
+          businessContextDiscussed:
+            type: boolean
+            description: "Was business context or requirements discussed/elicited?"
+          businessType:
+            type: string
+            description: "Inferred business/site type in a few words, or 'unclear'"
+          businessPurpose:
+            type: string
+            enum: [marketing, lead_generation, ecommerce, portfolio, information, personal, unclear]
+            description: "Primary business purpose implied by the session"
+          requirementSpecificity:
+            type: string
+            enum: [vague, moderate, specific, very_specific]
+            description: "How specific was the business context the user provided?"
+          targetMarketDiscussed:
+            type: boolean
+            description: "Was target market/customers discussed or acknowledged?"
+          goalsDefined:
+            type: boolean
+            description: "Were business goals for the experience defined?"
+          valuePropsConsidered:
+            type: boolean
+            description: "Were value propositions / differentiators considered?"
+          businessAlignedDecisions:
+            type: boolean
+            description: "Did the agent make decisions aligned with the business need?"
+          businessFitIssues:
+            type: string
+            description: "Comma-separated list of business fit issues, or 'none'"
+
+  - id: score
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 800
+    template: |
+      {{staticContext}}
+
+      # Prior Analysis
+      - businessContextDiscussed: {{steps.business_context_analysis.businessContextDiscussed}}
+      - businessType: {{steps.business_context_analysis.businessType}}
+      - businessPurpose: {{steps.business_context_analysis.businessPurpose}}
+      - requirementSpecificity: {{steps.business_context_analysis.requirementSpecificity}}
+      - targetMarketDiscussed: {{steps.business_context_analysis.targetMarketDiscussed}}
+      - goalsDefined: {{steps.business_context_analysis.goalsDefined}}
+      - valuePropsConsidered: {{steps.business_context_analysis.valuePropsConsidered}}
+      - businessAlignedDecisions: {{steps.business_context_analysis.businessAlignedDecisions}}
+      - businessFitIssues: {{steps.business_context_analysis.businessFitIssues}}
+
+      ## Score definitions (0-100)
+      - 90-100: Strong business alignment; context understood and clearly reflected in decisions/tool actions relative to what the user provided.
+      - 70-89: Good alignment with minor gaps.
+      - 50-69: Partial alignment; important business aspects missing or only shallowly considered.
+      - 30-49: Weak alignment; largely generic where specificity was warranted.
+      - 0-29: No business context considered; purely mechanical output ignoring stated business needs.
+
+      Scoring guidance:
+      - Apply fair attribution: do NOT penalize generic defaults when the user's
+        business context was vague; DO penalize generic handling when the user
+        provided specific business detail (expect alignment within ~15% of the
+        provided specificity).
+      - Credit business alignment evidenced in tool inputs/outputs and the agent's
+        stated decisions, not only explicit discussion.
+
+      In your reasoning, cite concrete conversation turns, assistant quotes, and tool evidence.
+
+      Respond with JSON only:
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, businessFitLevel, summary, confidence, evidence]
+        additionalProperties: false
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: "Business fit score (0-100)"
+          businessFitLevel:
+            type: string
+            enum: [excellent, good, adequate, poor, none]
+            description: "Overall business fit quality"
+          summary:
+            type: string
+            description: "Brief explanation of business fit quality, citing evidence"
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+            description: "Confidence in this evaluation (1 = certain, 0 = guessing)"
+          evidence:
+            type: string
+            description: "Cite supporting turn numbers, key assistant quotes, and tool evidence (names/inputs/outcomes) for the business-fit assessment"
+
+onlineConfig:
+  enabled: true
+  version: "v2"
+  # schema-only: scope, target, metadataFilters not read by the batch runner
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - REPLACE_LANGFUSE_PROJECT_ID
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    # Overall business fit quality — single number to gauge how well business context is understood.
+    - name: "Business Fit Score"
+      description: "Business fit score (0–100) by fit level and business purpose"
+      metric: website_business_fit_score
+      groupBy: [website_business_fit_level, website_business_purpose]
+      agg: [count, avg, min, max]
+
+  criteria:
+    batchConfig:
+      # Generic to many JTBDs — no relevance gate. This evaluator scores every
+      # session regardless of skill/tool signals. Empty detection patterns alone
+      # would fast-path every session to nonMatchValue and never call the judge,
+      # so alwaysRun: true is required.
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+
+      # nonMatchValue is moot under alwaysRun: true but set as a sentinel.
+      scoreMapping:
+        - langfuseName: "website_business_fit_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "Business fit score (0-100)"
+
+        - langfuseName: "website_business_fit_level"
+          sourceField: "businessFitLevel"
+          type: CATEGORICAL
+          nonMatchValue: "unknown"
+          description: "Overall business fit quality level"
+
+        - langfuseName: "website_business_purpose"
+          sourceField: "businessPurpose"
+          type: CATEGORICAL
+          nonMatchValue: "unclear"
+          description: "Business purpose implied by the session"
+
+        - langfuseName: "website_business_context_discussed"
+          sourceField: "businessContextDiscussed"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Was business context discussed in session?"
+
+        - langfuseName: "website_business_fit_confidence"
+          sourceField: "confidence"
+          type: NUMERIC
+          nonMatchValue: -1
+          description: "LLM judge confidence in its evaluation (0-1)"
+
+# schema-only: required by load-evaluators for LLM evaluators, not read by the batch runner.
+# Documents the pre-detected criteria.* signals; this evaluator references none of them.
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: true if any user message matches relevance keywords (unused — alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: true if skill install evidence found (unused — alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: evidence string or 'none'"
+  additionalProperties: false
