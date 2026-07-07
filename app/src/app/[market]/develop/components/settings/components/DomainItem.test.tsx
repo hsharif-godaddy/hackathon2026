@@ -60,6 +60,7 @@ const mockTrackDomainConnectStep = vi.mocked(trackDomainConnectStep);
 
 vi.mock('@/hooks/useDomainConflictCheck', () => ({
   useDomainConflictCheck: (...args: unknown[]) => mockUseDomainConflictCheck(...args),
+  isDomainRecentlyConnected: () => false,
 }));
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: vi.fn(() => true),

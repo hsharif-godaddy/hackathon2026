@@ -17,7 +17,7 @@ import text from "@ux/text";
 import { finishDomainJourney, trackDomainConnectStep } from '@/hooks/shared/domainJourneyFunnel';
 import type { AppDomain } from '@/hooks/useAppDetails';
 import { useCaaRemediation } from '@/hooks/useCaaRemediation';
-import { useDomainConflictCheck } from '@/hooks/useDomainConflictCheck';
+import { isDomainRecentlyConnected, useDomainConflictCheck } from '@/hooks/useDomainConflictCheck';
 import { domainJobQueryKey, useDomainJobPolling } from '@/hooks/useDomainJobPolling';
 import type { Domain } from '@/hooks/useDomainsQuery';
 import { useGasketConfig } from '@/hooks/useGasketConfig';
@@ -135,7 +135,7 @@ export default function DomainItem({
     appId ?? siteId,
     domainName,
     appDomain?.anycastIp,
-    isConnected && appDomain?.status === DomainStatus.ACTIVE,
+    isConnected && appDomain?.status === DomainStatus.ACTIVE && !isDomainRecentlyConnected(appDomain?.createdAt),
   );
   const domainJobForApp = useDevelopPageStore((s) => s.domainJobsInProgress[siteId]);
   const activeJobForDomain =

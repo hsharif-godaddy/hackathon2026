@@ -9,6 +9,15 @@ interface DnsConflictCheckResult {
   failedOpen: boolean;
 }
 
+const DNS_PROPAGATION_GRACE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+/** Returns true if the domain was attached within the DNS propagation grace period. */
+export function isDomainRecentlyConnected(createdAt: string | null | undefined): boolean {
+  if (!createdAt) return false;
+  const connectedMs = new Date(createdAt).getTime();
+  return !Number.isNaN(connectedMs) && Date.now() - connectedMs < DNS_PROPAGATION_GRACE_MS;
+}
+
 /**
  * On page load, checks whether a connected ACTIVE domain's DNS still resolves
  * to this app by comparing the live-resolved IPs against the app's anycast IP.

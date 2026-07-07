@@ -15,7 +15,7 @@ vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { useDomainConflictCheck } from './useDomainConflictCheck';
+import { isDomainRecentlyConnected, useDomainConflictCheck } from './useDomainConflictCheck';
 
 function mockResponse(body: object, ok = true): void {
   (appFetch as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -175,5 +175,27 @@ describe('useDomainConflictCheck', function conflictCheckTests() {
         '/api/apps/app-1/dns-check-conflict?fqdn=my%20domain.com',
       );
     });
+  });
+
+});
+
+describe('isDomainRecentlyConnected', function recentlyConnectedTests() {
+  it('returns false for null or undefined', function nullUndefined() {
+    expect(isDomainRecentlyConnected(null)).toBe(false);
+    expect(isDomainRecentlyConnected(undefined)).toBe(false);
+  });
+
+  it('returns false for an invalid date string', function invalidDate() {
+    expect(isDomainRecentlyConnected('not-a-date')).toBe(false);
+  });
+
+  it('returns true when connected 1 hour ago', function recentlyConnected() {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    expect(isDomainRecentlyConnected(oneHourAgo)).toBe(true);
+  });
+
+  it('returns false when connected 49 hours ago', function expiredGrace() {
+    const expired = new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString();
+    expect(isDomainRecentlyConnected(expired)).toBe(false);
   });
 });
