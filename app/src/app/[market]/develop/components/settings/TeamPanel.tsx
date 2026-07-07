@@ -455,6 +455,7 @@ export default function TeamPanel() {
                 : { permissionsToInclude: [...AAB_TEAM_PERMISSION_KEYS] })}
               resourceId={ventureId}
               resourceType="venture"
+              inviteSource="AIRO_APP_BUILDER"
               routePrefix=""
               source="aab-team-multiusers"
               type="multiusersEsm"
