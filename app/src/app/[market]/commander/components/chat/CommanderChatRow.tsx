@@ -4,13 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import ChevronDownIcon from '@ux/icon/chevron-down'
-import DesktopIcon from '@ux/icon/desktop'
-import HistoryIcon from '@ux/icon/history'
-import MobilePhoneIcon from '@ux/icon/mobile-phone'
-import RefreshIcon from '@ux/icon/refresh'
-import SidebarExpandIcon from '@ux/icon/sidebar-expand'
-import TabletIcon from '@ux/icon/tablet'
+import AsyncIcon from '@ux/icon/async-icon.js'
 
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import { DebugStatsToggleButton } from '@/app/[market]/develop/components/chat/DebugStatsDrawer'
@@ -41,19 +35,19 @@ interface CommanderChatRowProps {
 const VIEWPORT_ITEMS = [
   {
     value: PreviewViewMode.DESKTOP,
-    icon: <DesktopIcon className="size-2.5" />,
+    icon: <AsyncIcon icon="desktop" className="size-2.5" />,
     labelKey: 'builder_analytics_desktop_laptop',
     instrumentationId: 'desktop',
   },
   {
     value: PreviewViewMode.TABLET,
-    icon: <TabletIcon className="size-2.5" />,
+    icon: <AsyncIcon icon="tablet" className="size-2.5" />,
     labelKey: 'builder_analytics_tablet',
     instrumentationId: 'tablet',
   },
   {
     value: PreviewViewMode.MOBILE,
-    icon: <MobilePhoneIcon className="size-2.5" />,
+    icon: <AsyncIcon icon="mobile-phone" className="size-2.5" />,
     labelKey: 'builder_analytics_mobile',
     instrumentationId: 'mobile',
   },
@@ -62,9 +56,9 @@ const VIEWPORT_ITEMS = [
 const PREVIEW_CONTROLS_TRANSITION = { duration: 0.35, ease: [0.4, 0, 0.2, 1] as const }
 
 function getViewportIcon(mode: PreviewViewMode) {
-  if (mode === PreviewViewMode.MOBILE) return <MobilePhoneIcon className="size-2.5" />
-  if (mode === PreviewViewMode.TABLET) return <TabletIcon className="size-2.5" />
-  return <DesktopIcon className="size-2.5" />
+  if (mode === PreviewViewMode.MOBILE) return <AsyncIcon icon="mobile-phone" className="size-2.5" />
+  if (mode === PreviewViewMode.TABLET) return <AsyncIcon icon="tablet" className="size-2.5" />
+  return <AsyncIcon icon="desktop" className="size-2.5" />
 }
 
 export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderChatRowProps) {
@@ -79,7 +73,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
   const currentSite = useDevelopPageStore((state) => state.site)
   const commanderPosition = useCommanderStore((state) => state.position)
-  const setCommanderPosition = useCommanderStore((state) => state.setPosition)
+  const cycleCommanderPosition = useCommanderStore((state) => state.cyclePosition)
   const isCanvasSettingsOpen = useCommanderStore((state) => state.isCanvasSettingsOpen)
   const floatModesEnabled = useCommanderFloatModesEnabled()
   const isActionsBarEnabled = useCommanderActionsBarEnabled()
@@ -88,7 +82,6 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
 
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [viewportOpen, setViewportOpen] = useState(false)
-  const [positionOpen, setPositionOpen] = useState(false)
 
   const currentProjectName = currentSite?.name || appId || ''
   const isPreviewMode =
@@ -121,16 +114,17 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
     logClickEvent('commander.chat_row.refresh', clickContext)()
   }
 
-  const handlePositionSelect = (position: CommanderPosition) => {
-    setCommanderPosition(position)
-    setPositionOpen(false)
-    logClickEvent(`commander.chat_row.position_${position}`, clickContext)()
+  const handlePositionToggle = () => {
+    const nextPosition = cycleCommanderPosition()
+    logClickEvent(`commander.chat_row.position_${nextPosition}`, clickContext)()
   }
 
-  const POSITION_ITEMS: ReadonlyArray<{ value: CommanderPosition; labelKey: string }> = [
-    { value: CommanderPosition.LeftDock, labelKey: 'builder_commander_position_sidebar' },
-    { value: CommanderPosition.Floating, labelKey: 'builder_commander_position_floating' },
-  ]
+  const positionIcon = commanderPosition === CommanderPosition.LeftDock
+    ? <AsyncIcon icon="sidebar-collapse-filled" className="size-2.5 rotate-270" />
+    : <AsyncIcon icon="sidebar-collapse-filled" className="size-2.5" />
+  const positionLabel = commanderPosition === CommanderPosition.LeftDock
+    ? t('builder_commander_chat_row_position_change_to_float')
+    : t('builder_commander_chat_row_position_change_to_dock')
 
   if (isMobile) return null
 
@@ -157,7 +151,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
               className="flex items-center gap-0.5 px-1 py-0.5 rounded-md text-sm hover:bg-intents-ux-box-backgroundColor transition-colors"
             >
               <span className="truncate max-w-[120px]">{currentProjectName}</span>
-              <ChevronDownIcon className="size-2 shrink-0" />
+              <AsyncIcon icon="chevron-down" className="size-2 shrink-0" />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -247,7 +241,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
 
               {onPreviewRefresh && (
                 <IconButton
-                  icon={<RefreshIcon className="size-2.5" />}
+                  icon={<AsyncIcon icon="refresh" className="size-2.5" />}
                   label={t('builder_preview_button_refresh')}
                   showLabelWhenActive={false}
                   size="sm"
@@ -266,7 +260,7 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
       <Box orientation="horizontal" gap="sm" inlineAlignChildren="center">
         <DebugStatsToggleButton />
         <IconButton
-          icon={<HistoryIcon className="size-2.5" />}
+          icon={<AsyncIcon icon="history" className="size-2.5" />}
           onClick={handleHistoryClick}
           label={t('builder_chat_toolbar_button_history')}
           showLabelWhenActive={false}
@@ -276,42 +270,16 @@ export default function CommanderChatRow({ appId, onPreviewRefresh }: CommanderC
         />
 
         {floatModesEnabled && (
-          <Popover open={positionOpen} onOpenChange={setPositionOpen}>
-            <PopoverTrigger asChild>
-              <IconButton
-                icon={<SidebarExpandIcon className="size-2.5" />}
-                label={t('builder_commander_chat_row_position')}
-                showLabelWhenActive={false}
-                size="sm"
-                ghost
-                dataEid="commander.chat_row.position"
-                data-testid="commander-chat-row-position-toggle"
-                onClick={() =>
-                  logClickEvent('commander.chat_row.position', clickContext)()
-                }
-              />
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              className="z-50 w-max max-w-[220px] p-1"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-            >
-              <div className="flex flex-col gap-0.5 min-w-[160px]">
-                {POSITION_ITEMS.map((item) => (
-                  <Button
-                    key={item.value}
-                    design="option"
-                    size="sm"
-                    active={commanderPosition === item.value}
-                    text={t(item.labelKey)}
-                    className="!justify-start"
-                    onClick={() => handlePositionSelect(item.value)}
-                  />
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
+          <IconButton
+            icon={positionIcon}
+            label={positionLabel}
+            showLabelWhenActive={false}
+            size="sm"
+            ghost
+            dataEid="commander.chat_row.position"
+            data-testid="commander-chat-row-position-toggle"
+            onClick={handlePositionToggle}
+          />
         )}
       </Box>
     </Box>

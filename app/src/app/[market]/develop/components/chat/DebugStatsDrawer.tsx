@@ -3,9 +3,9 @@
 import { jwtDecode } from 'jwt-decode'
 import { type ReactElement, useMemo, useState } from 'react'
 import { FloatingPanel } from '@airo-ux/pattern-library/surfaces/floating-panel'
-import Button from '@ux/button'
 import Tag from '@ux/tag'
 
+import IconButton from '@/app/[market]/develop/components/IconButton'
 import { SWITCHBOARD_APPBUILDER_DEBUG_DRAWER } from '@/config/switchboard-flags'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { peekAgentToken } from '@/lib/agent-fetch'
@@ -32,9 +32,9 @@ function InfoRow({ label, value }: { label: string; value: string }): ReactEleme
   )
 }
 
-function FlaskIcon(): ReactElement {
+function FlaskIcon({ className }: { className?: string }): ReactElement {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -222,14 +222,15 @@ export function DebugStatsToggleButton(): ReactElement | null {
   if (!enabled || hidden) return null
 
   return (
-    <Button
-      type="button"
-      design="tertiary"
+    <IconButton
+      label="Debug stats"
       size="sm"
+      ghost
       active={open}
+      showLabelWhenActive={false}
       aria-label={open ? 'Close debug stats' : 'Open debug stats'}
       data-testid="debug-stats-toggle"
-      icon={<FlaskIcon />}
+      icon={<FlaskIcon className="size-2.5" />}
       onClick={() => setOpen(!open)}
     />
   )

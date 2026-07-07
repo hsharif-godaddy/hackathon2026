@@ -85,7 +85,7 @@ interface CommanderStore {
   openMobileChat: () => void
   closeMobileChat: () => void
   setPosition: (position: CommanderPosition) => void
-  cyclePosition: () => void
+  cyclePosition: () => CommanderPosition
   setPillHeight: (height: number) => void
   setIsCollapsed: (value: boolean) => void
   setFloatingAnchor: (anchor: FloatingAnchor) => void
@@ -174,7 +174,9 @@ export const useCommanderStore = create<CommanderStore>()(
       cyclePosition: () => {
         const current = get().position
         const idx = POSITION_ORDER.indexOf(current)
-        set({ position: POSITION_ORDER[(idx + 1) % POSITION_ORDER.length] })
+        const nextPosition = POSITION_ORDER[(idx + 1) % POSITION_ORDER.length]
+        set({ position: nextPosition })
+        return nextPosition
       },
       setPillHeight: (height) => set({ pillHeight: clampPillHeight(height) }),
       setIsCollapsed: (value) => set({ isCollapsed: value }),
