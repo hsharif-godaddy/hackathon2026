@@ -96,6 +96,20 @@ vi.mock('@ux/time-picker', () => ({
 }))
 
 describe('SocialPostCanvasPane', () => {
+  const standalonePost = {
+    id: 'post-1',
+    styleLabel: 'Social Post',
+    content: 'Post content',
+    hashtags: [],
+    images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
+  }
+
+  const campaignPost = {
+    ...standalonePost,
+    campaignId: 'campaign-1',
+    campaignContentId: 'content-1',
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -140,13 +154,7 @@ describe('SocialPostCanvasPane', () => {
 
     const { user } = renderWithProviders(
       <SocialPostCanvasPane
-        post={{
-          id: 'post-1',
-          styleLabel: 'Social Post',
-          content: 'Post content',
-          hashtags: [],
-          images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
-        }}
+        post={campaignPost}
         appId="app-1"
         onBack={onBack}
       />,
@@ -172,37 +180,53 @@ describe('SocialPostCanvasPane', () => {
     expect(onBack).not.toHaveBeenCalled()
   })
 
-  it('hides platform chip bar when only one scheduling platform is enabled', () => {
+  it('hides schedule CTA for standalone posts', () => {
     renderWithProviders(
       <SocialPostCanvasPane
-        post={{
-          id: 'post-1',
-          styleLabel: 'Social Post',
-          content: 'Post content',
-          hashtags: [],
-          images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
-        }}
+        post={standalonePost}
         appId="app-1"
         onBack={vi.fn()}
       />,
     )
 
-    expect(screen.queryByRole('button', { name: 'builder_social_platform_all' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'builder_social_platform_facebook' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'builder_social_platform_instagram' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Coming soon!')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'builder_social_schedule_title' })).not.toBeInTheDocument()
+  })
+
+  it('shows schedule CTA for campaign posts', () => {
+    renderWithProviders(
+      <SocialPostCanvasPane
+        post={campaignPost}
+        appId="app-1"
+        onBack={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'builder_social_schedule_title' })).toBeInTheDocument()
+  })
+
+  it('shows facebook and instagram preview tabs for standalone posts', async () => {
+    const { user } = renderWithProviders(
+      <SocialPostCanvasPane
+        post={standalonePost}
+        appId="app-1"
+        onBack={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'builder_social_platform_all' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'builder_social_platform_facebook' })).toBeInTheDocument()
+    const instagramTab = screen.getByRole('button', { name: 'builder_social_platform_instagram' })
+    expect(instagramTab).toBeInTheDocument()
+
+    await user.click(instagramTab)
+
+    expect(instagramTab.className).toContain('border-intents-ux-box-borderColor')
   })
 
   it('defaults scheduling payload to Facebook only', async () => {
     const { user } = renderWithProviders(
       <SocialPostCanvasPane
-        post={{
-          id: 'post-1',
-          styleLabel: 'Social Post',
-          content: 'Post content',
-          hashtags: [],
-          images: [{ url: 'https://cdn.example/post.png', width: 1024, height: 1024 }],
-        }}
+        post={campaignPost}
         appId="app-1"
         onBack={vi.fn()}
       />,

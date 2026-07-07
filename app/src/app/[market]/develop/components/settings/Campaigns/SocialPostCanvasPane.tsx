@@ -25,7 +25,6 @@ import {
   isSchedulingEnabled,
   PLATFORM_TRANSFORMS,
   type PublishablePlatform,
-  SCHEDULING_PLATFORMS
 } from '@/lib/social-platforms'
 import { CONNECT_REQUEST_FROM_PUBLISH, SocialPlatform } from '@/types/social'
 import { PublishTiming, SocialPostData } from '@/types/social-posts'
@@ -72,9 +71,8 @@ export function SocialPostCanvasPane({
   const locale = useUserLocale()
   const { sendMessage } = useChatContext()
   const { data: associationsData } = useSiteAssociations(appId)
-  const shouldShowPlatformFilter = SCHEDULING_PLATFORMS.length >= 2
+  const isCampaignPost = Boolean(post.campaignId || post.campaignContentId)
   const initialSelectedPlatforms = getInitialSelectedPlatforms(initialPlatforms)
-  const isInstagramSchedulingEnabled = isSchedulingEnabled(SocialPlatform.INSTAGRAM)
   const scheduling = useScheduling({
     initialTiming: initialTiming ?? PublishTiming.LATER,
     initialDate,
@@ -83,10 +81,8 @@ export function SocialPostCanvasPane({
 
   const [images, setImages] = useState(post.images)
   const [isPublishing, setIsPublishing] = useState(false)
-  const [platformFilter, setPlatformFilter] = useState<'all' | PublishablePlatform>('all')
-  const [previewPlatform, setPreviewPlatform] = useState<PublishablePlatform>(
-    initialSelectedPlatforms[0] || SocialPlatform.FACEBOOK
-  )
+  const [previewTab, setPreviewTab] = useState<'all' | PublishablePlatform>('all')
+  const [previewPlatform, setPreviewPlatform] = useState<PublishablePlatform>(SocialPlatform.FACEBOOK)
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<PublishablePlatform>>(
     new Set(initialSelectedPlatforms),
@@ -161,20 +157,6 @@ export function SocialPostCanvasPane({
     platform: previewPlatform,
     images,
   }), [images, platformContent, post, previewPlatform])
-
-  const applyFilter = useCallback((filter: 'all' | PublishablePlatform) => {
-    setPlatformFilter(filter)
-    if (filter === 'all') {
-      setPreviewPlatform(DEFAULT_SCHEDULING_PLATFORMS[0] || SocialPlatform.FACEBOOK)
-      setSelectedPlatforms(new Set(DEFAULT_SCHEDULING_PLATFORMS))
-      return
-    }
-    if (filter === SocialPlatform.INSTAGRAM && !isInstagramSchedulingEnabled) {
-      return
-    }
-    setPreviewPlatform(filter)
-    setSelectedPlatforms(new Set([filter]))
-  }, [isInstagramSchedulingEnabled])
 
   const timezoneDisplay = useMemo(() => {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -311,54 +293,62 @@ export function SocialPostCanvasPane({
           </text.span>
         </Box>
         <Box orientation="horizontal" gap="md">
-          <Button
-            design="primary"
-            text={t('builder_social_schedule_title')}
-            size="sm"
-            onClick={() => setIsScheduleModalOpen(true)}
-            disabled={isBasePublishDisabled}
-            className="cursor-pointer border-[#4F39F6]! bg-[#4F39F6]! text-white"
-          />
+          {isCampaignPost && (
+            <Button
+              design="primary"
+              text={t('builder_social_schedule_title')}
+              size="sm"
+              onClick={() => setIsScheduleModalOpen(true)}
+              disabled={isBasePublishDisabled}
+              className="cursor-pointer border-[#4F39F6]! bg-[#4F39F6]! text-white"
+            />
+          )}
         </Box>
       </Box>
 
       <div className="border-t pt-4" />
 
       <div className="w-full">
-        {shouldShowPlatformFilter && (
-          <div className="mb-3 flex justify-center">
-            <div className="inline-flex rounded-full bg-intents-ux-boxLowContrast-backgroundColor p-0.5">
-              <button
-                type="button"
-                className={`cursor-pointer flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${platformFilter === 'all' ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
-                onClick={() => applyFilter('all')}
-              >
-                <ThumbsUpIcon className="size-2" />
-                <span>{t('builder_social_platform_all')}</span>
-              </button>
-              <button
-                type="button"
-                className={`cursor-pointer flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${platformFilter === 'facebook' ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
-                onClick={() => applyFilter(SocialPlatform.FACEBOOK)}
-              >
-                <FacebookIcon className="size-2" />
-                <span>{t('builder_social_platform_facebook')}</span>
-              </button>
-              <button
-                type="button"
-                className={`flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${isInstagramSchedulingEnabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'} ${platformFilter === 'instagram' ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
-                onClick={() => applyFilter(SocialPlatform.INSTAGRAM)}
-                disabled={!isInstagramSchedulingEnabled}
-              >
-                <InstagramIcon className="size-2" />
-                <span>{t('builder_social_platform_instagram')}</span>
-              </button>
-            </div>
+        <div className="mb-3 flex justify-center">
+          <div className="inline-flex rounded-full bg-intents-ux-boxLowContrast-backgroundColor p-0.5">
+            <button
+              type="button"
+              className={`cursor-pointer flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${previewTab === 'all' ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
+              onClick={() => {
+                setPreviewTab('all')
+                setPreviewPlatform(SocialPlatform.FACEBOOK)
+              }}
+            >
+              <ThumbsUpIcon className="size-2" />
+              <span>{t('builder_social_platform_all')}</span>
+            </button>
+            <button
+              type="button"
+              className={`cursor-pointer flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${previewTab === SocialPlatform.FACEBOOK ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
+              onClick={() => {
+                setPreviewTab(SocialPlatform.FACEBOOK)
+                setPreviewPlatform(SocialPlatform.FACEBOOK)
+              }}
+            >
+              <FacebookIcon className="size-2" />
+              <span>{t('builder_social_platform_facebook')}</span>
+            </button>
+            <button
+              type="button"
+              className={`cursor-pointer flex items-center gap-0.5 rounded-full border border-transparent px-1.5 py-0.5 text-sm ${previewTab === SocialPlatform.INSTAGRAM ? 'border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor shadow-sm' : ''}`}
+              onClick={() => {
+                setPreviewTab(SocialPlatform.INSTAGRAM)
+                setPreviewPlatform(SocialPlatform.INSTAGRAM)
+              }}
+            >
+              <InstagramIcon className="size-2" />
+              <span>{t('builder_social_platform_instagram')}</span>
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="mx-auto w-full max-w-[760px] rounded-lg bg-intents-ux-box-backgroundColor p-2">
-          <PostCardPreview post={previewPost} hidePlatformIcon={shouldShowPlatformFilter && platformFilter === 'all'} />
+          <PostCardPreview post={previewPost} hidePlatformIcon={previewTab === 'all'} />
         </div>
 
         <text.p as="paragraph" className="mx-auto mt-1 max-w-[760px] px-0.5 text-center italic text-intents-ux-textSubtle-textColor" size={-1}>
@@ -366,7 +356,7 @@ export function SocialPostCanvasPane({
         </text.p>
       </div>
 
-      {isScheduleModalOpen && (
+      {isCampaignPost && isScheduleModalOpen && (
         <Modal
           id="social-post-schedule-modal"
           title={t('builder_social_schedule_time_title')}
