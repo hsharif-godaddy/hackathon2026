@@ -396,6 +396,12 @@ interface DevelopPageStore {
   setDomainJobInProgress: (appId: string, job: DomainJobInProgress) => void
   clearDomainJobInProgress: (appId: string) => void
 
+  domainConnectCallbackResult: 'success' | 'error' | null
+  setDomainConnectCallbackResult: (result: 'success' | 'error' | null) => void
+
+  domainConnectSucceededByAppId: Record<string, boolean>
+  setDomainConnectSucceeded: (appId: string, succeeded: boolean) => void
+
   /** Per-app, per-jobId logo results. Keyed by appId → jobId → result so that
    *  concurrent/sequential jobs each retain their own entry (a second job no longer
    *  overwrites the first card's result). */
@@ -706,6 +712,8 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     publishStates: {},
 
     domainJobsInProgress: {},
+    domainConnectCallbackResult: null,
+    domainConnectSucceededByAppId: {},
     logoJobResults: {},
 
     // Page loading orchestration state
@@ -1229,6 +1237,18 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     clearDomainJobInProgress: (appId: string) => set((state) => {
       delete state.domainJobsInProgress[appId];
     }),
+
+    setDomainConnectCallbackResult: (result) => set((state) => {
+      state.domainConnectCallbackResult = result;
+    }),
+
+    setDomainConnectSucceeded: (appId, succeeded) => set((state) => {
+      if (succeeded) {
+        state.domainConnectSucceededByAppId[appId] = true;
+      } else {
+        delete state.domainConnectSucceededByAppId[appId];
+      }
+    }),
     setPublishSuccess: (appId: string, showSuccess: boolean) => set((state) => {
       if (!state.publishStates[appId]) {
         state.publishStates[appId] = createDefaultPublishState();
@@ -1715,7 +1735,10 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
     name: 'airo-builder.develop-page-store.v1',
     // Persist only the per-app model memory; all other UI/session state stays
     // transient and out of localStorage.
-    partialize: (state) => ({ modelByAppId: state.modelByAppId }),
+    partialize: (state) => ({
+      modelByAppId: state.modelByAppId,
+      domainConnectSucceededByAppId: state.domainConnectSucceededByAppId,
+    }),
   }),
     { name: 'DevelopPageStore' }
   )

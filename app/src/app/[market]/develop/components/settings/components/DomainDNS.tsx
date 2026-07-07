@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import Box from "@ux/box";
 import CheckmarkIcon from '@ux/icon/checkmark';
@@ -179,10 +180,12 @@ export default function DomainDNS({
   domainDetails,
   dkimCnames,
   dmarcExpected,
+  domainConnectButton,
 }: {
   domainDetails: AppDomain;
   dkimCnames?: string[];
   dmarcExpected?: string;
+  domainConnectButton?: React.ReactNode;
 }) {
   const t = useTranslations();
   const { fqdn, anycastIp, certificateValidationCname } = domainDetails;
@@ -229,6 +232,7 @@ export default function DomainDNS({
       <text.p className="text-sm">
         {t('builder_domain_dns_instructions')}
       </text.p>
+      {domainConnectButton}
 
       {emailRecordsReady && (
         <Box

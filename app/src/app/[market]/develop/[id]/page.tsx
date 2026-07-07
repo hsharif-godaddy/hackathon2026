@@ -63,6 +63,7 @@ import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
 import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
+import { useDomainConnectCallbackConsumer } from '@/hooks/useDomainConnectCallbackConsumer'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useInboxAccount } from '@/hooks/useInboxAccount'
@@ -503,6 +504,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
     }, 0)
     return () => window.clearTimeout(timerId)
   }, [loadingPhase, appId, isJobId, searchParams])
+
+  useDomainConnectCallbackConsumer(searchParams, appId);
 
   const gitHistoryQuery = useGitHistoryQuery({
     appId: appId || '',

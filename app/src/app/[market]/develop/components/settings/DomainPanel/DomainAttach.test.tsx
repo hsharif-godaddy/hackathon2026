@@ -111,6 +111,7 @@ const {
   mockModifyDomainsMutation,
   mockDomainJobsInProgress,
   mockClearDomainJobInProgress,
+  mockSetDomainConnectSucceeded,
 } = vi.hoisted(function hoisted() {
   return {
     mockModifyDomainsMutation: {
@@ -125,6 +126,7 @@ const {
     mockClearDomainJobInProgress: vi.fn(function clearDomainJob(appId: string) {
       delete mockDomainJobsInProgress[appId];
     }),
+    mockSetDomainConnectSucceeded: vi.fn(),
   };
 });
 
@@ -182,11 +184,15 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: Object.assign(
     vi.fn((selector: any) => selector({
       domainJobsInProgress: mockDomainJobsInProgress,
+      domainConnectSucceededByAppId: {},
     })),
     {
       getState: () => ({
         domainJobsInProgress: mockDomainJobsInProgress,
         clearDomainJobInProgress: mockClearDomainJobInProgress,
+        domainConnectCallbackResult: null,
+        domainConnectSucceededByAppId: {},
+        setDomainConnectSucceeded: mockSetDomainConnectSucceeded,
       }),
     },
   ),
@@ -276,6 +282,7 @@ describe('DomainAttach', function domainAttachTests() {
       delete mockDomainJobsInProgress[appId];
     });
     mockClearDomainJobInProgress.mockClear();
+    mockSetDomainConnectSucceeded.mockClear();
 
     const { useDomainsQuery } = await import('@/hooks/useDomainsQuery');
     vi.mocked(useDomainsQuery).mockReturnValue({
@@ -1922,6 +1929,62 @@ describe('DomainAttach', function domainAttachTests() {
       await waitFor(function waitForCta() {
         expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
       });
+    });
+  });
+
+  describe('mount-time reconcile', function mountTimeReconcileTests() {
+    it('clears persisted "Connecting" state when a domain is already ACTIVE on mount', async function reconcileClearsOnActiveMount() {
+      const activeCustomDomain: AppDomain = {
+        fqdn: 'active.example.com',
+        isPrimary: false,
+        status: DomainStatus.ACTIVE,
+        domainType: 'custom',
+      };
+
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{
+            id: 'test-app-123',
+            name: 'Test App',
+            status: 'running',
+            domains: [activeCustomDomain],
+          } as any}
+          isAppDetailsFetched={true}
+        />,
+      );
+
+      await waitFor(function waitForReconcile() {
+        expect(mockSetDomainConnectSucceeded).toHaveBeenCalledWith('test-app-123', false);
+      });
+    });
+
+    it('does not clear "Connecting" state when no domain is ACTIVE on mount', async function noReconcileWhenNoneActive() {
+      const pendingCustomDomain: AppDomain = {
+        fqdn: 'pending.example.com',
+        isPrimary: false,
+        status: DomainStatus.PENDING,
+        domainType: 'custom',
+        anycastIp: '1.2.3.4',
+        certificateValidationCname: 'abc.validation.secureserver.net',
+      };
+
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{
+            id: 'test-app-123',
+            name: 'Test App',
+            status: 'running',
+            domains: [pendingCustomDomain],
+          } as any}
+          isAppDetailsFetched={true}
+        />,
+      );
+
+      await waitFor(function waitForRender() {
+        expect(screen.queryByTestId('domain-attach-list')).toBeDefined();
+      });
+
+      expect(mockSetDomainConnectSucceeded).not.toHaveBeenCalled();
     });
   });
 });

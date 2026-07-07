@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
 import {
   dedupeSiteDomainsByFqdn,
+  detectDomainConnectProvider,
+  extractDkimSuffix,
   findCustomerDomain,
   getDnsRecords,
   hasExternalNameservers,
@@ -10,6 +12,7 @@ import {
   hasInvalidProjectDomainPrefixCharacters,
   isAiroSubdomain,
   isBlockedAiroDomain,
+  isCloudflareManaged,
   isCustomerDomain,
   looksLikeCustomDomainPrefix,
   normalizeFqdn,
@@ -978,6 +981,69 @@ describe('dedupeSiteDomainsByFqdn', () => {
   });
 });
 
+describe('isCloudflareManaged', () => {
+  it('should return true for lowercase cloudflare', () => {
+    expect(isCloudflareManaged('cloudflare')).toBe(true);
+  });
+
+  it('should return true for uppercase Cloudflare', () => {
+    expect(isCloudflareManaged('Cloudflare')).toBe(true);
+  });
+
+  it('should return true for mixed case CLOUDFLARE', () => {
+    expect(isCloudflareManaged('CLOUDFLARE')).toBe(true);
+  });
+
+  it('should return false for other nameserver types', () => {
+    expect(isCloudflareManaged('external')).toBe(false);
+    expect(isCloudflareManaged('godaddy')).toBe(false);
+    expect(isCloudflareManaged('internal')).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    expect(isCloudflareManaged('')).toBe(false);
+  });
+});
+
+describe('detectDomainConnectProvider', () => {
+  const baseDnsOwnershipResponse = {
+    isGdDomain: false,
+    isGDDomainOwner: true,
+    isGoDaddyDns: false,
+    pendingNsPropagation: false,
+    domainCreatedAt: null,
+    zoneMatchedAt: null,
+    nameservers: [],
+    dnsApiResponseCode: null,
+    domainsApiResponseCode: null,
+  };
+
+  it('should return cloudflare when nameserverType is cloudflare', () => {
+    const data = { ...baseDnsOwnershipResponse, nameserverType: 'cloudflare' };
+    expect(detectDomainConnectProvider(data)).toBe('cloudflare');
+  });
+
+  it('should return cloudflare when nameserverType is Cloudflare (case-insensitive)', () => {
+    const data = { ...baseDnsOwnershipResponse, nameserverType: 'Cloudflare' };
+    expect(detectDomainConnectProvider(data)).toBe('cloudflare');
+  });
+
+  it('should return null when nameserverType is an unsupported value', () => {
+    const data = { ...baseDnsOwnershipResponse, nameserverType: 'external' };
+    expect(detectDomainConnectProvider(data)).toBeNull();
+  });
+
+  it('should return null when nameserverType is empty string', () => {
+    const data = { ...baseDnsOwnershipResponse, nameserverType: '' };
+    expect(detectDomainConnectProvider(data)).toBeNull();
+  });
+
+  it('should return null when nameserverType is undefined (defensive guard)', () => {
+    const data = { ...baseDnsOwnershipResponse, nameserverType: undefined as unknown as string };
+    expect(detectDomainConnectProvider(data)).toBeNull();
+  });
+});
+
 describe('hasExternalNameservers', () => {
   describe('using hasInternalNameservers flag', () => {
     it('should return false when hasInternalNameservers is true and nameservers contain domaincontrol.com', () => {
@@ -1093,5 +1159,31 @@ describe('hasExternalNameservers', () => {
       // Invalid: doesn't end with .domaincontrol.com
       expect(hasExternalNameservers(undefined, ['notdomaincontrol.com'])).toBe(true);
     });
+  });
+});
+
+describe('extractDkimSuffix', () => {
+  it('extracts suffix from a standard s1 DKIM CNAME with trailing dot', () => {
+    expect(extractDkimSuffix('s1.dkim.example_com.f86.onsecureserver.net.')).toBe('example_com.f86');
+  });
+
+  it('extracts suffix from a s2 DKIM CNAME with trailing dot', () => {
+    expect(extractDkimSuffix('s2.dkim.example_com.f86.onsecureserver.net.')).toBe('example_com.f86');
+  });
+
+  it('extracts suffix from a CNAME without trailing dot', () => {
+    expect(extractDkimSuffix('s1.dkim.example_com.f86.onsecureserver.net')).toBe('example_com.f86');
+  });
+
+  it('handles domain names with hyphens', () => {
+    expect(extractDkimSuffix('s1.dkim.pending-external_com.f86.onsecureserver.net.')).toBe('pending-external_com.f86');
+  });
+
+  it('returns null for an empty string', () => {
+    expect(extractDkimSuffix('')).toBeNull();
+  });
+
+  it('returns null for a non-matching value', () => {
+    expect(extractDkimSuffix('example_com.f86.onsecureserver.net.')).toBeNull();
   });
 });

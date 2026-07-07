@@ -3,6 +3,7 @@
  */
 
 import { DomainStatus, DomainType, type SiteDomain } from '@/lib/control-plane/types';
+import type { AiroDomainDnsOwnershipResponse } from '@/lib/mgmt-airo/types';
 
 // Suffixes used to identify Airo-hosted preview/dev URLs (includes local dev)
 const AIRO_PREVIEW_SUFFIXES = ['.airoapp.ai', '.test-airoapp.ai', '.dev-airoapp.ai', '.dev-godaddy.com'];
@@ -379,6 +380,27 @@ export function isCustomerDomain(
   return findCustomerDomain(domainToCheck, customerDomains) !== null;
 }
 
+export type DomainConnectProvider = 'cloudflare';
+
+/**
+ * Whether a domain's DNS is managed by Cloudflare based on the nameserverType
+ * value returned from the domain-dns-ownership poll.
+ */
+export function isCloudflareManaged(nameserverType: string): boolean {
+  return nameserverType.toLowerCase() === 'cloudflare';
+}
+
+/**
+ * Detect which Domain Connect provider (if any) manages the given domain's DNS.
+ * Returns null when no supported provider is detected.
+ */
+export function detectDomainConnectProvider(
+  data: AiroDomainDnsOwnershipResponse,
+): DomainConnectProvider | null {
+  if (data.nameserverType && isCloudflareManaged(data.nameserverType)) return 'cloudflare';
+  return null;
+}
+
 const GODADDY_NAMESERVER_SUFFIX = '.domaincontrol.com';
 
 function isGoDaddyNameserver(nameserver: string): boolean {
@@ -412,6 +434,21 @@ export function hasExternalNameservers(
   }
 
   return false;
+}
+
+/**
+/**
+ * Extracts the DKIM suffix from a DKIM CNAME value returned by the DKIM status API.
+ *
+ * CNAME format: `s{N}.dkim.{suffix}.onsecureserver.net.`
+ * Example: `s1.dkim.example_com.f86.onsecureserver.net.` → `example_com.f86`
+ *
+ * @param cname - A DKIM CNAME value (e.g. from dkimRecordExpected.cnames[0])
+ * @returns The domain-specific DKIM suffix, or null if the value does not match
+ */
+export function extractDkimSuffix(cname: string): string | null {
+  const match = /^s[12]\.dkim\.(.+)\.onsecureserver\.net\.?$/i.exec(cname);
+  return match?.[1] ?? null;
 }
 
 /**

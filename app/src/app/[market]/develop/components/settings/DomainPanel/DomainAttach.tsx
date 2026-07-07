@@ -13,6 +13,7 @@ import text from "@ux/text";
 import TextEntry from "@ux/text-entry";
 import TextInput from "@ux/text-input";
 
+import DomainConnectButton from "@/app/[market]/develop/components/settings/components/DomainConnectButton";
 import DomainDNS from "@/app/[market]/develop/components/settings/components/DomainDNS";
 import DomainItem from "@/app/[market]/develop/components/settings/components/DomainItem";
 import SettingsSection from "@/app/[market]/develop/components/settings/SettingsSection";
@@ -53,6 +54,9 @@ import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
 import {
   dedupeSiteDomainsByFqdn,
+  detectDomainConnectProvider,
+  type DomainConnectProvider,
+  extractDkimSuffix,
   isBlockedAiroDomain,
   isCustomerDomain,
   normalizeFqdn,
@@ -144,6 +148,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
+  const isConnectExternalDomainEnabled = useSwitchboard('appbuilder-connect-external-domain');
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const isDomainTransferEnabled = useSwitchboard('appbuilder-domain-transfer');
   const [customDomain, setCustomDomain] = useState('');
@@ -161,6 +166,17 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
   const [disconnectSuccessMessage, setDisconnectSuccessMessage] = useState<string | null>(null);
+  const [domainConnectFailed, setDomainConnectFailed] = useState<boolean>(
+    () => useDevelopPageStore.getState().domainConnectCallbackResult === 'error'
+  );
+  const [domainConnectSucceeded, setDomainConnectSucceeded] = useState<boolean>(
+    () => {
+      const s = useDevelopPageStore.getState();
+      return s.domainConnectCallbackResult === 'success' ||
+        Boolean(currentAppId && s.domainConnectSucceededByAppId?.[currentAppId]);
+    }
+  );
+  const [domainConnectError, setDomainConnectError] = useState<string | null>(null);
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const domainStatusRef = useRef<Map<string, string>>(new Map());
   const trackedAppIdRef = useRef<string | null>(null);
@@ -288,6 +304,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
     enabled: domainDnsOwnershipEnabled,
   });
 
+  const cloudflareProvider: DomainConnectProvider | null =
+    isConnectExternalDomainEnabled && domainDnsOwnershipData
+      ? detectDomainConnectProvider(domainDnsOwnershipData)
+      : null;
+
+
   // Gate all DKIM-related side-effects on the feature flag.
   const dkimUiEnabled = useSwitchboard('appbuilder-dkim-onboarding') === true;
   // Gate external-domain DKIM provisioning + DNS record display behind its own flag.
@@ -335,6 +357,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
     dkimUiEnabled && externalDkimEnabled && !!pendingDomain && treatAsExternal ? currentAppId : null,
     pendingDomain,
     { durablePolling: false },
+  );
+
+  const dkimSuffix: string | null = extractDkimSuffix(
+    pendingDomainDkimStatus?.dkimRecordExpected?.cnames?.[0] ?? '',
   );
 
   // External DKIM starts only after DCV completes and the attached domain is active.
@@ -440,6 +466,13 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
         nonPrefixDomains.map((d) => [normalizeFqdn(d.fqdn), d.status]),
       );
       trackedAppIdRef.current = currentAppId;
+      // Self-healing reconcile: if a domain is already ACTIVE on mount, the
+      // ACTIVE transition was missed while the component was unmounted (reload
+      // or tab-switch). Clear the Connecting flag so the CTA isn't stuck.
+      if (nonPrefixDomains.some((d) => d.status === DomainStatus.ACTIVE)) {
+        useDevelopPageStore.getState().setDomainConnectSucceeded(currentAppId, false);
+        setDomainConnectSucceeded(false);
+      }
       return;
     }
 
@@ -461,6 +494,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
           prevStatus,
         });
         domainStatusRef.current.set(fqdnKey, currStatus);
+        if (currStatus === DomainStatus.ACTIVE) {
+          useDevelopPageStore.getState().setDomainConnectSucceeded(currentAppId, false);
+          setDomainConnectSucceeded(false);
+        }
       }
     }
 
@@ -680,6 +717,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
       setDisconnectSuccessMessage(
         t('builder_domain_disconnect_success', {}, 'Domain has been disconnected')
       );
+      useDevelopPageStore.getState().setDomainConnectSucceeded(currentAppId, false);
+      setDomainConnectSucceeded(false);
 
       // Best-effort DKIM teardown — only fires when the feature flag is on.
       // When the flag is off, the route would return {result:'skipped'}
@@ -1079,6 +1118,42 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
     [normalizedSearch],
   );
 
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  useEffect(function showDomainConnectCallbackToast() {
+    const result: 'success' | 'error' | null = useDevelopPageStore.getState().domainConnectCallbackResult;
+    if (!result) return;
+    useDevelopPageStore.getState().setDomainConnectCallbackResult(null);
+    if (result === 'success') {
+      logImpressionEvent('settings.domains.connect_automatic_success')();
+      setDisconnectSuccessMessage(
+        tRef.current(
+          'builder_domain_connect_submitted',
+          undefined,
+          'DNS records submitted — your domain is connecting. This may take a few minutes.',
+        ),
+      );
+    } else {
+      logImpressionEvent('settings.domains.connect_automatic_error')();
+      setDomainConnectError(
+        tRef.current(
+          'builder_domain_connect_error',
+          undefined,
+          'Could not connect automatically. Please update DNS records manually.',
+        ),
+      );
+    }
+  }, []);
+
+  useEffect(
+    function resetDomainConnectStateOnDomainChange() {
+      setDomainConnectFailed(false);
+      setDomainConnectError(null);
+    },
+    [pendingDomain],
+  );
+
   const hideConnectTab = isDomainDataReady && !error && domainRowCount === 0;
 
   const effectiveActiveTab =
@@ -1447,11 +1522,34 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
             </div>
 
             {showDomainDNS && (
-              <DomainDNS
-                domainDetails={pendingDomainDetails}
-                dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
-                dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
-              />
+              <>
+                {domainConnectError && (
+                  <text.p className="text-intents-ux-text-destructive">
+                    {domainConnectError}
+                  </text.p>
+                )}
+                <DomainDNS
+                  domainDetails={pendingDomainDetails}
+                  dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
+                  dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
+                  domainConnectButton={
+                    cloudflareProvider && !domainConnectFailed && pendingDomainDetails?.anycastIp && pendingDomainDetails?.certificateValidationCname
+                      ? (
+                        <DomainConnectButton
+                          appId={currentAppId ?? ''}
+                          fqdn={pendingDomainDetails.fqdn}
+                          anycastIp={pendingDomainDetails.anycastIp}
+                          dcv={pendingDomainDetails.certificateValidationCname}
+                          provider={cloudflareProvider}
+                          onError={() => setDomainConnectFailed(true)}
+                          isConnecting={domainConnectSucceeded}
+                          dkimSuffix={dkimSuffix ?? undefined}
+                        />
+                      )
+                      : undefined
+                  }
+                />
+              </>
             )}
             {activeExternalDomainDetails && activeExternalDomainDkimStatus?.dkimRecordExpected?.cnames?.length ? (
               <DomainDNS
@@ -1690,11 +1788,34 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
               </>
             )}
             {showDomainDNS && (
-              <DomainDNS
-                domainDetails={pendingDomainDetails}
-                dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
-                dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
-              />
+              <>
+                {domainConnectError && (
+                  <text.p className="text-intents-ux-text-destructive">
+                    {domainConnectError}
+                  </text.p>
+                )}
+                <DomainDNS
+                  domainDetails={pendingDomainDetails}
+                  dkimCnames={pendingDomainDkimStatus?.dkimRecordExpected?.cnames}
+                  dmarcExpected={pendingDomainDkimStatus?.dmarcRecordExpected}
+                  domainConnectButton={
+                    cloudflareProvider && !domainConnectFailed && pendingDomainDetails?.anycastIp && pendingDomainDetails?.certificateValidationCname
+                      ? (
+                        <DomainConnectButton
+                          appId={currentAppId ?? ''}
+                          fqdn={pendingDomainDetails.fqdn}
+                          anycastIp={pendingDomainDetails.anycastIp}
+                          dcv={pendingDomainDetails.certificateValidationCname}
+                          provider={cloudflareProvider}
+                          onError={() => setDomainConnectFailed(true)}
+                          isConnecting={domainConnectSucceeded}
+                          dkimSuffix={dkimSuffix ?? undefined}
+                        />
+                      )
+                      : undefined
+                  }
+                />
+              </>
             )}
             {activeExternalDomainDetails && activeExternalDomainDkimStatus?.dkimRecordExpected?.cnames?.length ? (
               <DomainDNS

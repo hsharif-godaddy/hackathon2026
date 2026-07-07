@@ -74,9 +74,12 @@ vi.mock('@/stores/useSiteStore', () => ({
   }),
 }));
 
-vi.mock('@/stores/useDevelopPageStore', () => ({
-  useDevelopPageStore: (selector: any) => selector({}),
-}));
+vi.mock('@/stores/useDevelopPageStore', () => {
+  const mockState = { domainConnectCallbackResult: null, domainConnectSucceededByAppId: {}, setDomainConnectSucceeded: vi.fn() };
+  const useDevelopPageStore = (selector: any) => selector(mockState);
+  useDevelopPageStore.getState = () => mockState;
+  return { useDevelopPageStore };
+});
 
 vi.mock('@/stores/usePaywallStore', () => ({
   usePaywallStore: (selector: any) => selector({

@@ -1069,6 +1069,75 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     });
   });
 
+  describe('domain connect state', function domainConnectStateTests() {
+    const storageKey = 'airo-builder.develop-page-store.v1';
+    const persistedStore = useDevelopPageStore as typeof useDevelopPageStore & {
+      persist: {
+        rehydrate: () => Promise<void>;
+      };
+    };
+
+    beforeEach(function resetDomainConnectState() {
+      localStorage.removeItem(storageKey);
+      act(function reset() {
+        useDevelopPageStore.setState({
+          domainConnectSucceededByAppId: {},
+          domainConnectCallbackResult: null,
+        });
+      });
+    });
+
+    it('setDomainConnectSucceeded true adds the appId key', function addsKey() {
+      act(function set() {
+        useDevelopPageStore.getState().setDomainConnectSucceeded('app-1', true);
+      });
+
+      expect(useDevelopPageStore.getState().domainConnectSucceededByAppId['app-1']).toBe(true);
+    });
+
+    it('setDomainConnectSucceeded false deletes the appId key rather than setting it to false', function deletesKey() {
+      act(function set() {
+        useDevelopPageStore.getState().setDomainConnectSucceeded('app-1', true);
+      });
+      act(function clear() {
+        useDevelopPageStore.getState().setDomainConnectSucceeded('app-1', false);
+      });
+
+      expect('app-1' in useDevelopPageStore.getState().domainConnectSucceededByAppId).toBe(false);
+    });
+
+    it('setDomainConnectSucceeded false on an absent key is a no-op', function noOpAbsent() {
+      act(function clear() {
+        useDevelopPageStore.getState().setDomainConnectSucceeded('app-1', false);
+      });
+
+      expect(useDevelopPageStore.getState().domainConnectSucceededByAppId['app-1']).toBeUndefined();
+    });
+
+    it('domainConnectSucceededByAppId is written to localStorage by partialize', function persistsToStorage() {
+      act(function set() {
+        useDevelopPageStore.getState().setDomainConnectSucceeded('app-1', true);
+      });
+
+      const saved: string | null = localStorage.getItem(storageKey);
+      expect(saved).not.toBeNull();
+      const parsed: { state: { domainConnectSucceededByAppId: Record<string, boolean> } } = JSON.parse(saved!);
+      expect(parsed.state.domainConnectSucceededByAppId['app-1']).toBe(true);
+    });
+
+    it('domainConnectCallbackResult is NOT written to localStorage by partialize', function notPersisted() {
+      act(function set() {
+        useDevelopPageStore.getState().setDomainConnectCallbackResult('success');
+      });
+
+      const saved: string | null = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed: { state: Record<string, unknown> } = JSON.parse(saved);
+        expect(parsed.state).not.toHaveProperty('domainConnectCallbackResult');
+      }
+    });
+  });
+
   describe('#toggleMobileInlineEdit', function toggleMobileInlineEditTests() {
     let postMessageSpy: ReturnType<typeof vi.spyOn>;
     let mockIframe: HTMLIFrameElement;

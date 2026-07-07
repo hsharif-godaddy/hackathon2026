@@ -19,6 +19,19 @@ vi.mock('@ux/modal', () => ({
   },
 }));
 
+vi.mock('next/navigation', () => ({
+  useSearchParams: vi.fn(function () { return { get: mockSearchParamsGet }; }),
+}));
+
+vi.mock(
+  '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal',
+  () => ({
+    DomainDisconnectConfirmationModal: () => null,
+    DomainDisconnectSuccessAlert: ({ message }: { message: string | null }) =>
+      message ? <div data-testid="domain-disconnect-success-toast">{message}</div> : null,
+  }),
+);
+
 // -- Hook mocks --
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -71,7 +84,7 @@ vi.mock('@/hooks/useDomainDnsOwnership', () => ({
   }; }),
 }));
 
-const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
+const { mockModifyDomainsMutation, mockSearchParamsGet } = vi.hoisted(function hoisted() {
   return {
     mockModifyDomainsMutation: {
       mutateAsync: vi.fn(),
@@ -81,6 +94,7 @@ const { mockModifyDomainsMutation } = vi.hoisted(function hoisted() {
       error: null,
       isError: false,
     },
+    mockSearchParamsGet: vi.fn((_key: string) => null),
   };
 });
 
@@ -959,6 +973,101 @@ describe('DomainAttachWidget', function domainAttachWidgetTests() {
       await waitFor(function waitForDnsImpression() {
         expect(logImpressionEvent).toHaveBeenCalledWith('develop.domains.widget_dns_instructions');
       });
+    });
+  });
+
+  describe('handleDomainConnectCallback', function callbackTests() {
+    beforeEach(function callbackSetup() {
+      mockSearchParamsGet.mockReturnValue(null);
+      vi.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+      Object.defineProperty(window, 'location', {
+        value: { href: 'https://example.com/develop/app-123?domainConnect=success&domain=example.com' },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    it('scrubs domainConnect and domain params and shows success message on success status', async function successCallback() {
+      mockSearchParamsGet.mockImplementation(function (key: string) {
+        if (key === 'domainConnect') return 'success';
+        if (key === 'domain') return 'example.com';
+        return null;
+      });
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForReplaceState() {
+        expect(window.history.replaceState).toHaveBeenCalled();
+      });
+
+      const replacedUrl = (window.history.replaceState as ReturnType<typeof vi.fn>).mock.calls[0][2] as URL;
+      expect(replacedUrl.searchParams.has('domainConnect')).toBe(false);
+      expect(replacedUrl.searchParams.has('domain')).toBe(false);
+
+      await waitFor(function waitForSuccessMessage() {
+        expect(screen.getByTestId('domain-disconnect-success-toast')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('domain-disconnect-success-toast').textContent).toContain(
+        'DNS records submitted',
+      );
+    });
+
+    it('scrubs domainConnect and domain params and shows error message on error status', async function errorCallback() {
+      const { useCustomerDomainAttach } = await import('@/hooks/useCustomerDomainAttach');
+      const { useAppDetails } = await import('@/hooks/useAppDetails');
+
+      vi.mocked(useCustomerDomainAttach).mockReturnValue({
+        pendingCustomerDomain,
+        isPolling: true,
+        hasExternalNameservers: true,
+        requiresManualDnsSetup: true,
+      });
+      vi.mocked(useAppDetails).mockReturnValue({
+        data: {
+          id: 'test-app-123',
+          name: 'Test App',
+          status: 'running',
+          domains: [pendingCustomerDomain],
+        },
+        isFetched: true,
+      } as any);
+
+      Object.defineProperty(window, 'location', {
+        value: { href: 'https://example.com/develop/app-123?domainConnect=error&domain=example.com' },
+        writable: true,
+        configurable: true,
+      });
+      mockSearchParamsGet.mockImplementation(function (key: string) {
+        if (key === 'domainConnect') return 'error';
+        if (key === 'domain') return 'example.com';
+        return null;
+      });
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      await waitFor(function waitForReplaceState() {
+        expect(window.history.replaceState).toHaveBeenCalled();
+      });
+
+      const replacedUrl = (window.history.replaceState as ReturnType<typeof vi.fn>).mock.calls[0][2] as URL;
+      expect(replacedUrl.searchParams.has('domainConnect')).toBe(false);
+      expect(replacedUrl.searchParams.has('domain')).toBe(false);
+
+      await waitFor(function waitForErrorMessage() {
+        expect(screen.getByText('Could not connect automatically. Please update DNS records manually.')).toBeInTheDocument();
+      });
+    });
+
+    it('does not call replaceState when domainConnect param is absent', function noParamNoOp() {
+      Object.defineProperty(window, 'location', {
+        value: { href: 'https://example.com/develop/app-123' },
+        writable: true,
+        configurable: true,
+      });
+
+      renderWithProviders(<DomainAttachWidget appId="test-app-123" />);
+
+      expect(window.history.replaceState).not.toHaveBeenCalled();
     });
   });
 });
