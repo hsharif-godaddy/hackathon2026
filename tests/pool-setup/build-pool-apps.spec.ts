@@ -30,7 +30,7 @@ import {
   PUBLISH_TIMEOUT_MS,
   getEnvConfig,
 } from '../helpers/constants';
-import { dismissOverlays, submitHomepage, waitForDevelopPage } from '../helpers/ui';
+import { dismissOverlays, isPoolAppHealthy, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 const { env } = getEnvConfig();
 // Auto-publish only works where the deployment pipeline exists (test/prod).
@@ -81,7 +81,11 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('Pool app bootstrap', () => {
   test('ensure develop-ui pool app exists (read-only landing page)', async ({ page }) => {
-    test.setTimeout(300_000);
+    // Up to 15 min: the reseed path can spend minutes just concluding the
+    // existing app is UNHEALTHY (isPoolAppHealthy's preview gates) BEFORE it
+    // even deletes + re-creates + waits AI_RESPONSE_TIMEOUT_MS to settle. 600s
+    // was too tight for that worst case; match publish-domain's 900s budget.
+    test.setTimeout(900_000);
 
     await loginViaSsoDirect(page);
     await page.goto('/');
@@ -91,20 +95,44 @@ test.describe('Pool app bootstrap', () => {
     // matched (confirmed absent). A transient /api/sites failure THROWS and
     // fails the bootstrap — we must NOT swallow it into "create a new one",
     // which is how duplicate pool apps got minted when the env was flapping.
+    //
+    // Like chat-send below, this pool app must be verified IDLE, not merely
+    // present: if the initial generation wedged (chat panel stuck on
+    // "Thinking…" with the Stop button and no send button — the exact state
+    // that timed out develop-ui.spec.ts's chat-send-button gate for days),
+    // the develop-ui spec can never recover from it. Self-heal by re-seeding
+    // rather than caching the stuck app and failing every downstream run.
     const existing = await findPoolAppId(page, 'develop-ui');
     if (existing) {
-      console.log(`✓ develop-ui pool app already exists: ${existing}`);
-      return;
+      if (await isPoolAppHealthy(page, existing)) {
+        console.log(`✓ develop-ui pool app already exists and is idle: ${existing}`);
+        return;
+      }
+      // Stuck (chat stream or preview never settled) — delete and re-seed
+      // rather than failing and requiring a manual delete.
+      console.log(
+        `  develop-ui pool app ${existing} is stuck (preview or chat stream never settled); deleting and re-seeding`,
+      );
+      await page.goto('/');
+      await dismissOverlays(page);
+      await deleteApp(page, existing);
     }
 
     const prompt = `${getPoolPrefix('develop-ui')} Simple landing page with a hero section`;
     const appId = await createPoolApp(page, prompt);
-    console.log(`✓ Created develop-ui pool app: ${appId}`);
+
+    // Wait for the initial generation to fully settle to idle BEFORE this test
+    // ends — a context closing mid-stream is exactly what leaves the app stuck
+    // "Thinking…". Throws on timeout so we never cache a stuck app.
+    await expect(page.getByTestId('chat-stop-button')).toBeHidden({ timeout: AI_RESPONSE_TIMEOUT_MS });
+    console.log(`✓ Created develop-ui pool app (idle): ${appId}`);
   });
 
   test('ensure chat-send pool app exists (scratch app for chat round-trips)', async ({ page }) => {
-    // Up to 10 min: create + initial AI gen + a generous settle-to-idle wait.
-    test.setTimeout(600_000);
+    // Up to 15 min: like develop-ui, the reseed path pays isPoolAppHealthy's
+    // preview-gate timeouts to conclude UNHEALTHY before delete + re-create +
+    // AI_RESPONSE_TIMEOUT_MS settle. Match publish-domain's 900s budget.
+    test.setTimeout(900_000);
 
     await loginViaSsoDirect(page);
     await page.goto('/');
@@ -124,22 +152,14 @@ test.describe('Pool app bootstrap', () => {
     // /api/sites failure throws (don't mint a duplicate).
     const existing = await findPoolAppId(page, 'chat-send');
     if (existing) {
-      await page.goto(`/develop/${existing}`);
-      await waitForDevelopPage(page);
-      const idle = await page
-        .getByTestId('chat-stop-button')
-        .waitFor({ state: 'hidden', timeout: 60_000 })
-        .then(() => true)
-        .catch(() => false);
-      if (idle) {
+      if (await isPoolAppHealthy(page, existing)) {
         console.log(`✓ chat-send pool app already exists and is idle: ${existing}`);
         return;
       }
-      // Stuck awaiting/streaming — self-heal by re-seeding (mirrors the
-      // publish-domain unpublished-reseed path) rather than failing and
-      // requiring a manual delete.
+      // Stuck awaiting/streaming or preview never settled — self-heal by
+      // re-seeding rather than failing and requiring a manual delete.
       console.log(
-        `  chat-send pool app ${existing} is stuck (stop button never cleared); deleting and re-seeding`,
+        `  chat-send pool app ${existing} is stuck (preview or chat stream never settled); deleting and re-seeding`,
       );
       await page.goto('/');
       await dismissOverlays(page);

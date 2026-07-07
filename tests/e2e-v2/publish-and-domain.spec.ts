@@ -15,7 +15,7 @@
  * pool state by disconnecting what it attaches and pre-cleans any leftover
  * from a prior interrupted run.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../helpers/test-fixtures';
 
 import { captureDomainEvidence, detachDomain, getPublishedUrl } from '../helpers/api';
@@ -52,6 +52,10 @@ const autoPublishSupported = env !== 'local';
 // validates that the custom-domain affordance RENDERS and stops.
 const customDomainAttachSupported = env === 'prod';
 
+// Empty-state custom-domain input (DomainAttach). Shared by the pre-cleanup
+// helper and the test body so a testid change is a single edit.
+const CUSTOM_DOMAIN_SLUG_SELECTOR = '#custom-domain-slug';
+
 /**
  * Disconnect a custom domain from the currently-open Domain settings panel
  * if a row for it exists; no-op otherwise. Used to pre-clean the long-lived
@@ -65,14 +69,36 @@ const customDomainAttachSupported = env === 'prod';
  */
 async function disconnectDomainIfPresent(page: Page, targetDomain: string): Promise<void> {
   const existingRow = page.getByTestId(`domain-row-${targetDomain.trim().toLowerCase()}`);
+  const slugInput = page.locator(CUSTOM_DOMAIN_SLUG_SELECTOR);
+  // Any attached-domain row card (DomainItem renders `domain-row-<fqdn>`);
+  // excludes the nested `domain-row-options-button`.
+  const anyAttachedRow: Locator = page.locator(
+    '[data-testid^="domain-row-"]:not([data-testid="domain-row-options-button"])',
+  );
 
-  // Short probe — the panel is already open, so a real leftover row is
-  // visible immediately; absence is the common (clean-pool) case.
+  // Wait for the panel's async domains query to SETTLE before deciding whether
+  // a leftover is present. The panel is open, but its domains list loads
+  // asynchronously — a bare 5s isVisible() probe raced that load on prod: it
+  // fired before the list populated, saw no row, and no-op'd, leaving a stuck
+  // PENDING/VERIFYING leftover in place to hide the slug input and fail the
+  // caller's assertion. "Settled" = whichever renders first: the empty-state
+  // slug input (clean pool) OR any attached-domain row. Keying the settle on
+  // *any* row (not just the target) matters if the pool ever holds a different
+  // domain — otherwise neither the target row nor the input would appear and
+  // this wait would hang. We still only disconnect the TARGET below.
+  await expect(slugInput.or(anyAttachedRow).first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+  // Bounded probe (not an immediate isVisible): the settle above can be
+  // satisfied by a NON-target row (e.g. an available customer-domain row that
+  // renders before the target leftover, whose verifying/pending status can load
+  // on a slightly later tick). A zero-wait check could then miss the target and
+  // no-op, leaving the leftover in place. Give the target row a short grace to
+  // appear; absence within it is the genuine clean/other-domain case.
   const present = await existingRow.isVisible({ timeout: 5_000 }).catch(() => false);
   if (!present) return;
 
   console.log(`  Pre-cleanup: disconnecting leftover domain from pool app`);
-   await existingRow.getByTestId('domain-row-options-button').click();
+  await existingRow.getByTestId('domain-row-options-button').click();
   await page.locator('[data-eid*="settings-domains.custom_domain.disconnect"]').click();
   const confirm = page.locator('[data-eid*="domain.disconnect.confirm"]');
   await expect(confirm).toBeVisible({ timeout: DEFAULT_TIMEOUT });
@@ -198,7 +224,30 @@ test.describe('E2E v2 - Publish and custom domain', () => {
       page.getByTestId('settings-section-custom-domain'),
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
-    const customDomainInput = page.locator('#custom-domain-slug');
+    const customDomainInput = page.locator(CUSTOM_DOMAIN_SLUG_SELECTOR);
+
+    // Idempotency against the long-lived pool app: clear any leftover
+    // attachment from a prior run that failed mid-test before attaching — and
+    // do it BEFORE asserting the slug input renders. A leftover attached
+    // domain (e.g. one stuck PENDING/VERIFYING) makes DomainAttach render the
+    // attached-domain + DNS-setup view instead of the empty `#custom-domain-slug`
+    // input, so asserting the input first fails against a polluted pool before
+    // this cleanup could ever rescue it. The panel is already open here, which
+    // is disconnectDomainIfPresent's only precondition.
+    //
+    // Gate on customDomainAttachSupported (prod): leftovers only exist where
+    // attach actually runs, and on non-prod a lingering "being deleted" domain
+    // (see the customDomainAttachSupported note above) can never finish
+    // disconnecting — running the cleanup there would hang on its not.toBeAttached
+    // wait and fail a test that otherwise just validates the input renders.
+    //
+    // The API detach guards stale mgmt-airo state (fixed/reused domain) even
+    // when no UI row rendered; the UI pre-clean removes a still-visible row.
+    if (customDomainAttachSupported) {
+      await detachDomain(page, appId, TARGET_DOMAIN);
+      await disconnectDomainIfPresent(page, TARGET_DOMAIN);
+    }
+
     await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(customDomainInput).toBeEnabled();
 
@@ -212,14 +261,6 @@ test.describe('E2E v2 - Publish and custom domain', () => {
       );
       return;
     }
-
-    // Idempotency against the long-lived pool app: clear any leftover
-    // attachment from a prior run that failed mid-test before attaching. The
-    // API detach guards stale mgmt-airo state (fixed/reused domain) even when
-    // no UI row rendered; the UI pre-clean removes a still-visible row.
-    await detachDomain(page, appId, TARGET_DOMAIN);
-    await disconnectDomainIfPresent(page, TARGET_DOMAIN);
-    await expect(customDomainInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await customDomainInput.fill(TARGET_DOMAIN);
 

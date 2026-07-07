@@ -505,6 +505,35 @@ export async function waitForDevelopPage(page: Page): Promise<void> {
   await waitForChatInput(page);
 }
 
+/**
+ * Navigate to a pool app's develop page and report whether it is HEALTHY: the
+ * develop page fully loads (preview iframe included, via waitForDevelopPage)
+ * AND the chat stream is idle (Stop button hidden). Returns false on ANY
+ * failure so callers treat both wedge modes uniformly as "re-seed":
+ *   - a stuck chat stream (Stop button never clears), and
+ *   - a wedged/cold preview (waitForDevelopPage throwing on its preview gate).
+ * Folding both into one boolean is deliberate — a bare `await waitForDevelopPage`
+ * would throw before a caller's delete/re-seed path could run.
+ *
+ * Retries once on a false reading (with a fresh navigation): a genuinely wedged
+ * app stays unhealthy on the retry, but a transient flake — an SSO bounce, a
+ * cold-but-warming preview that overran the gate, a one-off network blip —
+ * clears, so a single bad reading doesn't make the caller delete and re-seed a
+ * healthy long-lived pool app. A healthy app returns true on the first attempt,
+ * so the retry adds cost only on the (rare) unhealthy path.
+ */
+export async function isPoolAppHealthy(page: Page, appId: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.goto(`/develop/${appId}`);
+    const healthy = await waitForDevelopPage(page)
+      .then(() => page.getByTestId('chat-stop-button').waitFor({ state: 'hidden', timeout: 60_000 }))
+      .then(() => true)
+      .catch(() => false);
+    if (healthy) return true;
+  }
+  return false;
+}
+
 export type WaitForChatInputOptions = {
   /** When false, only waits for the textarea (skip develop shell + preview iframe gates). Use mid-flow on develop after the page was already ready. */
   requirePreview?: boolean;
