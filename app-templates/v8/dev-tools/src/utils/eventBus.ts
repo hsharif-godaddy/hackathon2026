@@ -200,7 +200,7 @@ export interface BusEventMap {
   MESSAGE_COMPLETE: { source?: "agent" | "websocket" };
   SCREENSHOT_RESPONSE: { screenshot: string };
   VIEWPORT_SCREENSHOT_RESPONSE: { screenshot: string };
-  OPEN_MEDIA_SLOT_DIALOG: { slotName: string; forkContext?: BusMediaSlotForkContext; occurrenceIndex?: number | null };
+  OPEN_MEDIA_SLOT_DIALOG: { slotName: string; forkContext?: BusMediaSlotForkContext; occurrenceIndex?: number | null; skipPreviewScroll?: boolean; carouselSlotEdit?: boolean };
   OPEN_IMAGE_EDITOR: { slotName: string };
   MEDIA_SLOT_SCROLL_RESULT: { slotPath: string; totalMatches: number; currentIndex: number };
   AUTO_IMPORT_MEDIA_SLOT: {

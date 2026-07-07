@@ -59,6 +59,11 @@ interface MediaSlotDialogState {
   currentSlotName: string | null;
   setCurrentSlotName: (slotName: string | null) => void;
 
+  panelSkipPreviewScroll: boolean;
+
+  /** True when the panel was opened from carousel Replace (slot edit) in preview. */
+  panelCarouselSlotEdit: boolean;
+
   /**
    * Navigate the media panel to a specific slot (or `__GRID__` for the
    * grid view). Snapshots the active chat tab + mobileMode synchronously
@@ -71,6 +76,8 @@ interface MediaSlotDialogState {
       openEditor?: boolean;
       forkContext?: BusMediaSlotForkContext | null;
       occurrenceIndex?: number | null;
+      skipPreviewScroll?: boolean;
+      carouselSlotEdit?: boolean;
     },
   ) => void;
   /** Clear the panel navigation slot (consumed by MediaPanel) */
@@ -93,6 +100,8 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   openEditorForSlot: null,
   mediaScrollTotalMatches: 0,
   mediaScrollCurrentIndex: 0,
+  panelSkipPreviewScroll: false,
+  panelCarouselSlotEdit: false,
   currentSlotName: null,
 
   setCurrentSlotName: (slotName: string | null) => {
@@ -105,26 +114,31 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
       openEditor?: boolean;
       forkContext?: BusMediaSlotForkContext | null;
       occurrenceIndex?: number | null;
+      skipPreviewScroll?: boolean;
+      carouselSlotEdit?: boolean;
     },
   ) => {
     // Snapshot source tab for back-breadcrumb. `openEditor` is real-slot only.
     const develop = useDevelopPageStore.getState();
-    set({
+    set((state) => ({
       panelSlotName: slotName,
       panelSlotOccurrenceIndex: options?.occurrenceIndex ?? null,
       panelSlotForkContext: options?.forkContext ?? null,
+      panelSkipPreviewScroll: options?.skipPreviewScroll === true,
+      panelCarouselSlotEdit: options?.carouselSlotEdit === true,
       mediaReturnTab: develop.activeChatTab,
       mediaReturnMobileMode: develop.mobileMode,
       openEditorForSlot:
         slotName !== MEDIA_GRID_VIEW && options?.openEditor ? slotName : null,
       mediaScrollTotalMatches: 0,
       mediaScrollCurrentIndex: 0,
-    });
+    }));
   },
 
   clearPanelSlot: () => {
     set({
       panelSlotName: null,
+      panelSkipPreviewScroll: false,
       mediaScrollTotalMatches: 0,
       mediaScrollCurrentIndex: 0,
     });
@@ -135,7 +149,7 @@ export const useMediaSlotDialogStore = create<MediaSlotDialogState>((set) => ({
   },
 
   clearMediaReturnState: () => {
-    set({ mediaReturnTab: null, mediaReturnMobileMode: null });
+    set({ mediaReturnTab: null, mediaReturnMobileMode: null, panelCarouselSlotEdit: false });
   },
 
   clearEditorSlot: () => {

@@ -15,6 +15,10 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
+interface Window {
+  __airoEditModeActive?: boolean
+}
+
 declare module 'virtual:format-overrides' {
   import type { FormatOverrideBundle } from '@/lib/format-overrides'
 

@@ -11,12 +11,17 @@ import { setTranslations } from "../utils/translations";
 import { resolveRouteForModule } from "../route-discovery";
 import { collectMediaSlotDomMatches } from "../utils/media-slot-dom";
 import { isClickable, isInsideNavSurface, isDevToolsElement, isManagedPath, hasManagedDocMarkup, FORM_TAGS } from "../utils/element-detection";
+import CarouselSlotEditNav from "./CarouselSlotEditNav";
+import { setCarouselSlotEdit, setCarouselToolbarPause } from "../utils/carousel-slot-edit";
+import { bindCarouselSlotPanelSync } from "../utils/carousel-slot-panel-sync";
+import { pauseEditModeTimers, resumeEditModeTimers, advancePausedCarouselTimers, getPausedCarouselTimerCount } from "../utils/edit-mode-timer-pause";
 
 export default function DevelopmentMode() {
   const [isEditModeActive, setIsEditModeActive] = useState(false); // off by default, parent enables via EDIT_MODE_ENABLED message
   const [cmsInlineEditEnabled, setCmsInlineEditEnabled] = useState(false); // off by default, parent sets via EDIT_MODE_ENABLED message payload
   const [isMultiSelectActive, setIsMultiSelectActive] = useState(false); // off by default, parent enables via MULTI_SELECT_ENABLED message
   const [isAnnotationModeActive, setIsAnnotationModeActive] = useState(false); // off by default, parent enables via ANNOTATION_MODE_ENABLED message
+  const [pausedCarouselCount, setPausedCarouselCount] = useState(0); // count of paused carousel-shaped timers — drives the edit-mode "Next slide" overlay
   const [, setTranslationsLoaded] = useState(0); // counter that always changes to force re-render
   const [pathname, setPathname] = useState(() => window.location.pathname); // updated synchronously on SPA navigation (see onNavigate)
   const [hasManagedMarkup, setHasManagedMarkup] = useState(false); // true once compliance markup is detected on the page (see effect below)
@@ -1024,6 +1029,16 @@ export default function DevelopmentMode() {
         return false
       }
 
+      const targetSlide = slides[slideIndex]
+      const viewportRect = viewport.getBoundingClientRect()
+      const slideRect = targetSlide.getBoundingClientRect()
+      const slideCenter = slideRect.left + slideRect.width / 2
+      const viewportCenter = viewportRect.left + viewportRect.width / 2
+      // Already showing this slide — skip transform reset (avoids a visible jump to slide 0).
+      if (Math.abs(slideCenter - viewportCenter) <= Math.max(2, slideRect.width * 0.05)) {
+        return true
+      }
+
       // Calculate transform by measuring actual slide positions.
       // Reset transform momentarily to get accurate measurements,
       // since getBoundingClientRect is affected by the current transform.
@@ -1035,10 +1050,9 @@ export default function DevelopmentMode() {
       void container.offsetHeight
 
       // Now measure the target slide's offset from the container's left edge
-      const targetSlide = slides[slideIndex]
       const containerRect = container.getBoundingClientRect()
-      const slideRect = targetSlide.getBoundingClientRect()
-      const targetX = -(slideRect.left - containerRect.left)
+      const measuredSlideRect = targetSlide.getBoundingClientRect()
+      const targetX = -(measuredSlideRect.left - containerRect.left)
 
       // Apply transform with smooth transition (Embla uses CSS transforms internally)
       container.style.transition = `transform ${ANIMATION_SETTLE_MS}ms ease-out`
@@ -1324,15 +1338,33 @@ export default function DevelopmentMode() {
           setCmsInlineEditEnabled(event.data.cmsInlineEditEnabled === true);
           setIsEditModeActive(true);
           setIsAnnotationModeActive(false);
+          window.__airoEditModeActive = true;
+          window.dispatchEvent(new CustomEvent('airo:edit-mode-change', { detail: { active: true } }));
           return;
         }
         if (event.data && event.data.type === 'EDIT_MODE_DISABLED') {
           setIsEditModeActive(false);
+          window.__airoEditModeActive = false;
+          window.dispatchEvent(new CustomEvent('airo:edit-mode-change', { detail: { active: false } }));
+          setCarouselSlotEdit(false);
+          setCarouselToolbarPause(false);
+          resumeEditModeTimers();
+          setPausedCarouselCount(0);
+          return;
+        }
+        if (event.data?.type === 'CAROUSEL_SLOT_EDIT') {
+          setCarouselSlotEdit(event.data.active === true);
           return;
         }
         if (event.data && event.data.type === 'ANNOTATION_MODE_ENABLED') {
           setIsAnnotationModeActive(true);
           setIsEditModeActive(false);
+          window.__airoEditModeActive = false;
+          window.dispatchEvent(new CustomEvent('airo:edit-mode-change', { detail: { active: false } }));
+          setCarouselSlotEdit(false);
+          setCarouselToolbarPause(false);
+          resumeEditModeTimers();
+          setPausedCarouselCount(0);
           return;
         }
         if (event.data && event.data.type === 'ANNOTATION_MODE_DISABLED') {
@@ -1555,6 +1587,18 @@ export default function DevelopmentMode() {
     return () => observer.disconnect()
   }, [])
 
+  useEffect(function syncPausedCarouselCountOnSlotEdit() {
+    const refresh = (): void => {
+      setPausedCarouselCount(getPausedCarouselTimerCount())
+    }
+    window.addEventListener('airo:carousel-slot-edit', refresh)
+    return () => window.removeEventListener('airo:carousel-slot-edit', refresh)
+  }, [])
+
+  useEffect(function bindCarouselSlotPanelSyncOnMount() {
+    return bindCarouselSlotPanelSync()
+  }, [])
+
   return (
     <div data-airo-dev-tools>
       {isEditModeActive && !isManagedDoc && effectiveElement && !(isMultiSelectActive && effectiveElement.element.hasAttribute("data-ai-selected-num")) && (
@@ -1569,6 +1613,37 @@ export default function DevelopmentMode() {
         />
       )}
       <AnnotationMode isActive={isAnnotationModeActive} />
+      {isEditModeActive && <CarouselSlotEditNav />}
+      {isEditModeActive && pausedCarouselCount > 0 && (
+        <button
+          type="button"
+          data-airo-non-editable=""
+          onClick={() => advancePausedCarouselTimers()}
+          aria-label="Advance auto-rotating carousels by one slide"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2147483647,
+            pointerEvents: 'auto',
+            padding: '8px 16px',
+            borderRadius: 9999,
+            background: 'rgba(0, 0, 0, 0.78)',
+            color: '#fff',
+            border: 'none',
+            font: '500 13px system-ui, -apple-system, sans-serif',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span>Next slide</span>
+          <span aria-hidden="true">›</span>
+        </button>
+      )}
     </div>
   )
 }

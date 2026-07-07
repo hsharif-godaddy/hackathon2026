@@ -436,7 +436,10 @@ const SYNC_MANIFEST = [
     file: 'src/vite-env.d.ts',
     description: 'Vite type declarations for platform virtual modules',
     known_hashes: [
-      '7067a198d32f878907c1c1476ef8c4f2'  // before virtual:format-overrides declaration
+      '7067a198d32f878907c1c1476ef8c4f2', // before virtual:format-overrides declaration
+      '86db0c3b6f4ad219c34f0e2f6bf4e5b7', // before Window.__airoEditModeActive augmentation (AIROBUILD-2852)
+      '01717c84f29afb929c540c036850c5b9', // Window.__airoEditModeActive with JSDoc comment
+      '5626ba7f4296d0e51bfbc39a3481e50c', // remove Window.__airoEditModeActive JSDoc comment
     ],
     force: false,
     syncGroup: 'formatOverrides'
@@ -524,11 +527,41 @@ const SYNC_MANIFEST = [
     force: false
   },
   {
+    file: 'src/components/ui/carousel.tsx',
+    description: 'Embla carousel wrapper — edit-mode autoplay pause + nav overlay (AIROBUILD-2852)',
+    known_hashes: [
+      '005a47594c5c8f09e27f0ed1f02197cd', // before edit-mode pause + nav overlay
+      '34859f7012c484829cf95c4a59061935', // first edit-mode pause version (before type-cast for autoplay events)
+      'b98da32b7fbac7b875cd6d7ac49779c1', // post-code-review version (inline (window as ...) cast, before declare-global augmentation)
+      '480c3df3baecfc23943b1df2faaea45f', // edit overlay on all edit mode (before carousel-slot-edit gating)
+      'aa802cef04463e4a9c59195e5d83dc02', // carousel slot-edit overlay gating (before autoplay-only pause)
+      'd71ad2a972aa1a6a48e40d98682dacc5', // autoplay pause gated on carousel-slot-edit only (not edit mode)
+      '84c92c4f113ea256d3aeecd49892f332', // dev-tools slot-edit nav; overlay removed from carousel
+      'c10dae852ad5c46a7a3399fb60cec923', // emit slot-select during carousel slot edit for panel sync
+      '0cbf8214b71f049a09675240707dce9e', // toolbar pause autoplay gating
+      '915f8c09f1c51ac5fbcafd3e9fb116cc', // remove ticket-scoped inline comments
+    ],
+    force: false
+  },
+  {
+    file: 'src/components/ui/__tests__/carousel.test.tsx',
+    description: 'Unit tests for Carousel edit-mode pause + nav overlay',
+    known_hashes: [
+      '97805595659b82070914e472921f7e51', // edit overlay on all edit mode (before carousel-slot-edit gating)
+      '0727cdf1999907e626332b3d166ef8b5', // carousel slot-edit overlay gating (before autoplay-only pause)
+      '48ce9d0ca2cf83a498368c092fe1f283', // autoplay pause gated on carousel-slot-edit only (not edit mode)
+      '89cb074dbf2c0746e1442bbe59a1f59e', // dev-tools slot-edit nav tests
+      'f1fbc795a8d39e6167d3fd2037b5df30', // carousel slot-select event tests for panel sync
+    ],
+    force: false
+  },
+  {
     file: 'package.json',
     description: 'Template dependency manifest — synced to push security patches to customer apps',
     known_hashes: [
       '9c795a81d30c266ae7c54b58df716ba5', // before vitest 4.x + tsx/esbuild/babel security upgrades
       'e35c659efb87610eee8eafde2bb49963', // pre-main v8 package.json (merged via PR #5197 + domains-page-spacing-fix)
+      '0ddfd3a011dd7414f2b34b75e9a42156', // before embla-carousel-autoplay declared
     ],
     force: false
   },
@@ -539,6 +572,7 @@ const SYNC_MANIFEST = [
       'af484ed6d3e61e6f1292a3417163f57a', // before vitest 4.x + tsx/esbuild/babel security upgrades
       '779ae8d66e49a0ff908bd31689c8be67', // pre-main v8 package-lock.json (merged via PR #5197 + domains-page-spacing-fix)
       'abb2e6d76e9d7665f6244f3ffb51df05', // before undici 7.28.0 security upgrade (GHSA-vmh5-mc38-953g)
+      '85c3461daa0b5a7bf612fdf00411ccd4', // before embla-carousel-autoplay declared
     ],
     force: false
   },

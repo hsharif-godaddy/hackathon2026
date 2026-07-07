@@ -1,3 +1,5 @@
+import './utils/edit-mode-timer-pause'
+
 // Main exports for the dev tools package
 export { default as DevelopmentMode } from './components/DevelopmentMode'
 export { default as DevToolsProvider } from './DevToolsProvider'

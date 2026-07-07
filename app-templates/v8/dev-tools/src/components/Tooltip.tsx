@@ -18,6 +18,7 @@ import {
 } from "./tooltipStyles";
 
 const GAP = 8;
+const VIEWPORT_MARGIN = 8;
 
 const DEV_TOOLS_ROOT_ID = "airo-dev-tools-injected";
 
@@ -61,12 +62,13 @@ export function Tooltip({
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
-  const [coords, setCoords] = useState<{ top: number, left: number } | null>(null);
+  const [coords, setCoords] = useState<{ top: number, left: number, arrowOffsetPx: number } | null>(null);
   const showTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRef = useRef(open);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     openRef.current = open;
@@ -75,29 +77,72 @@ export function Tooltip({
   const showBubble = open || exiting;
   const bubbleVisible = showBubble && !disabled;
 
-  useLayoutEffect(() => {
-    if (!bubbleVisible) return;
+  useLayoutEffect(function positionTooltip() {
+    if (!bubbleVisible) {
+      setCoords(null);
+      return;
+    }
 
-    const updateCoords = function updateCoords() {
+    let cancelled = false;
+    let observer: ResizeObserver | undefined;
+
+    const update = function update() {
+      if (cancelled) return;
       const el = triggerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      setCoords({
-        left: rect.left + rect.width / 2,
-        top: rect.top - GAP,
+      const triggerCenterX = rect.left + rect.width / 2;
+      const top = rect.top - GAP;
+      let left = triggerCenterX;
+      let arrowOffsetPx = 0;
+
+      const bubbleEl = bubbleRef.current;
+      if (bubbleEl?.offsetWidth) {
+        const half = bubbleEl.offsetWidth / 2;
+        const minCenter = VIEWPORT_MARGIN + half;
+        const maxCenter = window.innerWidth - VIEWPORT_MARGIN - half;
+        left = Math.min(maxCenter, Math.max(minCenter, triggerCenterX));
+        arrowOffsetPx = triggerCenterX - left + half;
+      }
+
+      setCoords((prev) => {
+        const next = { left, top, arrowOffsetPx };
+        if (
+          prev
+          && prev.left === next.left
+          && prev.top === next.top
+          && prev.arrowOffsetPx === next.arrowOffsetPx
+        ) {
+          return prev;
+        }
+        return next;
       });
     };
 
-    updateCoords();
+    const observeBubble = function observeBubble() {
+      if (cancelled) return;
+      const bubbleEl = bubbleRef.current;
+      if (!bubbleEl || observer) return;
+      observer = new ResizeObserver(update);
+      observer.observe(bubbleEl);
+    };
 
-    window.addEventListener("scroll", updateCoords, true);
-    window.addEventListener("resize", updateCoords);
+    update();
+    queueMicrotask(function remeasureAfterMount() {
+      update();
+      observeBubble();
+    });
+
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
 
     return () => {
-      window.removeEventListener("scroll", updateCoords, true);
-      window.removeEventListener("resize", updateCoords);
+      cancelled = true;
+      observer?.disconnect();
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
     };
-  }, [bubbleVisible]);
+  }, [bubbleVisible, content]);
 
   useEffect(function cleanupTimeouts() {
     return () => {
@@ -194,9 +239,17 @@ export function Tooltip({
   const portalTarget = bubbleVisible ? getTooltipPortalTarget() : null;
   const bubble = bubbleVisible && coords && portalTarget && (
     <div
+      ref={bubbleRef}
       className="airo-tooltip-bubble"
       data-exiting={exiting || undefined}
-      style={{ left: coords.left, top: coords.top, zIndex: FLOATING_TOOLTIP_Z_INDEX }}
+      style={{
+        left: coords.left,
+        top: coords.top,
+        zIndex: FLOATING_TOOLTIP_Z_INDEX,
+        ...(coords.arrowOffsetPx > 0
+          ? { ["--airo-tooltip-arrow-left" as string]: `${coords.arrowOffsetPx}px` }
+          : {}),
+      }}
       onAnimationEnd={handleBubbleAnimationEnd}
     >
       {content}

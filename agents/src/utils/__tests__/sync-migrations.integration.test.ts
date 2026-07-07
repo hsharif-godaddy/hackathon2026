@@ -1152,10 +1152,9 @@ describe('sync-template-files entrypoint', () => {
       )
       .replace('  const formatOverrideBundle = useFormatOverrideBundle()\n', '');
     const currentViteEnv = readFileSync(join(baseTemplateDir, 'src/vite-env.d.ts'), 'utf8');
-    const previousViteEnv = currentViteEnv.replace(
-      /\ndeclare module 'virtual:format-overrides' \{[\s\S]*?\n\}\n?$/,
-      '',
-    );
+    const previousViteEnv = currentViteEnv
+      .replace(/\ndeclare module 'virtual:format-overrides' \{[\s\S]*?\n\}\n?$/, '')
+      .replace(/\ninterface Window \{[\s\S]*?\n\}\n/, '');
 
     expect(md5(previousPlugin)).toBe('f312fbeda3c4be4cad4d8cd6f07a9604');
     expect(md5(previousBoundText)).toBe('3dd3cd453d8c1e0354b864a857f3bd93');

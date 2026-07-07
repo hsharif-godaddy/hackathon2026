@@ -6,8 +6,9 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 
-import { ChatTab, MobileMode, SettingsSection } from '@/app/[market]/develop/components/types';
+import { ChatTab, MobileMode, SettingsSection, ViewMode } from '@/app/[market]/develop/components/types';
 import { renderWithProviders } from '@/tests/test-utils';
+import { postMessageToIframe } from '@/utils/postMessage';
 import MediaPanel from './MediaPanel';
 
 const mockAppId = 'app-123';
@@ -19,10 +20,12 @@ vi.mock('@/app/[market]/develop/components/utils', () => ({
 const mockSetActiveChatTab = vi.fn();
 const mockHandleMobileModeChange = vi.fn();
 let mockActiveChatTab: ChatTab = ChatTab.MEDIAS;
+let mockMobileMode: MobileMode = MobileMode.TOOLS;
+let mockViewMode: ViewMode = ViewMode.EDIT;
 
 vi.mock('@/hooks/useChatTabs', () => ({
   useChatTabs: () => ({
-    activeChatTab: ChatTab.MEDIAS,
+    activeChatTab: mockActiveChatTab,
     setActiveChatTab: mockSetActiveChatTab,
     activeSettingsSection: SettingsSection.DOMAIN,
     setActiveSettingsSection: vi.fn(),
@@ -51,6 +54,8 @@ vi.mock('@/stores/useDevelopPageStore', () => {
   const mockUseDevelopPageStore = vi.fn(function (selector: (s: Record<string, unknown>) => unknown) { return selector({
       activeChatTab: mockActiveChatTab,
       chatPaneWidth: 400,
+      mobileMode: mockMobileMode,
+      viewMode: mockViewMode,
     }); }
   ) as unknown as { getState: typeof mockGetState };
   (mockUseDevelopPageStore as unknown as { getState: typeof mockGetState }).getState = mockGetState;
@@ -64,6 +69,8 @@ const mockMediaSlotDialogStore = {
   panelSlotName: null as string | null,
   panelSlotOccurrenceIndex: null as number | null,
   panelSlotForkContext: null,
+  panelSkipPreviewScroll: false,
+  panelCarouselSlotEdit: false,
   clearPanelSlot: vi.fn(),
   clearPanelSlotForkContext: vi.fn(),
   mediaReturnTab: null as ChatTab | null,
@@ -79,6 +86,10 @@ vi.mock('@/stores/useMediaSlotDialogStore', () => ({
     (selector: unknown) => (selector as (state: unknown) => unknown)(mockMediaSlotDialogStore),
     { getState: () => mockMediaSlotDialogStore },
   ),
+}));
+
+vi.mock('@/utils/postMessage', () => ({
+  postMessageToIframe: vi.fn(),
 }));
 
 vi.mock('@/app/[market]/develop/components/media/MediaSlotDetail', () => ({
@@ -114,7 +125,10 @@ describe('MediaPanel', () => {
     mockMediaSlotDialogStore.mediaReturnTab = null;
     mockMediaSlotDialogStore.mediaReturnMobileMode = null;
     mockMediaSlotDialogStore.openEditorForSlot = null;
+    mockMediaSlotDialogStore.panelCarouselSlotEdit = false;
     mockActiveChatTab = ChatTab.MEDIAS;
+    mockMobileMode = MobileMode.TOOLS;
+    mockViewMode = ViewMode.EDIT;
   });
 
   it('renders grid by default', () => {
@@ -213,5 +227,73 @@ describe('MediaPanel', () => {
     renderWithProviders(<MediaPanel />);
 
     expect(mockMediaSlotDialogStore.clearMediaReturnState).toHaveBeenCalled();
+  });
+
+  it('ends carousel slot edit only when leaving detail, not when switching slots', async () => {
+    document.body.innerHTML = '<iframe id="preview-iframe"></iframe>';
+    mockMediaSlotDialogStore.panelSlotName = 'pages/home/hero-1';
+
+    const { rerender, user } = renderWithProviders(<MediaPanel />);
+    expect(vi.mocked(postMessageToIframe)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'CAROUSEL_SLOT_EDIT', active: false }),
+    );
+
+    mockMediaSlotDialogStore.panelSlotName = 'pages/home/hero-2';
+    rerender(<MediaPanel />);
+    expect(vi.mocked(postMessageToIframe)).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: 'CAROUSEL_SLOT_EDIT', active: false }),
+    );
+
+    await user.click(screen.getByText('builder_common_back'));
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      expect.anything(),
+      { type: 'CAROUSEL_SLOT_EDIT', active: false },
+    );
+  });
+
+  it('exits carousel replace detail when switching to Preview on mobile', async () => {
+    document.body.innerHTML = '<iframe id="preview-iframe"></iframe>';
+    mockMediaSlotDialogStore.panelSlotName = 'pages/home/hero-1';
+    mockMediaSlotDialogStore.panelCarouselSlotEdit = true;
+    mockMediaSlotDialogStore.mediaReturnTab = ChatTab.CHAT;
+    mockMediaSlotDialogStore.mediaReturnMobileMode = MobileMode.PREVIEW;
+    mockMobileMode = MobileMode.TOOLS;
+
+    const { rerender } = renderWithProviders(<MediaPanel />);
+    expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
+
+    mockMobileMode = MobileMode.PREVIEW;
+    rerender(<MediaPanel />);
+
+    expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
+    expect(mockHandleMobileModeChange).toHaveBeenCalledWith(MobileMode.PREVIEW);
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      expect.anything(),
+      { type: 'CAROUSEL_SLOT_EDIT', active: false },
+    );
+  });
+
+  it('exits carousel replace detail when switching to Preview on desktop', async () => {
+    document.body.innerHTML = '<iframe id="preview-iframe"></iframe>';
+    mockMediaSlotDialogStore.panelSlotName = 'pages/home/hero-1';
+    mockMediaSlotDialogStore.panelCarouselSlotEdit = true;
+    mockMediaSlotDialogStore.mediaReturnTab = ChatTab.CHAT;
+    mockViewMode = ViewMode.EDIT;
+
+    const { rerender } = renderWithProviders(<MediaPanel />);
+    expect(screen.getByTestId('media-slot-detail')).toBeInTheDocument();
+
+    mockViewMode = ViewMode.PREVIEW;
+    rerender(<MediaPanel />);
+
+    expect(screen.getByTestId('media-slots-grid')).toBeInTheDocument();
+    expect(mockSetActiveChatTab).toHaveBeenCalledWith(ChatTab.CHAT);
+    expect(vi.mocked(postMessageToIframe)).toHaveBeenCalledWith(
+      expect.anything(),
+      { type: 'CAROUSEL_SLOT_EDIT', active: false },
+    );
   });
 });

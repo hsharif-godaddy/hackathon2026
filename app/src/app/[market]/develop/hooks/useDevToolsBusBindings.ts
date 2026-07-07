@@ -733,10 +733,12 @@ export function useDevToolsBusBindings(deps: DevToolsBusBindingsDeps): void {
       useMediaSlotDialogStore.getState().navigateToSlot(m.slotName, {
         forkContext: m.forkContext,
         occurrenceIndex,
+        skipPreviewScroll: m.skipPreviewScroll,
+        carouselSlotEdit: m.carouselSlotEdit,
       })
 
       const iframe = getPreviewIframe()
-      if (iframe && occurrenceIndex != null && occurrenceIndex >= 0) {
+      if (iframe && !m.skipPreviewScroll && !m.carouselSlotEdit && occurrenceIndex != null && occurrenceIndex >= 0) {
         postMessageToIframe(iframe, {
           type: 'SCROLL_TO_MEDIA_SLOT',
           slotPath: m.slotName,

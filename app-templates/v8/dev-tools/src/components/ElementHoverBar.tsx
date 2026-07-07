@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { type BusAiEditContextPayload, type BusElementInfo, send } from "../utils/eventBus";
-import { generatePreciseSelector, extractDevContext, getElementClassName, parseCollectionOccurrenceIndex } from "../utils/element-helpers";
-import { findMediaSlotDomIndex } from "../utils/media-slot-dom";
+import { setCarouselSlotEdit, setCarouselToolbarPause } from "../utils/carousel-slot-edit";
+import { hasActiveCarouselTimers } from "../utils/edit-mode-timer-pause";
+import { openMediaSlotDialogForElement } from "../utils/open-media-slot-dialog";
+import { generatePreciseSelector, extractDevContext, getElementClassName } from "../utils/element-helpers";
 import {
   showSelectionOverlay,
   clearSelectionOverlay,
@@ -258,6 +260,22 @@ export default function ElementHoverBar({
     }
   }, [toolbarMode, element, hoveredElement]);
 
+  // Pause Embla autoplay while the Replace toolbar is open on a carousel image
+  // so the slide stays put and scroll-driven overlay updates do not fight the
+  // carousel animation (visible flicker during autoplay transitions).
+  useEffect(function pauseCarouselAutoplayWhileToolbarOpen() {
+    if (!isImage) return;
+    const carouselRoot = element.closest('[aria-roledescription="carousel"]') as HTMLElement | null;
+    if (!carouselRoot) return;
+
+    if (toolbarMode) {
+      setCarouselToolbarPause(true, carouselRoot);
+    } else {
+      setCarouselToolbarPause(false);
+    }
+    return () => setCarouselToolbarPause(false);
+  }, [toolbarMode, element, isImage]);
+
   // Dismiss toolbar/quick edit when clicking outside the bar, the element, or editor overlays
   useEffect(() => {
     if (!toolbarMode && !quickEditMode && !clickActionMode) return;
@@ -358,40 +376,14 @@ export default function ElementHoverBar({
     const { imageUrl, isMediaSlot, slotPath } = hovered;
     if (isMediaSlot && slotPath) {
       const targetEl = hovered.element;
-      const devContext = extractDevContext(targetEl);
-      const preciseSelector = generatePreciseSelector(targetEl);
-      const imgEl = targetEl.tagName.toLowerCase() === "img" ? (targetEl as HTMLImageElement) : null;
-      const occurrenceIndex = findMediaSlotDomIndex(targetEl, slotPath)
-        ?? parseCollectionOccurrenceIndex(preciseSelector);
-      send({
-        type: "OPEN_MEDIA_SLOT_DIALOG",
-        slotName: slotPath,
-        occurrenceIndex,
-        forkContext: {
-          selector: preciseSelector,
-          devContext: devContext ?? {
-            fileName: "unknown",
-            componentName: "unknown",
-            lineNumber: 0,
-          },
-          elementInfo: {
-            tagName: targetEl.tagName.toLowerCase(),
-            className: getElementClassName(targetEl),
-            id: targetEl.id,
-            selector: preciseSelector,
-            devContext: devContext ?? {
-              fileName: "unknown",
-              componentName: "unknown",
-              lineNumber: 0,
-            },
-          },
-          imageInfo: {
-            type: imgEl ? "img" : "background",
-            currentUrl: imageUrl,
-            alt: imgEl?.alt || undefined,
-          },
-        },
-      });
+      const carouselRoot = targetEl.closest('[aria-roledescription="carousel"]') as HTMLElement | null
+      // Fallback for hand-rolled rotators without the ARIA marker: if any carousel-shape setInterval/setTimeout is registered, treat as carousel context so pauseEditModeTimers fires.
+      const isCarouselContext = !!carouselRoot || hasActiveCarouselTimers()
+      const opened = openMediaSlotDialogForElement(
+        targetEl,
+        isCarouselContext ? { carouselSlotEdit: true, skipPreviewScroll: true } : undefined,
+      )
+      if (opened && isCarouselContext) setCarouselSlotEdit(true, carouselRoot)
     } else {
       const devContext = extractDevContext(el);
       const imgEl = el.tagName.toLowerCase() === "img" ? (el as HTMLImageElement) : null;

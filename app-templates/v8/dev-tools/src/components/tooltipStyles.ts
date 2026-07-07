@@ -31,7 +31,7 @@ const TOOLTIP_CSS = `
 
   .airo-tooltip-arrow {
     position: absolute;
-    left: 50%;
+    left: var(--airo-tooltip-arrow-left, 50%);
     bottom: -6px;
     transform: translateX(-50%);
     width: 0;

@@ -17,6 +17,7 @@ import Skeleton from '@ux/skeleton'
 import Tag from '@ux/tag'
 
 import { MediaLoadError } from '@/app/[market]/develop/components/media/MediaLoadError'
+import { formatMediaPanelSlotTitle } from '@/app/[market]/develop/components/media/mediaSlotLabels'
 import { SelectedThumbnailOverlay } from '@/app/[market]/develop/components/media/SelectedThumbnailOverlay'
 import { getPreviewOrigin, getSlotImageUrl, getSlotThumbnailUrl } from '@/app/[market]/develop/components/media/slotImageUrl'
 import type { DeleteUploadResult, SlotUploadItem } from '@/app/[market]/develop/components/media/UploadedMediaSection'
@@ -69,6 +70,8 @@ interface MediaSlotDetailProps {
   forkContext?: BusMediaSlotForkContext | null
   /** 0-based DOM instance when opened from preview Replace */
   occurrenceIndex?: number | null
+  /** Skip preview scroll when panel follows in-carousel navigation */
+  suppressPreviewScroll?: boolean
   onDone?: () => void
   onEdit?: (effectiveUrl: string) => void
 }
@@ -124,6 +127,7 @@ export function MediaSlotDetail({
   enabled = true,
   forkContext = null,
   occurrenceIndex = null,
+  suppressPreviewScroll = false,
   onDone,
   onEdit,
 }: MediaSlotDetailProps) {
@@ -170,6 +174,7 @@ export function MediaSlotDetail({
 
   const mediaScrollTotalMatches = useMediaSlotDialogStore((s) => s.mediaScrollTotalMatches)
   const mediaScrollCurrentIndex = useMediaSlotDialogStore((s) => s.mediaScrollCurrentIndex)
+  const panelCarouselSlotEdit = useMediaSlotDialogStore((s) => s.panelCarouselSlotEdit)
 
   const buildSlotUpdateBody = useCallback((payload: Record<string, unknown>) => {
     const resolvedForkContext = forkContext ?? loadMediaSlotForkContext(slotName)
@@ -221,7 +226,7 @@ export function MediaSlotDetail({
   ])
 
   useEffect(function scrollToTargetInstance() {
-    if (occurrenceIndex == null || occurrenceIndex < 0) {
+    if (suppressPreviewScroll || occurrenceIndex == null || occurrenceIndex < 0) {
       return
     }
     const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
@@ -232,7 +237,7 @@ export function MediaSlotDetail({
         index: occurrenceIndex,
       })
     }
-  }, [slotName, occurrenceIndex])
+  }, [slotName, occurrenceIndex, suppressPreviewScroll])
 
   // Memoize the set of all AI-generated URLs across all manifest slots to avoid O(slots) scans per render
   const allAiGeneratedUrls = useMemo(() => {
@@ -958,7 +963,7 @@ export function MediaSlotDetail({
           <div className="flex flex-col gap-2">
             <div>
               <h3 className="font-semibold text-lg">
-                {formatSlotName(slotName)}
+                {formatMediaPanelSlotTitle(slotName, { fromPreviewReplace: panelCarouselSlotEdit })}
               </h3>
               <MediaSlotInstanceCycler slotName={slotName} />
 

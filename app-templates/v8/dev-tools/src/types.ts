@@ -92,6 +92,7 @@ export interface OpenMediaSlotDialogMessage {
     }
   }
   occurrenceIndex?: number | null
+  skipPreviewScroll?: boolean
 }
 
 /**

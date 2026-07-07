@@ -76,6 +76,28 @@ function resolveHoverableAnchor(target: HTMLElement): HoveredElement | null {
   return null;
 }
 
+// Wrapper that adds a stack-scan fallback when the direct target is a container (not direct text). Fixes the common "full-bleed content overlay covers hero carousel" pattern — the overlay absorbs the click and the image beneath is unreachable, so we probe elementsFromPoint for an image lower in the stack. Direct-text targets (h1, p, a, button, etc.) preserve their content-edit path — we only override on container-shaped hits.
+function resolveHoverableAnchorAtPoint(
+  target: HTMLElement,
+  clientX: number,
+  clientY: number,
+): HoveredElement | null {
+  const primary = resolveHoverableAnchor(target);
+  if (primary?.type === "image") return primary;
+
+  const targetTag = target.tagName.toLowerCase();
+  if (DIRECT_CONTENT_TAGS.includes(targetTag)) return primary;
+
+  const stack = document.elementsFromPoint(clientX, clientY);
+  for (const el of stack) {
+    if (!(el instanceof HTMLElement) || el === target) continue;
+    if (isDevToolsElement(el)) continue;
+    const anchor = resolveHoverableAnchor(el);
+    if (anchor?.type === "image") return anchor;
+  }
+  return primary;
+}
+
 function pointerLeftDocument(relatedTarget: EventTarget | null): boolean {
   if (!relatedTarget || !(relatedTarget instanceof Node)) {
     return true;
@@ -188,7 +210,7 @@ export function useImageHoverDetection(
         }
       }
 
-      const anchor = resolveHoverableAnchor(target);
+      const anchor = resolveHoverableAnchorAtPoint(target, e.clientX, e.clientY);
 
       if (!anchor) {
         // If the bar is already showing and the mouse is still within the
@@ -337,7 +359,7 @@ export function useImageHoverDetection(
       // bar over the link before (or instead of) the route change.
       if (isInsideNavSurface(rawTarget)) return;
 
-      let anchor = resolveHoverableAnchor(rawTarget);
+      let anchor = resolveHoverableAnchorAtPoint(rawTarget, e.clientX, e.clientY);
       if (!anchor) {
         // Click-only fallback: wrappers don't get continuous pointer events to land on a content child.
         let current: HTMLElement | null = rawTarget.parentElement;

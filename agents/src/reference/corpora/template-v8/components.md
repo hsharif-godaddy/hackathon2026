@@ -24,7 +24,7 @@ import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 | Button | `button.tsx` | CVA-based with variants: default, destructive, outline, secondary, ghost, link |
 | Calendar | `calendar.tsx` | Date picker (uses `react-day-picker`) |
 | Card | `card.tsx` | Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription |
-| Carousel | `carousel.tsx` | Embla-based carousel |
+| Carousel | `carousel.tsx` | Embla + `embla-carousel-autoplay`; never hand-roll (`setInterval`/`setTimeout`). Existing non-Embla rotators: add `aria-roledescription="carousel"`. Full-bleed overlays: `pointer-events-none`, interactive children `pointer-events-auto`. |
 | Checkbox | `checkbox.tsx` | |
 | Collapsible | `collapsible.tsx` | |
 | Command | `command.tsx` | cmdk command palette |

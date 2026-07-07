@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createElement } from "react";
 
 import { Tooltip } from "../Tooltip";
@@ -10,14 +10,19 @@ import { Tooltip } from "../Tooltip";
 describe("Tooltip", function tooltipTests() {
   beforeEach(function setup() {
     vi.useFakeTimers();
+    vi.stubGlobal("ResizeObserver", class ResizeObserver {
+      observe = vi.fn();
+      disconnect = vi.fn();
+    });
   });
 
   afterEach(function teardown() {
     cleanup();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it("shows portaled bubble immediately on hover with default delay", function instantShow() {
+  it("shows portaled bubble immediately on hover with default delay", async function instantShow() {
     render(
       createElement(
         Tooltip,
@@ -27,7 +32,10 @@ describe("Tooltip", function tooltipTests() {
     );
 
     fireEvent.mouseEnter(document.querySelector(".airo-tooltip-root")!);
-    vi.runAllTimers();
+    await act(async () => {
+      vi.runAllTimers();
+      await Promise.resolve();
+    });
 
     const bubble = document.body.querySelector(".airo-tooltip-bubble");
     expect(bubble).not.toBeNull();
@@ -44,12 +52,14 @@ describe("Tooltip", function tooltipTests() {
     );
 
     fireEvent.mouseEnter(document.querySelector(".airo-tooltip-root")!);
-    vi.runAllTimers();
+    act(() => {
+      vi.runAllTimers();
+    });
 
     expect(document.body.querySelector(".airo-tooltip-bubble")).toBeNull();
   });
 
-  it("respects custom show delay", function customDelay() {
+  it("respects custom show delay", async function customDelay() {
     render(
       createElement(
         Tooltip,
@@ -59,14 +69,20 @@ describe("Tooltip", function tooltipTests() {
     );
 
     fireEvent.mouseEnter(document.querySelector(".airo-tooltip-root")!);
-    vi.advanceTimersByTime(199);
+    await act(async () => {
+      vi.advanceTimersByTime(199);
+      await Promise.resolve();
+    });
     expect(document.body.querySelector(".airo-tooltip-bubble")).toBeNull();
 
-    vi.advanceTimersByTime(1);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
     expect(document.body.querySelector(".airo-tooltip-bubble")).not.toBeNull();
   });
 
-  it("hides bubble after pointer leave", function hideOnLeave() {
+  it("hides bubble after pointer leave", async function hideOnLeave() {
     render(
       createElement(
         Tooltip,
@@ -77,11 +93,17 @@ describe("Tooltip", function tooltipTests() {
 
     const root = document.querySelector(".airo-tooltip-root")!;
     fireEvent.mouseEnter(root);
-    vi.runAllTimers();
+    await act(async () => {
+      vi.runAllTimers();
+      await Promise.resolve();
+    });
     expect(document.body.querySelector(".airo-tooltip-bubble")).not.toBeNull();
 
     fireEvent.mouseLeave(root);
-    vi.runAllTimers();
+    await act(async () => {
+      vi.runAllTimers();
+      await Promise.resolve();
+    });
 
     expect(document.body.querySelector(".airo-tooltip-bubble")).toBeNull();
   });
@@ -110,7 +132,7 @@ describe("Tooltip", function tooltipTests() {
     expect(document.querySelector("button")).toHaveAttribute("title", "Text color");
   });
 
-  it("portals bubble into the dev-tools root when present", function portalIntoDevToolsRoot() {
+  it("portals bubble into the dev-tools root when present", async function portalIntoDevToolsRoot() {
     const devToolsRoot = document.createElement("div");
     devToolsRoot.id = "airo-dev-tools-injected";
     document.body.appendChild(devToolsRoot);
@@ -125,7 +147,10 @@ describe("Tooltip", function tooltipTests() {
       );
 
       fireEvent.mouseEnter(document.querySelector(".airo-tooltip-root")!);
-      vi.runAllTimers();
+      await act(async () => {
+        vi.runAllTimers();
+        await Promise.resolve();
+      });
 
       // Bubble must live inside the dev-tools root so its z-index can stack
       // above the HoverBar (10000) without competing with the root's max

@@ -7,7 +7,7 @@ import { ImageEditorPanel } from '@/app/[market]/develop/components/media/ImageE
 import { MediaSlotDetail } from '@/app/[market]/develop/components/media/MediaSlotDetail'
 import { MediaSlotsGrid } from '@/app/[market]/develop/components/media/MediaSlotsGrid'
 import { SourceImagesLibrary } from '@/app/[market]/develop/components/media/SourceImagesLibrary'
-import { ChatTab } from '@/app/[market]/develop/components/types'
+import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useMediaManifest } from '@/hooks/useMediaManifest'
@@ -21,6 +21,7 @@ import {
   loadMediaSlotOccurrenceIndex,
   parseCollectionOccurrenceIndex,
 } from '@/utils/media-slot-fork'
+import { postMessageToIframe } from '@/utils/postMessage'
 
 // Wide enough to comfortably show the image editor canvas + toolbars
 const EDITOR_CHAT_PANE_WIDTH = 616
@@ -37,7 +38,12 @@ export default function MediaPanel() {
   const [thumbnailBustKey, setThumbnailBustKey] = useState(0)
   const [activeForkContext, setActiveForkContext] = useState<BusMediaSlotForkContext | null>(null)
   const [activeOccurrenceIndex, setActiveOccurrenceIndex] = useState<number | null>(null)
+  const [suppressPreviewScroll, setSuppressPreviewScroll] = useState(false)
+  const [isCarouselSlotReplace, setIsCarouselSlotReplace] = useState(false)
   const priorPaneWidthRef = useRef<number>(DEFAULT_CHAT_PANE_WIDTH)
+  const prevActiveSlotNameRef = useRef<string | null>(null)
+  const prevMobileModeRef = useRef<MobileMode>(MobileMode.TOOLS)
+  const prevViewModeRef = useRef<ViewMode>(ViewMode.PREVIEW)
 
   const panelSlotName = useMediaSlotDialogStore((state) => state.panelSlotName)
   const clearPanelSlot = useMediaSlotDialogStore((state) => state.clearPanelSlot)
@@ -54,7 +60,33 @@ export default function MediaPanel() {
     return () => setCurrentSlotName(null)
   }, [activeSlotName, setCurrentSlotName])
 
+  useEffect(function endCarouselSlotEditWhenLeavingDetail() {
+    const previousSlotName = prevActiveSlotNameRef.current
+    prevActiveSlotNameRef.current = activeSlotName
+
+    if (previousSlotName === null || activeSlotName !== null) {
+      return
+    }
+
+    const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+    if (iframe) {
+      postMessageToIframe(iframe, { type: 'CAROUSEL_SLOT_EDIT', active: false })
+    }
+  }, [activeSlotName])
+
+  // Safety net: MediaPanel unmount (e.g., builder-side navigation) doesn't run the transition-based effect above. Always signal exit so the iframe never gets stuck with slot-edit active + timers paused.
+  useEffect(function endCarouselSlotEditOnUnmount() {
+    return () => {
+      const iframe = document.getElementById('preview-iframe') as HTMLIFrameElement | null
+      if (iframe) {
+        postMessageToIframe(iframe, { type: 'CAROUSEL_SLOT_EDIT', active: false })
+      }
+    }
+  }, [])
+
   const activeChatTab = useDevelopPageStore((state) => state.activeChatTab)
+  const mobileMode = useDevelopPageStore((state) => state.mobileMode)
+  const viewMode = useDevelopPageStore((state) => state.viewMode)
 
   const { setActiveChatTab } = useChatTabs()
 
@@ -80,6 +112,10 @@ export default function MediaPanel() {
       setSlotDetailEntry('external')
       setActiveForkContext(forkContext)
       setActiveOccurrenceIndex(occurrenceIndex)
+      setSuppressPreviewScroll(store.panelSkipPreviewScroll)
+      if (store.panelCarouselSlotEdit) {
+        setIsCarouselSlotReplace(true)
+      }
       if (openEditorForSlot === panelSlotName) {
         if (!isEditorOpen) {
           priorPaneWidthRef.current = useDevelopPageStore.getState().chatPaneWidth
@@ -112,6 +148,7 @@ export default function MediaPanel() {
   }, [activeChatTab, mediaReturnTab, clearMediaReturnState])
 
   const handleSelectSlot = useCallback((slotName: string) => {
+    setSuppressPreviewScroll(false)
     clearMediaReturnState()
     setActiveForkContext(null)
     setActiveOccurrenceIndex(null)
@@ -134,6 +171,7 @@ export default function MediaPanel() {
     }
     setActiveForkContext(null)
     setActiveOccurrenceIndex(null)
+    setIsCarouselSlotReplace(false)
     setActiveSlotName(null)
     setSlotDetailEntry(null)
     setThumbnailBustKey((k) => k + 1)
@@ -146,6 +184,33 @@ export default function MediaPanel() {
     setActiveChatTab,
     clearMediaReturnState,
     refetch,
+  ])
+
+  useEffect(function exitCarouselReplaceOnPreviewSwitch() {
+    const switchedToMobilePreview =
+      prevMobileModeRef.current !== MobileMode.PREVIEW &&
+      mobileMode === MobileMode.PREVIEW
+    const switchedToDesktopPreview =
+      prevViewModeRef.current === ViewMode.EDIT &&
+      viewMode === ViewMode.PREVIEW
+    prevMobileModeRef.current = mobileMode
+    prevViewModeRef.current = viewMode
+
+    if (
+      activeSlotName !== null &&
+      slotDetailEntry === 'external' &&
+      isCarouselSlotReplace &&
+      (switchedToMobilePreview || switchedToDesktopPreview)
+    ) {
+      handleBack()
+    }
+  }, [
+    activeSlotName,
+    slotDetailEntry,
+    isCarouselSlotReplace,
+    mobileMode,
+    viewMode,
+    handleBack,
   ])
 
   const handleOpenEditor = useCallback((imageUrl: string) => {
@@ -228,6 +293,7 @@ export default function MediaPanel() {
             slotName={activeSlotName}
             forkContext={slotDetailEntry === 'external' ? activeForkContext : null}
             occurrenceIndex={slotDetailEntry === 'external' ? activeOccurrenceIndex : null}
+            suppressPreviewScroll={slotDetailEntry === 'external' && suppressPreviewScroll}
             onDone={handleBack}
             onEdit={handleOpenEditor}
           />
