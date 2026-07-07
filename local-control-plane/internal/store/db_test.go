@@ -874,3 +874,114 @@ func TestList_RoundTripsImageDigestAndLifecycleState(t *testing.T) {
 		t.Errorf("ListAppsByCustomer did not return the test app")
 	}
 }
+
+// --- Automation CRUD ---
+
+func TestCreateAndListAutomations(t *testing.T) {
+	db := newTestDB(t)
+
+	created, err := db.CreateAutomation("app-1", "SEO", "file", ".airo/jobs", "seo", "cron", "0 9 * * 1", true)
+	if err != nil {
+		t.Fatalf("CreateAutomation: %v", err)
+	}
+	if created.AppID != "app-1" || created.DefnRef != "seo" {
+		t.Fatalf("unexpected created automation: %+v", created)
+	}
+
+	list, err := db.ListAutomations("app-1")
+	if err != nil {
+		t.Fatalf("ListAutomations: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 automation, got %d", len(list))
+	}
+
+	other, err := db.ListAutomations("app-2")
+	if err != nil {
+		t.Fatalf("ListAutomations other app: %v", err)
+	}
+	if len(other) != 0 {
+		t.Fatalf("expected 0 automations for other app, got %d", len(other))
+	}
+}
+
+func TestUpdateAutomationPartialFields(t *testing.T) {
+	db := newTestDB(t)
+
+	created, err := db.CreateAutomation("app-1", "SEO", "file", ".airo/jobs", "seo", "cron", "0 9 * * 1", true)
+	if err != nil {
+		t.Fatalf("CreateAutomation: %v", err)
+	}
+
+	newCron := "0 10 * * 1"
+	updated, err := db.UpdateAutomation(created.ID, "app-1", nil, &newCron, nil)
+	if err != nil {
+		t.Fatalf("UpdateAutomation cron: %v", err)
+	}
+	if updated.CronExpr != newCron {
+		t.Fatalf("expected cron %q, got %q", newCron, updated.CronExpr)
+	}
+	if !updated.Enabled {
+		t.Fatal("expected enabled to remain true")
+	}
+
+	disabled := false
+	updated, err = db.UpdateAutomation(created.ID, "app-1", nil, nil, &disabled)
+	if err != nil {
+		t.Fatalf("UpdateAutomation enabled: %v", err)
+	}
+	if updated.Enabled {
+		t.Fatal("expected enabled false")
+	}
+	if updated.CronExpr != newCron {
+		t.Fatalf("expected cron preserved as %q, got %q", newCron, updated.CronExpr)
+	}
+}
+
+func TestUpdateAutomationNotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	cron := "0 9 * * *"
+	_, err := db.UpdateAutomation("missing", "app-1", nil, &cron, nil)
+	if err == nil {
+		t.Fatal("expected error for missing automation")
+	}
+}
+
+func TestDeleteAutomationSoftDelete(t *testing.T) {
+	db := newTestDB(t)
+
+	created, err := db.CreateAutomation("app-1", "SEO", "file", ".airo/jobs", "seo", "cron", "0 9 * * 1", true)
+	if err != nil {
+		t.Fatalf("CreateAutomation: %v", err)
+	}
+
+	if err := db.DeleteAutomation(created.ID, "app-1"); err != nil {
+		t.Fatalf("DeleteAutomation: %v", err)
+	}
+
+	list, err := db.ListAutomations("app-1")
+	if err != nil {
+		t.Fatalf("ListAutomations: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected soft-deleted automation to be hidden, got %d", len(list))
+	}
+
+	if err := db.DeleteAutomation(created.ID, "app-1"); err == nil {
+		t.Fatal("expected error deleting already-deleted automation")
+	}
+}
+
+func TestDeleteAutomationWrongApp(t *testing.T) {
+	db := newTestDB(t)
+
+	created, err := db.CreateAutomation("app-1", "SEO", "file", ".airo/jobs", "seo", "cron", "0 9 * * 1", true)
+	if err != nil {
+		t.Fatalf("CreateAutomation: %v", err)
+	}
+
+	if err := db.DeleteAutomation(created.ID, "app-2"); err == nil {
+		t.Fatal("expected error deleting automation from wrong app")
+	}
+}

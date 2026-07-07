@@ -1485,7 +1485,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
           <div className="relative h-full w-full overflow-hidden">
             {/* Sidebar (Chat, History, Settings menu) */}
             <motion.div
-              className="absolute top-0 start-0 bottom-0 isolate"
+              className="absolute top-0 start-0 bottom-0 isolate z-20"
               animate={{
                 x: isChatPaneCollapsed
                   ? (isLayoutRtl ? chatPaneWidth + 16 : -(chatPaneWidth + 16))

@@ -418,7 +418,7 @@ func generateAppEnvSpecific(projectRoot string) error {
 
 func generateAgentsEnvSpecific(projectRoot string) error {
 	envs := []struct {
-		relPath, jwksURL, ssoHost, asmBaseURL, atlasAPIURL string
+		relPath, jwksURL, ssoHost, asmBaseURL, atlasAPIURL, mgmtURL string
 	}{
 		{
 			relPath:     "agents/.env.local.dev",
@@ -426,6 +426,7 @@ func generateAgentsEnvSpecific(projectRoot string) error {
 			ssoHost:     "sso.dev-godaddy.com",
 			asmBaseURL:  "https://asm-dp.api.int.dev-godaddy.com/v1/conversation/graphql",
 			atlasAPIURL: "https://atlas.dev-gdcorp.tools",
+			mgmtURL:     "http://localhost:4100",
 		},
 		{
 			relPath:     "agents/.env.local.test",
@@ -433,6 +434,7 @@ func generateAgentsEnvSpecific(projectRoot string) error {
 			ssoHost:     "sso.test-godaddy.com",
 			asmBaseURL:  "https://asm.api.int.test-godaddy.com/v1/conversation/graphql",
 			atlasAPIURL: "https://atlas.test-gdcorp.tools",
+			mgmtURL:     "https://mgmt.nstk.net",
 		},
 		{
 			relPath:     "agents/.env.local.prod",
@@ -440,6 +442,7 @@ func generateAgentsEnvSpecific(projectRoot string) error {
 			ssoHost:     "sso.godaddy.com",
 			asmBaseURL:  "https://asm.api.int.godaddy.com/v1/conversation/graphql",
 			atlasAPIURL: "https://atlas.gdcorp.tools",
+			mgmtURL:     "https://mgmt.woosaas.godaddy.com",
 		},
 	}
 
@@ -450,6 +453,7 @@ func generateAgentsEnvSpecific(projectRoot string) error {
 			{"SSO_HOST", cfg.ssoHost},
 			{"ASM_BASE_URL", cfg.asmBaseURL},
 			{"ATLAS_API_BASE_URL", cfg.atlasAPIURL},
+			{"MGMT_AIRO_BASE_URL", cfg.mgmtURL},
 		}
 
 		if err := writeOrUpsertManagedEnv(fullPath, cfg.relPath, managed); err != nil {

@@ -25,6 +25,7 @@ import compression from 'compression';
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
 import { appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter } from './routes/index.js';
+import { automationsRouter } from './routes/automations.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
 import { initSSERegistry } from './sse/registry-singleton.js';
@@ -200,6 +201,15 @@ function getOrCreateSSEExecutionService(): MessageExecutionService | null {
   return sseExecutionService
 }
 
+/**
+ * Exported for automations.ts (lazy import to avoid circular dependency).
+ * Returns the same singleton as the SSE execution service — automations reuse
+ * the existing agent loop, not a separate service.
+ */
+export function getOrCreateSSEExecutionServiceForAutomation(): MessageExecutionService | null {
+  return getOrCreateSSEExecutionService()
+}
+
 // Security middleware
 // Configure helmet with cross-origin resource policy for file serving endpoints
 // Files endpoint needs cross-origin for browser image loading (protected by signed URLs)
@@ -346,6 +356,9 @@ protectedRouter.use('/api/conversations', createSSERoutes({
 }));
 
 app.use(protectedRouter);
+
+// Automation run endpoint — auth is a hosting-minted site-scoped JWT.
+app.use('/api/automations', jwtAuthMiddleware.authenticate, automationsRouter);
 
 // Error handling
 app.use(notFoundHandler);

@@ -293,7 +293,6 @@ export const PINNED_CANVAS_ID: CanvasId = CanvasId.Preview
 export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsProject,
   CanvasId.SettingsAnalytics,
-  CanvasId.Automations,
   CanvasId.SettingsBackups,
   CanvasId.Brand,
   CanvasId.SettingsCampaigns,
@@ -303,6 +302,7 @@ export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsDatabase,
   CanvasId.SettingsGitHub,
   CanvasId.Inbox,
+  CanvasId.Automations,
   CanvasId.SettingsMarketing,
   CanvasId.Media,
   CanvasId.SettingsSecrets,

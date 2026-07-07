@@ -101,6 +101,16 @@ describe('CanvasMenu', () => {
       .toBeInTheDocument()
   })
 
+  it('offers Automations in the menu when its flag is on and it is not currently open', async () => {
+    switchboardValues['appbuilder-automations'] = true
+    resetCommanderStore([CanvasId.Preview])
+
+    await openMenu()
+
+    expect(screen.getByTestId(`commander-canvas-tabs-menu-${CanvasId.Automations}`))
+      .toBeInTheDocument()
+  })
+
   it('hides the menu trigger on desktop when all available canvases are already open', () => {
     resetCommanderStore([...CANVAS_MENU_ORDER])
 

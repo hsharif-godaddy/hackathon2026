@@ -105,6 +105,32 @@ const (
 	LifecycleReasonColdArchive         = "cold_archive"
 )
 
+type Automation struct {
+	ID           string    `json:"id"`
+	AppID        string    `json:"appId"`
+	Name         string    `json:"name"`
+	DefnType     string    `json:"defnType"`
+	DefnLocation string    `json:"defnLocation"`
+	DefnRef      string    `json:"defnRef"`
+	TriggerType  string    `json:"triggerType"`
+	CronExpr     string    `json:"cronExpr"`
+	Enabled      bool      `json:"enabled"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type AutomationRun struct {
+	ID           string     `json:"id"`
+	AutomationID string     `json:"automationId"`
+	AppID        string     `json:"appId"`
+	Status       string     `json:"status"`
+	TriggerType  string     `json:"triggerType"`
+	SummaryRef   string     `json:"summaryRef,omitempty"`
+	ErrorMessage string     `json:"errorMessage,omitempty"`
+	StartedAt    time.Time  `json:"startedAt"`
+	FinishedAt   *time.Time `json:"finishedAt,omitempty"`
+}
+
 func SubscriptionIDForCustomer(customerID string) string {
 	if customerID == DefaultCustomerID {
 		return "local-sub-001"

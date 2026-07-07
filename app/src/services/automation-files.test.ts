@@ -159,6 +159,20 @@ describe('automation-files', () => {
       expect(mockWriteFile).toHaveBeenCalledWith(APP_ID, INDEX_PATH, expect.stringContaining(AGENT_ID))
     })
 
+    it('uses the provided id instead of generating a uuid', async () => {
+      const FIXED_ID = 'seo-optimization'
+      const FIXED_PATH = `.airo/jobs/${FIXED_ID}/${FIXED_ID}.md`
+      mockReadFile
+        .mockResolvedValueOnce({ content: '[]' })
+        .mockResolvedValueOnce({ content: JSON.stringify([FIXED_ID]) })
+
+      const result = await create(APP_ID, AUTOMATION_DATA, FIXED_ID)
+
+      expect(result.id).toBe(FIXED_ID)
+      expect(mockWriteFile).toHaveBeenCalledWith(APP_ID, FIXED_PATH, expect.stringContaining(AUTOMATION_DATA.name))
+      expect(mockWriteFile).toHaveBeenCalledWith(APP_ID, INDEX_PATH, expect.stringContaining(FIXED_ID))
+    })
+
     it('appends to existing index', async () => {
       mockReadFile
         .mockResolvedValueOnce({ content: JSON.stringify(['existing-id']) })

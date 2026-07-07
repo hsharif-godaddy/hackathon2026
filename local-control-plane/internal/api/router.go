@@ -166,6 +166,14 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 	// CDN purge cache
 	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/purge-cache", srv.PurgeCache).Methods("POST")
 
+	// Automations (local stub matching airo-go API shape — no cron scheduler, just CRUD)
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations", srv.ListAutomations).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations", srv.CreateAutomation).Methods("POST")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations/{automationId}", srv.UpdateAutomation).Methods("PATCH")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations/{automationId}", srv.DeleteAutomation).Methods("DELETE")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations/{automationId}/runs", srv.ListAutomationRuns).Methods("GET")
+	v1.HandleFunc("/subscriptions/{subId}/systems/{sysId}/apps/{appId}/automations/{automationId}/run", srv.TriggerAutomationRun).Methods("POST")
+
 	// Transfers (stubs)
 	v1.HandleFunc("/apps/{appId}/transfer/initiate", srv.InitiateTransfer).Methods("POST")
 	v1.HandleFunc("/apps/{appId}/transfer/metadata", srv.GetTransferMetadata).Methods("GET")
@@ -181,6 +189,11 @@ func NewRouter(db *store.DB, jwtService *auth.JWTService, ssoMW *auth.SSOMiddlew
 
 	// Service dependency stubs — local replacements for external APIs that
 	// calling services (e.g. stripe-service) expect to be present.
+	// Agent callback for automation run outcomes — posted by the agent after
+	// each scheduled/manual run. Path mirrors airo-go's production endpoint
+	// so the agent can use the same URL in all environments.
+	r.HandleFunc("/api/hosting/v1/apps/{appId}/agent/callback", srv.AgentCallback).Methods("POST")
+
 	// PIE customer proxy: stripe-service calls this to resolve prefill email
 	// before creating a Stripe claimable sandbox. Returns a static local-dev
 	// address; path matches hosting.GetCustomerEmail in stripe-service.

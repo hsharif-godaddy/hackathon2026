@@ -135,7 +135,34 @@ function isDiagnosticsEnabled(): boolean {
 }
 
 function generateRunSummary(output: string): string {
-  return output.slice(-1000)
+  const MAX_BYTES = 50_000 // ~50 KB — keeps files reasonable without losing critical output
+  if (output.length <= MAX_BYTES) return output
+  const truncated = output.slice(-MAX_BYTES)
+  // Preserve line alignment after truncation
+  const newlineIdx = truncated.indexOf('\n')
+  return newlineIdx > 0 ? truncated.slice(newlineIdx + 1) : truncated
+}
+
+const MAX_RUN_FILES = 20
+
+/** Delete the oldest *_summary.md files in the runs dir when count exceeds MAX_RUN_FILES. */
+async function pruneRunFiles(workspace: ReturnType<typeof createForWorkspace>, automationId: string, latestPath: string): Promise<void> {
+  if (!workspace) return
+  try {
+    const runsDir = `.airo/jobs/${automationId}/runs`
+    const { entries } = await workspace.files.tree({
+      path: runsDir,
+      kindFilter: 'file',
+      includeGlobs: ['*_summary.md'],
+    })
+    const summaries = entries
+      .filter(f => f.kind === 'file' && f.path !== latestPath)
+      .sort((a, b) => a.path.localeCompare(b.path))
+    const toDelete = summaries.slice(0, Math.max(0, summaries.length - (MAX_RUN_FILES - 1)))
+    await Promise.all(toDelete.map(f => workspace.files.delete({ path: f.path })))
+  } catch {
+    // Non-fatal: pruning is best-effort
+  }
 }
 
 interface ExecutionDeps {
@@ -279,6 +306,12 @@ interface ExecuteParams {
   rebuildBringOverChoice?: unknown
   uploadedFileName?: string
   automationId?: string
+  /** Hosting run ID — included in the automation summary filename so the caller can read it back. */
+  automationRunId?: string
+  /** ISO-8601 cron slot (e.g. "2026-07-07T09:00:00Z"). When present the summary is written
+   *  at scheduled_{slot}_summary.md instead of scheduled_{runId}_{convId}_summary.md so that
+   *  a single stable file serves both the primary callback read and the idempotency pre-check. */
+  automationScheduledSlot?: string
   bmsBudgetId?: string
   budgetSessionId?: string
   /** Original subscriptionId for override detection (care agent, test accounts) */
@@ -299,6 +332,8 @@ interface ExecuteParams {
   designKitSlug?: string
   /** Whether the client is running inside an iframe (embedded in a parent product). */
   isEmbedded?: boolean
+  /** Optional external abort — automation runs forward hosting cancel/timeout here. */
+  abortSignal?: AbortSignal
 }
 
 interface ActiveStream {
@@ -379,6 +414,15 @@ interface StreamAgentTurnResult {
   finishReason: string
   responseMetadata: ResponseMetadata
   steps: ExecutionStep[]
+}
+
+function linkExternalAbortSignal(controller: AbortController, external?: AbortSignal): void {
+  if (!external) return
+  if (external.aborted) {
+    controller.abort(external.reason)
+    return
+  }
+  external.addEventListener('abort', () => controller.abort(external.reason), { once: true })
 }
 
 // Post-abort backstop for the single-consumer getFinalResult await. Once a turn
@@ -2341,6 +2385,7 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
     }
 
     const abortController = new AbortController()
+    linkExternalAbortSignal(abortController, params.abortSignal)
     this.abortControllers.set(conversationId, abortController)
 
     const clientActionService = new SSEClientActionService(conversationId, appId, this.deps.eventChannel)
@@ -2894,22 +2939,44 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         && !chunkTimeoutSoftCommit
       const finishReason = loopAborted ? 'aborted' : (lastTurnResult?.finishReason ?? 'complete')
 
-      if (automationId && automationsEnabled) {
+      // Write summary file if this is an automation run.
+      // Route-dispatched runs (automationRunId present) always write.
+      // SSE-path runs only write when the automations flag is enabled.
+      const isAutomationRoute = !!params.automationRunId
+      if (automationId && (isAutomationRoute || automationsEnabled)) {
         const status = loopAborted ? 'failed' : 'completed'
         const now = new Date()
-        const summaryBody = generateRunSummary(turnOutputText())
-        const timestamp = now.toISOString().replace(/:/g, '-')
-        const runPath = `.airo/jobs/${automationId}/runs/${timestamp}_${conversationId}_summary.md`
-        const fileContent = matter.stringify(summaryBody, {
+        const fullOutput = generateRunSummary(turnOutputText())
+        const timestamp = now.toISOString().replace(/[:.]/g, '-')
+        // Prefix encodes trigger type so callers can classify runs by filename alone:
+        //   scheduled_{slot}_summary.md            — cron dispatch; slot is stable across hosting retries
+        //   scheduled_{runId}_{convId}_summary.md  — cron dispatch without slot (fallback, shouldn't happen in practice)
+        //   manual_{runId}_{convId}_summary.md     — manual dispatch via hosting
+        //   manual_{timestamp}_{convId}_summary.md — legacy SSE direct run (no runId)
+        const automationRunId: string | undefined = params.automationRunId
+        const scheduledSlot: string | undefined = params.automationScheduledSlot
+        const runSuffix = scheduledSlot
+          ? `scheduled_${scheduledSlot.replace(/:/g, '-')}`
+          : automationRunId
+            ? `manual_${automationRunId}_${conversationId}`
+            : `manual_${timestamp}_${conversationId}`
+        const runPath = `.airo/jobs/${automationId}/runs/${runSuffix}_summary.md`
+        const fileContent = matter.stringify(fullOutput, {
           automationId,
+          triggerType: scheduledSlot ? 'scheduled' : 'manual',
+          ...(automationRunId && { runId: automationRunId }),
+          ...(scheduledSlot && { scheduledSlot }),
           conversationId,
           timestamp: now.toISOString(),
           status,
         })
         const workspace = createForWorkspace(appId, 'preview')
-        if (workspace) {
+        if (!workspace) {
+          logger.warn('automation.run-summary.workspace-null', { appId, automationId, runPath, status })
+        } else {
           try {
             await workspace.files.write({ path: runPath, content: fileContent })
+            await pruneRunFiles(workspace, automationId, runPath)
           } catch (err: unknown) {
             logger.warn('automation.run-summary.write-failed', {
               appId,

@@ -203,6 +203,37 @@ func (d *DB) migrate() error {
 		return fmt.Errorf("create deployments table: %w", err)
 	}
 
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS automations (
+		id TEXT PRIMARY KEY,
+		app_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		defn_type TEXT NOT NULL DEFAULT 'file',
+		defn_location TEXT NOT NULL DEFAULT '.airo/jobs',
+		defn_ref TEXT NOT NULL,
+		trigger_type TEXT NOT NULL DEFAULT 'cron',
+		cron_expr TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		deleted INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create automations table: %w", err)
+	}
+
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS automation_runs (
+		id TEXT PRIMARY KEY,
+		automation_id TEXT NOT NULL,
+		app_id TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'dispatched',
+		trigger_type TEXT NOT NULL DEFAULT 'manual',
+		summary_ref TEXT NOT NULL DEFAULT '',
+		error_message TEXT NOT NULL DEFAULT '',
+		started_at TEXT NOT NULL,
+		finished_at TEXT
+	)`); err != nil {
+		return fmt.Errorf("create automation_runs table: %w", err)
+	}
+
 	return nil
 }
 
@@ -927,4 +958,235 @@ func (d *DB) UpdateSubscription(id string, fields map[string]any) (*Subscription
 
 	sub.UpdatedAt = now
 	return sub, nil
+}
+
+// ─── Automation store methods ─────────────────────────────────────────────────
+
+func (d *DB) ListAutomations(appID string) ([]*Automation, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	rows, err := d.db.Query(
+		`SELECT id, app_id, name, defn_type, defn_location, defn_ref, trigger_type, cron_expr, enabled, created_at, updated_at
+		 FROM automations WHERE app_id = ? AND deleted = 0 ORDER BY created_at ASC`,
+		appID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list automations: %w", err)
+	}
+	defer rows.Close()
+
+	var result []*Automation
+	for rows.Next() {
+		a, err := scanAutomation(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, a)
+	}
+	return result, rows.Err()
+}
+
+func (d *DB) CreateAutomation(appID, name, defnType, defnLocation, defnRef, triggerType, cronExpr string, enabled bool) (*Automation, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	id, err := generateNanoid(21)
+	if err != nil {
+		return nil, fmt.Errorf("generate automation ID: %w", err)
+	}
+	now := time.Now().UTC()
+
+	enabledInt := 0
+	if enabled {
+		enabledInt = 1
+	}
+
+	_, err = d.db.Exec(
+		`INSERT INTO automations (id, app_id, name, defn_type, defn_location, defn_ref, trigger_type, cron_expr, enabled, deleted, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+		id, appID, name, defnType, defnLocation, defnRef, triggerType, cronExpr, enabledInt,
+		now.Format(time.RFC3339), now.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert automation: %w", err)
+	}
+
+	return &Automation{
+		ID: id, AppID: appID, Name: name,
+		DefnType: defnType, DefnLocation: defnLocation, DefnRef: defnRef,
+		TriggerType: triggerType, CronExpr: cronExpr, Enabled: enabled,
+		CreatedAt: now, UpdatedAt: now,
+	}, nil
+}
+
+func (d *DB) UpdateAutomation(id, appID string, triggerType *string, cronExpr *string, enabled *bool) (*Automation, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	row := d.db.QueryRow(
+		`SELECT id, app_id, name, defn_type, defn_location, defn_ref, trigger_type, cron_expr, enabled, created_at, updated_at
+		 FROM automations WHERE id = ? AND app_id = ? AND deleted = 0`, id, appID,
+	)
+	a, err := scanAutomation(row)
+	if err != nil {
+		return nil, fmt.Errorf("automation not found: %w", err)
+	}
+
+	if triggerType != nil {
+		a.TriggerType = *triggerType
+	}
+	if cronExpr != nil {
+		a.CronExpr = *cronExpr
+	}
+	if enabled != nil {
+		a.Enabled = *enabled
+	}
+	now := time.Now().UTC()
+	a.UpdatedAt = now
+
+	enabledInt := 0
+	if a.Enabled {
+		enabledInt = 1
+	}
+	_, err = d.db.Exec(
+		`UPDATE automations SET trigger_type = ?, cron_expr = ?, enabled = ?, updated_at = ? WHERE id = ? AND app_id = ?`,
+		a.TriggerType, a.CronExpr, enabledInt, now.Format(time.RFC3339), id, appID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update automation: %w", err)
+	}
+	return a, nil
+}
+
+func (d *DB) GetAutomation(id, appID string) (*Automation, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	row := d.db.QueryRow(
+		`SELECT id, app_id, name, defn_type, defn_location, defn_ref, trigger_type, cron_expr, enabled, created_at, updated_at
+		 FROM automations WHERE id = ? AND app_id = ? AND deleted = 0`, id, appID,
+	)
+	return scanAutomation(row)
+}
+
+func (d *DB) DeleteAutomation(id, appID string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	res, err := d.db.Exec(
+		`UPDATE automations SET deleted = 1, updated_at = ? WHERE id = ? AND app_id = ? AND deleted = 0`,
+		time.Now().UTC().Format(time.RFC3339), id, appID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete automation: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("automation not found")
+	}
+	return nil
+}
+
+type scannable interface {
+	Scan(dest ...any) error
+}
+
+func scanAutomation(row scannable) (*Automation, error) {
+	var a Automation
+	var enabledInt int
+	var createdAt, updatedAt string
+	err := row.Scan(
+		&a.ID, &a.AppID, &a.Name, &a.DefnType, &a.DefnLocation, &a.DefnRef,
+		&a.TriggerType, &a.CronExpr, &enabledInt, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	a.Enabled = enabledInt == 1
+	a.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	a.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
+	return &a, nil
+}
+
+// ─── Automation run store methods ─────────────────────────────────────────────
+
+func (d *DB) CreateAutomationRun(runID, automationID, appID, triggerType string) (*AutomationRun, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC()
+	_, err := d.db.Exec(
+		`INSERT INTO automation_runs (id, automation_id, app_id, status, trigger_type, started_at)
+		 VALUES (?, ?, ?, 'dispatched', ?, ?)`,
+		runID, automationID, appID, triggerType, now.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert automation run: %w", err)
+	}
+	return &AutomationRun{
+		ID:           runID,
+		AutomationID: automationID,
+		AppID:        appID,
+		Status:       "dispatched",
+		TriggerType:  triggerType,
+		StartedAt:    now,
+	}, nil
+}
+
+func (d *DB) UpdateAutomationRun(runID, status, summaryRef, errorMessage string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.db.Exec(
+		`UPDATE automation_runs SET status = ?, summary_ref = ?, error_message = ?, finished_at = ? WHERE id = ?`,
+		status, summaryRef, errorMessage, now, runID,
+	)
+	return err
+}
+
+func (d *DB) ListAutomationRuns(automationID, appID string, limit, offset int) ([]*AutomationRun, int, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	var total int
+	err := d.db.QueryRow(
+		`SELECT COUNT(*) FROM automation_runs WHERE automation_id = ? AND app_id = ?`,
+		automationID, appID,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count automation runs: %w", err)
+	}
+
+	rows, err := d.db.Query(
+		`SELECT id, automation_id, app_id, status, trigger_type, summary_ref, error_message, started_at, finished_at
+		 FROM automation_runs WHERE automation_id = ? AND app_id = ?
+		 ORDER BY started_at DESC LIMIT ? OFFSET ?`,
+		automationID, appID, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list automation runs: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*AutomationRun
+	for rows.Next() {
+		var r AutomationRun
+		var finishedAt sql.NullString
+		var startedAt string
+		if err := rows.Scan(
+			&r.ID, &r.AutomationID, &r.AppID, &r.Status, &r.TriggerType,
+			&r.SummaryRef, &r.ErrorMessage, &startedAt, &finishedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan automation run: %w", err)
+		}
+		r.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
+		if finishedAt.Valid && finishedAt.String != "" {
+			t, _ := time.Parse(time.RFC3339, finishedAt.String)
+			r.FinishedAt = &t
+		}
+		runs = append(runs, &r)
+	}
+	return runs, total, rows.Err()
 }
