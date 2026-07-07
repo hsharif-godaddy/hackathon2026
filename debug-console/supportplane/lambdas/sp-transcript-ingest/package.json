@@ -1,0 +1,25 @@
+{
+  "name": "sp-transcript-ingest",
+  "version": "1.0.0",
+  "description": "Parse SupportPlane transcript CSVs from S3 and upsert into DynamoDB",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1055.0",
+    "@aws-sdk/client-s3": "^3.1055.0",
+    "@aws-sdk/client-sqs": "^3.1055.0",
+    "@aws-sdk/lib-dynamodb": "^3.1055.0",
+    "uuid": "^11.1.1",
+    "xlsx": "^0.18.5",
+    "xlsx-populate": "^1.21.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.10.2",
+    "@types/xlsx-populate": "github:JanLoebel/types-xlsx-populate",
+    "typescript": "^5.7.3"
+  }
+}

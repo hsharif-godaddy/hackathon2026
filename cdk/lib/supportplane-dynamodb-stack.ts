@@ -53,7 +53,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'interaction_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -129,7 +129,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'upload_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'uploaded_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -159,7 +159,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'metric_type', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -173,7 +173,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'feedback_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -201,7 +201,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'feedback_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -217,7 +217,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'feedback_id', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -234,7 +234,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'enrich_key', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -248,7 +248,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'date_env', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'app_id', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -262,7 +262,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'ingest_key', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -276,7 +276,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'ticket_key', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:
@@ -294,7 +294,7 @@ export class SupportplaneDynamoStack extends GDStack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: 'insight_key', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'created_at', type: dynamodb.AttributeType.STRING },
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
       deletionProtection: config.envName === 'prod',
       removalPolicy:

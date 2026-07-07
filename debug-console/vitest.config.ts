@@ -12,7 +12,13 @@ export default defineConfig({
     environment: 'node',
     // vitest 4 no longer clears vi.fn() call history on restoreAllMocks.
     clearMocks: true,
-    include: ['src/**/__tests__/**/*.test.ts', 'src/**/*.test.ts'],
+    include: [
+      'src/**/__tests__/**/*.test.ts',
+      'src/**/*.test.ts',
+      // SupportPlane transcript Lambdas (isolated ESM packages bundled by CDK).
+      // Their handler/provider unit tests are hermetic (all externals mocked).
+      'supportplane/lambdas/**/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

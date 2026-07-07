@@ -26,7 +26,7 @@ import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kin
 import { TransactionalEventsKMSStack } from "../lib/transactional-events-kms-stack";
 import { FeedbackL1TranscriptStack } from "../lib/feedback-l1-transcript-stack";
 import { SupportplaneDynamoStack } from "../lib/supportplane-dynamodb-stack";
-import { TranscriptsS3Stack } from "../lib/transcripts-s3-stack";
+import { SupportplaneTranscriptIngestStack } from "../lib/supportplane-transcript-ingest-stack";
 
 /**
  * Main function to execute the CDK app
@@ -166,13 +166,6 @@ async function main() {
     new FeedbackL1TranscriptStack(app, 'FeedbackL1TranscriptStack', { env });
   }
 
-  // SupportPlane L1 transcript storage — dev + prod only (mirrors FeedbackS3Stack gate).
-  // Path: l1_transcripts/year=YYYY/month=MM/day=DD/{id}.txt
-  // Env var for debug-console: S3_TRANSCRIPTS_BUCKET (set via Katana secret or .env.local)
-  if (config.envName === 'dev' || config.envName === 'prod') {
-    new TranscriptsS3Stack(app, 'TranscriptsS3Stack', { env });
-  }
-
   // SupportPlane DynamoDB data plane for transcript migration.
   // Uses generic keys (pk/sk) so non-key attributes can evolve without schema migrations.
   // Env vars for debug-console:
@@ -181,6 +174,15 @@ async function main() {
   // - SP_L1_ANALYTICS_TABLE
   if (config.envName === 'dev' || config.envName === 'prod') {
     new SupportplaneDynamoStack(app, 'SupportplaneDynamoStack', { env });
+  }
+
+  // SupportPlane transcript ingestion Lambda — invoked directly (debug-console
+  // upload/Sync; future reconcile cron), not via S3 bucket notifications. Parses
+  // one CSV file and upserts rows into the SupportPlane L1 DynamoDB tables
+  // (dedup by interaction_id).
+  // dev + prod only (mirrors the FeedbackL1TranscriptStack / SupportplaneDynamoStack gate).
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new SupportplaneTranscriptIngestStack(app, 'SupportplaneTranscriptIngestStack', { env });
   }
 
   // KMS key for encrypting the transactional events Kinesis stream.

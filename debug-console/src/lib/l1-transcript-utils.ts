@@ -105,6 +105,7 @@ export function mapResolutionToStatus(resolution: string | null): string | null 
 
   if (resolutionLower === 'yes' || resolutionLower === 'resolved') return 'resolved';
   if (resolutionLower === 'no' || resolutionLower === 'unresolved') return 'unresolved';
+  if (resolutionLower === 'partially' || resolutionLower.includes('partial')) return 'partially_resolved';
 
   return 'unknown';
 }
@@ -262,7 +263,7 @@ export function validateCsvRows(rows: any[]): ValidationResult {
     // Validate issue_resolution values if column exists
     if ('issue_resolution' in row && row.issue_resolution) {
       const resolution = String(row.issue_resolution).toLowerCase();
-      const validValues = ['yes', 'no', 'resolved', 'unresolved', 'unknown'];
+      const validValues = ['yes', 'no', 'resolved', 'unresolved', 'partially', 'unknown'];
       if (!validValues.some(v => resolution.includes(v))) {
         warnings.push(`Row ${i + 1}: unexpected issue_resolution value: "${row.issue_resolution}"`);
       }

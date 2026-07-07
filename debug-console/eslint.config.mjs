@@ -2,7 +2,9 @@ import airoConfig from "@airo/eslint-config";
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
 export default [
-  { ignores: ["node_modules/**", "dist/**", ".next/**"] },
+  // supportplane/lambdas are isolated ESM Lambda packages (own tsconfig/deps,
+  // bundled by CDK) — not part of the Next app's lint surface.
+  { ignores: ["node_modules/**", "dist/**", ".next/**", "supportplane/lambdas/**"] },
   ...airoConfig,
   ...nextCoreWebVitals,
   {

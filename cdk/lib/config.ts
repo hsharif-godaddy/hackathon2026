@@ -211,6 +211,11 @@ interface Config {
     lakeTableName: string;
     lakeApiEnv: 'dev' | 'test' | 'prod';
   };
+  /**
+   * Beacon `POST /api/ask` base URL for sp-transcript-record-processing.
+   * Override at deploy via SP_BEACON_API_URL. Empty disables Beacon (GoCode-only).
+   */
+  beaconApiUrl: string;
 }
 
 const devConfig: Config = {
@@ -241,6 +246,9 @@ const devConfig: Config = {
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Dev-Private-PowerUser',
     'arn:aws:iam::418549769352:role/GD-AWS-USA-GD-PioneerC1-Ops',
     'arn:aws:iam::694282668781:role/airobuilde-custom-dev-gocode-spend-sync-role',
+    // sp-transcript-ingest + sp-transcript-record-processing Lambdas assume the S2S IAM-JWT role to mint the sso-jwt for Beacon /api/ask.
+    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-sp-transcript-ingest-role',
+    'arn:aws:iam::694282668781:role/airobuilde-custom-dev-sp-transcript-record-processing-role',
   ],
   katanaEcsTaskRoleArn: [
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1046GlobalEcsTaskRoleCA367FA5', // pretest
@@ -340,6 +348,7 @@ const devConfig: Config = {
     // Laketest tables are registered in DLMS test (not dev API).
     lakeApiEnv: 'test',
   },
+  beaconApiUrl: process.env.SP_BEACON_API_URL ?? 'https://beacon.api.int.dev-gdcorp.tools',
 };
 
 const testConfig: Config = {
@@ -441,6 +450,7 @@ const testConfig: Config = {
     lakeTableName: '',
     lakeApiEnv: 'test',
   },
+  beaconApiUrl: process.env.SP_BEACON_API_URL ?? '',
 };
 
 const prodConfig: Config = {
@@ -481,6 +491,9 @@ const prodConfig: Config = {
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c40-onegroup',
     'arn:aws:iam::506695300582:role/pioneerc1-custom-pioneerc1-hybrid-instance-c41-onegroup',
     'arn:aws:iam::644094189644:role/airobuilde-custom-prod-gocode-spend-sync-role',
+    // sp-transcript-ingest + sp-transcript-record-processing Lambdas assume the S2S IAM-JWT role to mint the sso-jwt for Beacon /api/ask.
+    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-sp-transcript-ingest-role',
+    'arn:aws:iam::644094189644:role/airobuilde-custom-prod-sp-transcript-record-processing-role',
   ],
   katanaEcsTaskRoleArn: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment6030GlobalEcsTaskRole99409837', // airo builder ui prod
@@ -563,6 +576,7 @@ const prodConfig: Config = {
     lakeTableName: 'airo_builder_seo_quality_cln',
     lakeApiEnv: 'prod',
   },
+  beaconApiUrl: process.env.SP_BEACON_API_URL ?? '',
 };
 
 

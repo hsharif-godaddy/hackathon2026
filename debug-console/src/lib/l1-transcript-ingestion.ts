@@ -317,7 +317,7 @@ export async function parseXlsxFile(buffer: Buffer, filename?: string): Promise<
 
   if (!looksLikeHeaders) {
     logger.warn('supportplane.l1_transcript.ingestion.no_header_row', {
-      firstRowSample: firstRow.slice(0, 3),
+      firstRowCellCount: firstRow.length,
     });
     throw new Error(
       'CSV appears to have no header row. First row looks like data, not column names. ' +

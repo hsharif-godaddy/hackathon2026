@@ -42,6 +42,7 @@ on:
           - 'SeoQualityLakePartitionStack'
           - 'SeoQualityS3Stack'
           - 'SupportplaneDynamoStack'
+          - 'SupportplaneTranscriptIngestStack'
           - 'TransactionalEventsKinesisStack'
           - 'TransactionalEventsKMSStack'
           - 'WatchtowerStack'
@@ -151,8 +152,14 @@ jobs:
           cp .npmrc lambda/gocode-spend-essp-exporter/.npmrc
           cp .npmrc lambda/langfuse-metrics-essp-exporter/.npmrc
           cp .npmrc lambda/watchtower/.npmrc
-          # watchtower uses gd-auth-client (unscoped) — same fix as investigator below
+          # sp-transcript Lambdas live under debug-console/supportplane/lambdas (bundled by CDK fromAsset)
+          cp .npmrc ../debug-console/supportplane/lambdas/sp-transcript-ingest/.npmrc
+          cp .npmrc ../debug-console/supportplane/lambdas/sp-transcript-record-processing/.npmrc
+          # watchtower + sp-transcript-record-processing use gd-auth-client (unscoped); sp-transcript-ingest
+          # uses unscoped public deps (xlsx/uuid) — all need the default-registry redirect (same fix as investigator below)
           echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> lambda/watchtower/.npmrc
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> ../debug-console/supportplane/lambdas/sp-transcript-ingest/.npmrc
+          echo "registry=https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/" >> ../debug-console/supportplane/lambdas/sp-transcript-record-processing/.npmrc
           # investigator is a Docker Lambda image (not esbuild-bundled);
           # its Dockerfile bind-mounts this .npmrc to install gd-auth-client
           # from the private GoDaddy Artifactory registry. gd-auth-client
