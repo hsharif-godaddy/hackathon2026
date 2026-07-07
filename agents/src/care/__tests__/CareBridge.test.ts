@@ -1,9 +1,24 @@
-import { describe, it, expect } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { AgentClientError } from '@airo-care/client'
 import type { AiroCareClient } from '@airo-care/client'
 import { createCareBridge } from '../CareBridge.js'
 import type { BridgeEvent } from '../CareBridge.js'
 import { makeFakeClient, makeScriptedFakeClient } from './fixtures/fake-airo-care-client.js'
+import * as idpCache from '../../utils/idp-token-cache.js'
+import * as careAuth from '../careAuth.js'
+
+vi.mock('../../utils/idp-token-cache.js', () => ({
+  getIdpToken: vi.fn(),
+}))
+vi.mock('../careAuth.js', () => ({
+  getCareS2SToken: vi.fn(),
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(idpCache.getIdpToken).mockReturnValue('eyJ.mock.idp-token')
+  vi.mocked(careAuth.getCareS2SToken).mockResolvedValue('eyJ.s2s.token')
+})
 
 async function drain(iter: AsyncIterable<BridgeEvent>): Promise<BridgeEvent[]> {
   const out: BridgeEvent[] = []
@@ -39,7 +54,7 @@ describe('streamSupportTurn — happy path', () => {
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
     const events = await drain(bridge.streamSupportTurn({
       aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi',
@@ -61,7 +76,7 @@ describe('streamSupportTurn — happy path', () => {
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
     await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi 1' }))
     await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi 2' }))
@@ -73,9 +88,6 @@ describe('streamSupportTurn — happy path', () => {
 
 describe('streamSupportTurn — failure paths', () => {
   it('createConversation failure yields error chunk + complete with finishReason=error, invalidates session', async () => {
-    // Use a single bridge instance with a scripted fake: first create throws,
-    // second create succeeds. Driving two turns on the SAME bridge proves that
-    // invalidate() was called after the first failure.
     const fake = makeScriptedFakeClient({
       createScript: [
         { kind: 'throw', error: new AgentClientError('down', { fault: 'server', type: 'SERVICE_UNAVAILABLE', statusCode: 503 }) },
@@ -87,23 +99,17 @@ describe('streamSupportTurn — failure paths', () => {
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
-    // First turn: create fails → error chunk + complete.
     const events = await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi' }))
     expect(events.map(e => e.type)).toEqual(['chunk', 'complete'])
     expect((events[0] as { content: string }).content.length).toBeGreaterThan(0)
     expect((events[1] as { data: unknown }).data).toEqual({ finishReason: 'error' })
-    // Second turn on the SAME bridge: session was invalidated, so createConversation
-    // must be called again (total creates = 2).
     await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'retry' }))
     expect(fake.createCalls).toHaveLength(2)
   })
 
   it('stream-mid throw yields error chunk + complete with finishReason=error, invalidates session', async () => {
-    // Use a single bridge instance with a scripted fake: first stream throws
-    // mid-way, second stream succeeds. Two turns on the SAME bridge prove
-    // invalidate() was called after the mid-stream failure.
     const fake = makeScriptedFakeClient({
       createScript: [
         { kind: 'success', conversationId: 'care-conv-1' },
@@ -120,15 +126,12 @@ describe('streamSupportTurn — failure paths', () => {
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
-    // First turn: stream throws after one delta → partial chunk, error chunk, complete.
     const events = await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi' }))
     expect(events.map(e => e.type)).toEqual(['chunk', 'chunk', 'complete'])
     expect((events[0] as { content: string }).content).toBe('partial')
     expect((events[2] as { data: unknown }).data).toEqual({ finishReason: 'error' })
-    // Second turn on the SAME bridge: session was invalidated, so createConversation
-    // must be called again (total creates = 2).
     await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'retry' }))
     expect(fake.createCalls).toHaveLength(2)
   })
@@ -140,70 +143,39 @@ describe('streamSupportTurn — failure paths', () => {
         kind: 'events',
         events: [
           { eventId: 1, timestamp: 1, type: 'delta', textDelta: 'hi' },
-          // no 'result'
         ],
       },
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
     const events = await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi' }))
     expect(events.map(e => e.type)).toEqual(['chunk', 'complete'])
     expect((events[1] as { data: unknown }).data).toEqual({ finishReason: 'stop' })
   })
 
-  it.each([
-    ['empty string', ''],
-    ['non-UUID string', 'vis-1'],
-    ['contains semicolon', '3fa85f64-5717-4562-b3fc-2c963f66afa6;evil=1'],
-    ['contains comma', '3fa85f64-5717-4562-b3fc-2c963f66afa6,other'],
-  ])('invalid visitorId (%s) yields visitor-missing error chunk + complete with finishReason=error without calling Care', async (_label, badVisitorId) => {
-    const fake = makeFakeClient({
-      create: { kind: 'success', conversationId: 'care-conv-1' },
-      stream: { kind: 'events', events: [] },
-    })
-    const bridge = createCareBridge({
-      baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
-    })!
-    const events = await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: badVisitorId, message: 'hi' }))
-    expect(events.map(e => e.type)).toEqual(['chunk', 'complete'])
-    expect((events[0] as { content: string }).content).toMatch(/visitor session missing/i)
-    expect((events[1] as { data: unknown }).data).toEqual({ finishReason: 'error' })
-    // Care client must never be called for an invalid visitorId
-    expect(fake.createCalls).toHaveLength(0)
-    expect(fake.streamCalls).toHaveLength(0)
-  })
-
   it('caller abort: emits exactly one complete with finishReason=stop, does NOT invalidate the session', async () => {
-    // Simulate the SDK rejecting its streamMessage promise because AbortSignal fired.
-    // The bridge's outer catch block must branch on abortSignal.aborted:
-    //   - emit a clean complete (finishReason='stop'), not an error chunk
-    //   - do NOT invalidate the session (second turn still reuses careConversationId)
     const abortController = new AbortController()
     abortController.abort(new DOMException('Aborted', 'AbortError'))
 
     const fake = makeScriptedFakeClient({
       createScript: [
         { kind: 'success', conversationId: 'care-conv-1' },
-        // second turn create (reuse — should NOT be called if session is preserved)
         { kind: 'success', conversationId: 'care-conv-SHOULD-NOT-APPEAR' },
       ],
       streamScript: [
-        // First turn: push one delta then throw an AbortError (simulates SDK abort)
         {
           kind: 'throwAfter',
           events: [{ eventId: 1, timestamp: 1, type: 'delta', textDelta: 'partial answer' }],
           error: new DOMException('Aborted', 'AbortError'),
         },
-        // Second turn (non-aborted): completes normally
         { kind: 'events', events: [{ eventId: 1, timestamp: 1, type: 'result', output: '' }] },
       ],
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
 
     const collectedEvents: BridgeEvent[] = []
@@ -216,26 +188,21 @@ describe('streamSupportTurn — failure paths', () => {
       collectedEvents.push(e)
     }
 
-    // Terminal complete must be present with finishReason='stop'
     const completeEvents = collectedEvents.filter(e => e.type === 'complete')
     expect(completeEvents).toHaveLength(1)
     expect((completeEvents[0] as { data: unknown }).data).toEqual({ finishReason: 'stop' })
 
-    // No user-facing error copy — abort is a clean termination, not a failure
     const errorChunks = collectedEvents
       .filter(e => e.type === 'chunk')
       .map(e => (e as { content: string }).content)
       .filter(c => /lost connection|sorry.*problem/i.test(c))
     expect(errorChunks).toHaveLength(0)
 
-    // Session must NOT have been invalidated — a second turn on the SAME bridge
-    // with the same aabConversationId should NOT call createConversation again.
     await drain(bridge.streamSupportTurn({
       aabConversationId: 'aab-1',
       visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
       message: 'follow-up',
     }))
-    // Only 1 createConversation call total across both turns
     expect(fake.createCalls).toHaveLength(1)
   })
 })
@@ -249,21 +216,72 @@ describe('streamSupportTurn — in-stream Care error event', () => {
         events: [
           { eventId: 1, timestamp: 1, type: 'delta', textDelta: 'partial answer' },
           { eventId: 2, timestamp: 2, type: 'error', message: 'backend overloaded', fatal: false } as never,
-          // no 'result' — stream closes; post-loop guard emits synthetic complete
         ],
       },
     })
     const bridge = createCareBridge({
       baseURL: 'https://care.example', executor: 'v1/test',
-      clientFactory: () => fake as unknown as AiroCareClient,
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
     })!
     const events = await drain(bridge.streamSupportTurn({ aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi' }))
-    // delta chunk + error chunk + synthetic complete (no result event)
     expect(events.map(e => e.type)).toEqual(['chunk', 'chunk', 'complete'])
     expect((events[0] as { content: string }).content).toBe('partial answer')
-    // The error chunk must use a controlled string — NOT Care's raw diagnostic message
     const errorContent: string = (events[1] as { content: string }).content
     expect(errorContent).not.toContain('backend overloaded')
     expect(errorContent.length).toBeGreaterThan(0)
+  })
+})
+
+describe('streamSupportTurn — dual-auth', () => {
+  it('IDP cache miss yields error chunk + complete with finishReason=error', async () => {
+    vi.mocked(idpCache.getIdpToken).mockReturnValue(null)
+    const fake = makeFakeClient({
+      create: { kind: 'success', conversationId: 'care-conv-1' },
+      stream: { kind: 'events', events: [{ eventId: 1, timestamp: 1, type: 'result', output: '' }] },
+    })
+    const bridge = createCareBridge({
+      baseURL: 'https://care.example', executor: 'v1/test',
+      clientFactory: (_idpToken: string) => fake as unknown as AiroCareClient,
+    })!
+    const events = await drain(bridge.streamSupportTurn({
+      aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi',
+    }))
+    expect(events).toHaveLength(2)
+    expect(events[0]).toMatchObject({ type: 'chunk', content: expect.stringContaining('authentication expired') })
+    expect(events[1]).toMatchObject({ type: 'complete', data: { finishReason: 'error' } })
+    expect(fake.createCalls).toHaveLength(0)
+  })
+
+  it('IDP token from cache is forwarded to the client factory', async () => {
+    vi.mocked(idpCache.getIdpToken).mockReturnValue('eyJ.customer.token')
+    let receivedIdpToken: string | undefined
+    const fake = makeFakeClient({
+      create: { kind: 'success', conversationId: 'care-conv-1' },
+      stream: { kind: 'events', events: [{ eventId: 1, timestamp: 1, type: 'result', output: 'ok' }] },
+    })
+    const bridge = createCareBridge({
+      baseURL: 'https://care.example', executor: 'v1/test',
+      clientFactory: (idpToken: string) => { receivedIdpToken = idpToken; return fake as unknown as AiroCareClient },
+    })!
+    await drain(bridge.streamSupportTurn({
+      aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi',
+    }))
+    expect(vi.mocked(idpCache.getIdpToken)).toHaveBeenCalledWith('aab-1')
+    expect(receivedIdpToken).toBe('eyJ.customer.token')
+  })
+
+  it('default factory invokes getCareS2SToken with idpToken as delegatedFor', async () => {
+    vi.mocked(idpCache.getIdpToken).mockReturnValue('eyJ.customer.token')
+    vi.mocked(careAuth.getCareS2SToken).mockResolvedValue('eyJ.s2s.token')
+    // Stub fetch so the real AiroCareClient fails fast after auth headers are applied —
+    // applyAuth (which calls getCareS2SToken) runs before the fetch, so the mock is still called.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 400 })))
+    const bridge = createCareBridge({ baseURL: 'https://care.example', executor: 'v1/test' })!
+    const events = await drain(bridge.streamSupportTurn({
+      aabConversationId: 'aab-1', visitorId: '3fa85f64-5717-4562-b3fc-2c963f66afa6', message: 'hi',
+    }))
+    vi.unstubAllGlobals()
+    expect(vi.mocked(careAuth.getCareS2SToken)).toHaveBeenCalled()
+    expect(events.at(-1)).toMatchObject({ type: 'complete', data: { finishReason: 'error' } })
   })
 })

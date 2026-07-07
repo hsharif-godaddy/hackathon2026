@@ -42,7 +42,7 @@ catalog:
   '@ai-sdk/provider': ^3.0.10
 
   # Shared runtime
-  '@airo-care/client': 1.0.2
+  '@airo-care/client': 1.1.0
   '@astrojs/check': ^0.9.9
   '@aws-sdk/client-dynamodb': ^3.1075.0
   '@aws-sdk/client-lambda': ^3.1075.0

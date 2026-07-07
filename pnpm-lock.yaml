@@ -13,8 +13,8 @@ catalogs:
       specifier: ^3.0.10
       version: 3.0.10
     '@airo-care/client':
-      specifier: 1.0.2
-      version: 1.0.2
+      specifier: 1.1.0
+      version: 1.1.0
     '@astrojs/check':
       specifier: ^0.9.9
       version: 0.9.9
@@ -402,7 +402,7 @@ importers:
         version: 1.0.42(zod@4.4.3)
       '@airo-care/client':
         specifier: 'catalog:'
-        version: 1.0.2
+        version: 1.1.0
       '@airo/ai-common':
         specifier: workspace:*
         version: link:../packages/ai-common
@@ -2238,8 +2238,8 @@ packages:
     resolution: {integrity: sha512-Q3BZ27qfpYqnCYGvE3vt+Qi6LGOF9R5Nmzn+9JoM1lCRsD9mYaIhfJLkSunN48nfGXJ6n+XNV0J/XVpqGQl7Dw==}
     engines: {node: '>=18'}
 
-  '@airo-care/client@1.0.2':
-    resolution: {integrity: sha512-tTORmyY7Gxo4/livTwsnyOOMKBKCIfen9mH6gD/KFCBGIFgUMfF11RGj62VbHrf4HQPpy6aJazzMivF0Pc8jVQ==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-care/client/-/@airo-care/client-1.0.2.tgz}
+  '@airo-care/client@1.1.0':
+    resolution: {integrity: sha512-l1WnsZBZW+a0UI3BZVnuXx/2EAcbgiWwncoE8G8ff+Y9GMieXWgOTF99qt1Kz6fv/MPK+92Xl+E9IfPi8L9rmw==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-care/client/-/@airo-care/client-1.1.0.tgz}
 
   '@airo-ux/loader@2.1.1':
     resolution: {integrity: sha512-cfeWd9ifTUYOkta9l+Lfccumc8sE0PBmX36uaw/qaQoAlDFqmAlQHBOzzU3eWOb1nfVKncx3GdKhO/ERH+gDOg==, tarball: https://gdartifactory1.jfrog.io/artifactory/api/npm/node-virt/@airo-ux/loader/-/@airo-ux/loader-2.1.1.tgz}
@@ -14888,7 +14888,7 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@airo-care/client@1.0.2': {}
+  '@airo-care/client@1.1.0': {}
 
   '@airo-ux/loader@2.1.1(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(typescript@5.9.3)':
     dependencies:

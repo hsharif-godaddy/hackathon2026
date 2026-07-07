@@ -1,4 +1,4 @@
-import { AiroCareClient, CookieAuthenticator } from '@airo-care/client'
+import { AiroCareClient, S2SDelegatedAuthenticator } from '@airo-care/client'
 import type { StreamMessageEvents } from '@airo-care/client'
 import { errorFields, logger } from '../logging/index.js'
 import { CareSessionStore } from './CareSessionStore.js'
@@ -6,14 +6,12 @@ import type { CareSession } from './CareSessionStore.js'
 import { createEventQueue } from './event-queue.js'
 import { translateCareEvent, terminalCompleteEvent, type BridgeEvent, type TranslateCtx } from './translator.js'
 import { userFacingErrorMessage } from './errors.js'
+import { getCareS2SToken } from './careAuth.js'
+import { getIdpToken } from '../utils/idp-token-cache.js'
 
 export type { BridgeEvent } from './translator.js'
 
 const AGENT_NAME = 'support'
-
-// UUID v4 pattern — used to validate visitorId before interpolating into the
-// Cookie header to prevent header injection via delimiter characters (`;`, `,`).
-const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export interface SupportTurnInput {
   aabConversationId: string
@@ -24,28 +22,17 @@ export interface SupportTurnInput {
 
 export interface CareBridge {
   streamSupportTurn(input: SupportTurnInput): AsyncIterable<BridgeEvent>
-  /** Stop the background TTL sweep interval. Call on graceful shutdown. */
   dispose(): void
 }
 
 export interface CareBridgeConfig {
   baseURL: string
   executor: string
-  /**
-   * Test seam — production builds use the default factory which constructs
-   * a real AiroCareClient with the provided visitor cookie. Tests inject
-   * a fake to avoid real network calls.
-   */
-  clientFactory?: (visitorId: string) => AiroCareClient
+  clientFactory?: (idpToken: string) => AiroCareClient
 }
 
-type BuildClient = (visitorId: string) => AiroCareClient
+type BuildClient = (idpToken: string) => AiroCareClient
 
-/**
- * Build the Care bridge. Returns null when baseURL is empty so callers
- * can degrade cleanly to a "Care not configured" inline error chunk in
- * environments where Care credentials are not provisioned.
- */
 export function createCareBridge(config: CareBridgeConfig): CareBridge | null {
   if (!config.baseURL) {
     logger.warn('care.bridge.disabled', { reason: 'missing_baseURL' })
@@ -54,41 +41,34 @@ export function createCareBridge(config: CareBridgeConfig): CareBridge | null {
 
   const store = new CareSessionStore()
 
-  // Background TTL sweep: remove sessions idle longer than 1 hour, checked
-  // every 5 minutes. This is a process-lifetime daemon — call dispose() on
-  // shutdown to clear the interval.
-  const SWEEP_TTL_MS: number = 60 * 60 * 1000 // 1 hour
-  const SWEEP_INTERVAL_MS: number = 5 * 60 * 1000 // 5 minutes
+  const SWEEP_TTL_MS: number = 60 * 60 * 1000
+  const SWEEP_INTERVAL_MS: number = 5 * 60 * 1000
   const sweepInterval: ReturnType<typeof setInterval> = setInterval(() => {
     const removed: number = store.sweep(SWEEP_TTL_MS)
     const remaining: number = store.size()
     logger.info('care.session_store.swept', { removed, remaining, maxAgeMs: SWEEP_TTL_MS })
   }, SWEEP_INTERVAL_MS)
-  // Prevent interval from keeping the process alive when all else has shut down.
-  sweepInterval.unref()
+  sweepInterval.unref() // prevent interval from keeping the process alive after all else has shut down
 
-  const buildClient: BuildClient = config.clientFactory ?? ((visitorId: string): AiroCareClient =>
+  const buildClient: BuildClient = config.clientFactory ?? ((idpToken: string): AiroCareClient =>
     new AiroCareClient({
       baseURL: config.baseURL,
       executor: config.executor,
-      authenticator: new CookieAuthenticator(`visitor=vid=${visitorId}`),
+      authenticator: new S2SDelegatedAuthenticator(async () => ({
+        s2sToken: await getCareS2SToken(),
+        delegatedFor: idpToken,
+      })),
     }))
 
   async function* streamSupportTurn(input: SupportTurnInput): AsyncGenerator<BridgeEvent, void, void> {
-    const { aabConversationId, visitorId, message, abortSignal } = input
+    const { aabConversationId, message, abortSignal } = input
 
-    // Validate visitorId as UUID v4 before interpolating into the Cookie header.
-    // An invalid value (empty string, non-UUID, or containing `;`/`,` delimiters)
-    // would inject extra cookie pairs and is treated as a missing visitor session.
-    if (!UUID_V4_RE.test(visitorId)) {
-      logger.error('care.bridge.invalid_visitor_id', {
-        aabConversationId,
-        visitorIdLength: visitorId.length,
-      })
-      store.invalidate(aabConversationId)
+    const idpToken: string | null = getIdpToken(aabConversationId)
+    if (!idpToken) {
+      logger.warn('care.bridge.idp_cache_miss', { aabConversationId })
       yield {
         type: 'chunk',
-        content: 'Sorry, support is unavailable — visitor session missing. Reload and try again.',
+        content: 'Sorry, support is unavailable — authentication expired. Reload and try again.',
         data: {},
         agentName: AGENT_NAME,
         conversationId: aabConversationId,
@@ -99,7 +79,7 @@ export function createCareBridge(config: CareBridgeConfig): CareBridge | null {
 
     const session: CareSession = store.getOrInit(aabConversationId)
     const translateCtx: TranslateCtx = { agentName: AGENT_NAME, conversationId: aabConversationId }
-    const client: AiroCareClient = buildClient(visitorId)
+    const client: AiroCareClient = buildClient(idpToken)
 
     if (!session.careConversationId) {
       const startedAt: number = Date.now()

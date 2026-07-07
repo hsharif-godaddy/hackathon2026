@@ -2,6 +2,7 @@ import { getS2STokenV2, isS2SAuthV2Enabled, refreshS2STokenV2, type S2SAuthV2Con
 
 import { log, Logger } from '../../../logging/index.js';
 import { decodeJwtExp } from '../../../utils/jwt-expiry.js';
+import { getDefaultS2SConfigV2 } from '../../../utils/s2s-config.js';
 
 export interface BaseDriverV2Config {
   serviceName: string;
@@ -35,10 +36,7 @@ export abstract class BaseDriverV2 {
     this.appKey = envAppKey || config.defaultAppKey || 'airo-app-builder';
 
     this.useS2S = isS2SAuthV2Enabled();
-    this.s2sConfig = {
-      awsProfile: process.env.S2S_AWS_PROFILE || 'gocode',
-      ssoHost: process.env.SSO_HOST || 'sso.test-godaddy.com',
-    };
+    this.s2sConfig = getDefaultS2SConfigV2();
     this.localSsoJwt = process.env.SSO_JWT || '';
 
     this.logger.info(`base-driver-v2.${config.serviceName}.config.initialized`, {
