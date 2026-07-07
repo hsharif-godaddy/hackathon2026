@@ -1,0 +1,69 @@
+name: V8 Template Sync Check
+
+# Advisory re-run of the pre-commit template-sync validator
+# (scripts/validate-template-sync.mjs) in CI. The pre-commit hook is
+# client-side and can be bypassed with `git commit --no-verify` or an
+# ALLOW_* override (this is how PR #6107 landed unsynced app-templates/v8
+# changes). This job re-runs the same checks against the PR diff so a
+# bypass surfaces as a failing check for approvers.
+#
+# It is intentionally NOT a required status check — a red result is a
+# heads-up that the local hook was skipped, not a hard merge gate.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "app-templates/v8/**"
+      - "container-scripts/preview/sync-template-files.js"
+      - "agents/src/skills/ssr-migration/templates/**"
+      - "scripts/validate-template-sync.mjs"
+      - ".github/workflows/v8-template-sync-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  v8-template-sync-check:
+    runs-on:
+      labels:
+        - airo-cicd-runners
+        - self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Full history so the merge-base of the PR base and head is
+          # reachable — the validator diffs merge-base..head.
+          fetch-depth: 0
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+
+      - name: Validate v8 template changes against SYNC_MANIFEST
+        env:
+          TEMPLATE_SYNC_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TEMPLATE_SYNC_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/validate-template-sync.mjs
+
+      - name: Explain failure to reviewers
+        if: failure()
+        run: |
+          {
+            echo "## ⚠️ V8 template sync check failed"
+            echo ""
+            echo "The pre-commit \`template-sync\` hook appears to have been bypassed for this PR"
+            echo "(via \`git commit --no-verify\` or an \`ALLOW_*\` override)."
+            echo ""
+            echo "This means one or more \`app-templates/v8\` changes do not reconcile with the"
+            echo "\`SYNC_MANIFEST\` in \`container-scripts/preview/sync-template-files.js\`. Customer"
+            echo "apps only receive updates for files listed in that manifest, so unreconciled"
+            echo "changes risk silent base-template drift."
+            echo ""
+            echo "**This is advisory, not a merge gate.** Review the flagged changes in the job"
+            echo "log above and confirm the bypass was intentional before merging."
+          } >> "$GITHUB_STEP_SUMMARY"

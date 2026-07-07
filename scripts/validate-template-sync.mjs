@@ -105,6 +105,65 @@ const MANIFEST_PATH = 'container-scripts/preview/sync-template-files.js';
 // that should NOT be silently swallowed.
 const GIT_NOT_FOUND_EXIT = 128;
 
+// CI mode. The default (local pre-commit) execution compares the staged
+// index against HEAD. When run in CI there is no staged index — the check
+// must instead compare the PR's base against its head. Set both env vars
+// (from a workflow) to switch modes:
+//   TEMPLATE_SYNC_BASE_SHA - the PR base commit (e.g. pull_request.base.sha)
+//   TEMPLATE_SYNC_HEAD_SHA - the PR head commit (e.g. pull_request.head.sha)
+// In CI the diff is computed with `git diff <merge-base> <head>` — the
+// two-dot form against an explicitly-resolved merge-base, which is
+// equivalent to `git diff base...head` but keeps the merge-base resolution
+// (and its error handling in resolveCiRange) explicit rather than hidden
+// inside `...` syntax. It captures the changes the PR actually introduces:
+// the "new" version of a file resolves to HEAD_SHA, and the "previous"
+// version to the merge-base — the exact analogues of index and HEAD in
+// local mode.
+const CI_BASE_SHA = process.env.TEMPLATE_SYNC_BASE_SHA || '';
+const CI_HEAD_SHA = process.env.TEMPLATE_SYNC_HEAD_SHA || '';
+const CI_MODE = CI_BASE_SHA !== '' && CI_HEAD_SHA !== '';
+
+function defaultRunMergeBase(baseSha, headSha) {
+  return execFileSync('git', ['merge-base', baseSha, headSha], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+}
+
+/**
+ * Resolve the merge-base of the PR base and head. Returns a result object
+ * ({ ok, mergeBase } | { ok: false, error }) rather than throwing, so
+ * module load never crashes: this module is also imported by the unit
+ * test, and a failure to shell out must not take down the import. main()
+ * turns an { ok: false } into a clean, labeled non-zero exit.
+ *
+ * Only touches git when ciMode is set — local (index-vs-HEAD) runs and
+ * plain imports never shell out. Params default to the module-level env
+ * config and the real git call; the unit test injects a fake runMergeBase
+ * to exercise the success/empty/throw branches without git.
+ */
+export function resolveCiRange({
+  ciMode = CI_MODE,
+  baseSha = CI_BASE_SHA,
+  headSha = CI_HEAD_SHA,
+  runMergeBase = defaultRunMergeBase
+} = {}) {
+  if (!ciMode) return { ok: true, mergeBase: null };
+  try {
+    const mergeBase = runMergeBase(baseSha, headSha).trim();
+    // git merge-base exits 1 (not 128) with empty output when the two
+    // commits share no common ancestor — treat that as a resolution
+    // failure rather than diffing against an empty ref.
+    if (!mergeBase) return { ok: false, error: 'no common ancestor between base and head' };
+    return { ok: true, mergeBase };
+  } catch (err) {
+    const detail = err && err.stderr ? err.stderr.toString().trim() : (err && err.message) || String(err);
+    return { ok: false, error: detail };
+  }
+}
+
+const CI_RANGE = resolveCiRange();
+
 function md5(content) {
   return createHash('md5').update(content).digest('hex');
 }
@@ -133,37 +192,46 @@ function gitShow(spec) {
 }
 
 /**
- * Read the staged (index) version of a file. Returns null if the file
- * is not in the index (e.g., staged for deletion or never tracked).
+ * Read the "new" version of a file — the one this change proposes.
+ * Local mode: the staged (index) version. CI mode: the version at
+ * HEAD_SHA. Returns null if the file is absent there (e.g. staged for
+ * deletion, or never tracked).
  */
 function readStaged(file) {
-  return gitShow(`:${file}`);
+  return gitShow(CI_MODE ? `${CI_HEAD_SHA}:${file}` : `:${file}`);
 }
 
 /**
- * Read the HEAD version of a file. Returns null if the file did not
- * exist on HEAD.
+ * Read the "previous" version of a file — the one this change is measured
+ * against. Local mode: the version on HEAD. CI mode: the version at the
+ * PR's merge-base. Returns null if the file did not exist there.
  */
 function readHead(file) {
-  return gitShow(`HEAD:${file}`);
+  return gitShow(CI_MODE ? `${CI_RANGE.mergeBase}:${file}` : `HEAD:${file}`);
 }
 
 /**
- * Get staged changes as [{ status, path, oldPath? }] entries.
+ * Get the changes to validate as [{ status, path, oldPath? }] entries.
  * status is one of A, M, D, R (rename), C (copy), T (type).
+ *
+ * Local mode: the staged changes (git diff --cached). CI mode: the
+ * changes the PR introduces (git diff over merge-base..head).
  *
  * Returns null on git failure (e.g., GUI client without git on PATH);
  * caller should treat null as "skip validation, log a warning".
  */
 function getStagedChanges() {
+  const diffArgs = CI_MODE
+    ? ['diff', '--name-status', CI_RANGE.mergeBase, CI_HEAD_SHA]
+    : ['diff', '--cached', '--name-status'];
   let output;
   try {
-    output = execFileSync('git', ['diff', '--cached', '--name-status'], {
+    output = execFileSync('git', diffArgs, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe']
     });
   } catch (err) {
-    console.error(`${RED}[template-sync] Could not run git diff --cached: ${err.message}${RESET}`);
+    console.error(`${RED}[template-sync] Could not run git ${diffArgs.join(' ')}: ${err.message}${RESET}`);
     console.error('  Validator skipped. If this is a GUI git client, ensure git is on PATH.');
     return null;
   }
@@ -375,15 +443,18 @@ function checkHashDrift(changes, manifest) {
 
     const previousContent = readHead(change.path);
     if (previousContent === null) {
-      // M/T means "modified relative to HEAD", so HEAD MUST have this
-      // file. A null here means git returned exit 128 for some reason
-      // OTHER than legitimate not-found (e.g., bad object / corrupt
-      // pack). Fail loudly rather than silently skipping the hash check.
+      // M/T means "modified relative to the previous version", so that
+      // version MUST have this file. A null here means git returned exit
+      // 128 for some reason OTHER than legitimate not-found (e.g., bad
+      // object / corrupt pack). Fail loudly rather than silently skipping
+      // the hash check. The "previous" ref is HEAD locally, the merge-base
+      // in CI.
+      const previousRef = CI_MODE ? CI_RANGE.mergeBase : 'HEAD';
       ok = false;
       console.error(
-        `${RED}${BOLD}[template-sync] Could not read HEAD:${change.path}${RESET}`
+        `${RED}${BOLD}[template-sync] Could not read ${previousRef}:${change.path}${RESET}`
       );
-      console.error('  This file is staged as modified but its HEAD version could not');
+      console.error('  This file is marked modified but its previous version could not');
       console.error('  be retrieved. The repository may be corrupt, or the file may');
       console.error('  have been added in a prior staged commit. Investigate before');
       console.error('  bypassing — silent skip would let drift slip through.');
@@ -580,7 +651,16 @@ export function checkSsrSkillTemplateSync(changes, readers = {}) {
     const skillContent = skillStaged ? rs(pair.skillPath) : rh(pair.skillPath);
     const v8Content = v8Staged ? rs(pair.v8Path) : rh(pair.v8Path);
 
-    if (skillContent === null || v8Content === null) continue;
+    if (skillContent === null || v8Content === null) {
+      // One side of a touched pair could not be read (e.g. a paired file
+      // absent at the resolved ref while its counterpart changed). The
+      // deletion/untracked guards cover most of these, but silently
+      // dropping the pair from the equality check would hide the gap — so
+      // surface it in the log rather than skipping invisibly.
+      const missing = skillContent === null ? pair.skillPath : pair.v8Path;
+      console.warn(`${YELLOW}[template-sync] Skipping SSR pair sync check — could not read ${missing}${RESET}`);
+      continue;
+    }
     if (skillContent !== v8Content) failures.push(pair);
   }
 
@@ -604,9 +684,51 @@ export function checkSsrSkillTemplateSync(changes, readers = {}) {
   return false;
 }
 
+/**
+ * Build the reader overrides handed to checkSsrSkillTemplateSync.
+ *
+ * In CI the "unchanged" side of a skill/v8 pair must be read at the PR head
+ * (its content in the resulting tree), not the merge-base — otherwise a pair
+ * the PR leaves untouched could be compared against a stale baseline. So the
+ * CI readHead override resolves to HEAD_SHA, matching readStaged. Local mode
+ * needs no override: for an unstaged file the index and HEAD are identical,
+ * so the default readHead already reads current content.
+ *
+ * Params default to the module-level env config and the real gitShow; the
+ * unit test injects a fake `show` to assert the CI override reads at HEAD.
+ */
+export function buildSsrReaders({ ciMode = CI_MODE, headSha = CI_HEAD_SHA, show = gitShow } = {}) {
+  if (!ciMode) return {};
+  return { readHead: (file) => show(`${headSha}:${file}`) };
+}
+
 function main() {
+  if (CI_MODE) {
+    if (!CI_RANGE.ok) {
+      console.error(`${RED}${BOLD}[template-sync] Could not resolve the PR diff range in CI${RESET}`);
+      console.error(`  git merge-base ${CI_BASE_SHA} ${CI_HEAD_SHA}: ${CI_RANGE.error}`);
+      console.error('  Ensure the workflow checks out full history (fetch-depth: 0) so both');
+      console.error('  the base and head commits are reachable.');
+      return 1;
+    }
+    console.log(`${CYAN}[template-sync] CI mode: validating v8 template changes over ${CI_RANGE.mergeBase.slice(0, 12)}..${CI_HEAD_SHA.slice(0, 12)}${RESET}`);
+    console.log('  This mirrors the pre-commit template-sync hook. A failure here means the');
+    console.log('  local hook was bypassed (--no-verify or an ALLOW_* override) — review the');
+    console.log('  flagged v8 changes before merging.');
+  }
+
   const changes = getStagedChanges();
-  if (changes === null) return 0; // git unavailable; warning already logged
+  if (changes === null) {
+    // In CI the CI_RANGE.ok gate above already ran `git merge-base`
+    // successfully, so git IS available and both refs ARE reachable — a
+    // null here is a real git failure (corrupt repo, killed subprocess,
+    // transient I/O), not the local "GUI client without git on PATH" skip
+    // the fallthrough was written for. Passing (exit 0) on an internal
+    // error would make the advisory check go green on a bypass it never
+    // actually validated, so fail loudly instead.
+    if (CI_MODE) return 1;
+    return 0; // local: git unavailable (e.g. GUI client); warning already logged
+  }
 
   const ssrSkillPaths = new Set(SSR_SKILL_TEMPLATE_PAIRS.flatMap((p) => [p.skillPath, p.v8Path]));
   const relevant = changes.some(
@@ -614,7 +736,7 @@ function main() {
   );
   if (!relevant) return 0;
 
-  const ssrSkillOk = checkSsrSkillTemplateSync(changes);
+  const ssrSkillOk = checkSsrSkillTemplateSync(changes, buildSsrReaders());
 
   const v8Relevant = changes.some((c) => isInTemplate(c.path) || (c.oldPath && isInTemplate(c.oldPath)));
   if (!v8Relevant) return ssrSkillOk ? 0 : 1;
