@@ -441,7 +441,7 @@ export function BookingDetailsForm({
                 {requiresPayment ? "Redirecting to payment…" : "Booking…"}
               </>
             ) : requiresPayment ? (
-              `Pay $${parseFloat(service.cost ?? "0").toFixed(2)}`
+              `Pay ${formatCost(String(finalTotal), currency)}`
             ) : (
               (submitLabel ?? bookingConfig.submitLabel)
             )}
