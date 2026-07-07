@@ -6,7 +6,10 @@
  * (Code view file-op state, todo-list updates, project-name sync).
  */
 
+import type { QueryClient } from '@tanstack/react-query';
+
 import { CanvasId } from '@/app/[market]/commander/canvas/registry';
+import { CAMPAIGNS_QUERY_KEY } from '@/app/[market]/develop/components/settings/Campaigns/campaigns-cache';
 import { ViewMode } from '@/app/[market]/develop/components/types';
 import {
   extractLogosFromToolResult,
@@ -406,6 +409,33 @@ export async function handleToolResultSideEffects(
       }
       if (!hasError && filePaths.some((p) => p.startsWith('docs/') && p.endsWith('.md'))) {
         window.dispatchEvent(new CustomEvent('docs-list-changed'));
+      }
+    }
+  }
+
+  if (
+    (tool.name === 'campaignCreate' ||
+      tool.name === 'marketing-campaigns__campaignCreate' ||
+      tool.name === 'campaignPlanCreate' ||
+      tool.name === 'marketing-campaigns__campaignPlanCreate') &&
+    !hasError &&
+    appId
+  ) {
+    const queryClient: QueryClient | null = getQueryClient();
+    if (!queryClient) {
+      logger.warn('toolSideEffects.campaign.cacheInvalidation.skipped.noQueryClient', {
+        appId,
+        toolName: tool.name,
+      });
+    } else {
+      try {
+        await queryClient.invalidateQueries({ queryKey: [CAMPAIGNS_QUERY_KEY, appId] });
+      } catch (err) {
+        logger.warn('toolSideEffects.campaign.cacheInvalidation.failed', {
+          appId,
+          toolName: tool.name,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }

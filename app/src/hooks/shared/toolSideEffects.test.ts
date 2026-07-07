@@ -3,6 +3,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
 
 const {
   mockShipAnalyticsLog,
@@ -24,6 +25,7 @@ const {
   mockEnqueue,
   mockMarkProcessing,
   mockFlags,
+  mockGetQueryClient,
 } = vi.hoisted(() => {
   const mockLogImpressionEventInner = vi.fn();
   return {
@@ -46,6 +48,7 @@ const {
     mockEnqueue: vi.fn(),
     mockMarkProcessing: vi.fn(),
     mockFlags: { multipage: true },
+    mockGetQueryClient: vi.fn(() => null),
   };
 });
 
@@ -115,7 +118,7 @@ vi.mock('@/stores/useTodoListStore', () => ({
 }));
 
 vi.mock('@/components/providers/QueryClientProvider', () => ({
-  getQueryClient: vi.fn(() => null),
+  getQueryClient: mockGetQueryClient,
 }));
 
 vi.mock('@/hooks/shared/contextGatheringTracker', () => ({
@@ -160,6 +163,7 @@ beforeEach(() => {
   mockGetSelectedCommitHash.mockReturnValue(null);
   mockReadIntentCategoryFromSession.mockReturnValue(undefined);
   mockLogImpressionEvent.mockReturnValue(mockLogImpressionEventInner);
+  mockGetQueryClient.mockReturnValue(null);
   mockStreamingState.streamingState = 'idle';
   mockStreamingState.activeStream = null;
   mockFlags.multipage = true;
@@ -836,5 +840,60 @@ describe('handleToolResultSideEffects — stripe__setup payment funnel', () => {
       'payment.setup.verified',
       expect.anything()
     );
+  });
+});
+
+describe('handleToolResultSideEffects — campaignPlanCreate cache invalidation', () => {
+  const mockInvalidateQueries = vi.fn();
+
+  beforeEach(() => {
+    mockGetQueryClient.mockReturnValue(
+      { invalidateQueries: mockInvalidateQueries } as Pick<QueryClient, 'invalidateQueries'>
+    );
+  });
+
+  it('invalidates the campaigns query cache on success', async () => {
+    await handleToolResultSideEffects({ name: 'campaignPlanCreate' }, 'app-1');
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['campaigns', 'app-1'] });
+  });
+
+  it('invalidates using the skill-prefixed tool name', async () => {
+    await handleToolResultSideEffects(
+      { name: 'marketing-campaigns__campaignPlanCreate' },
+      'app-1'
+    );
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['campaigns', 'app-1'] });
+  });
+
+  it('invalidates on campaignCreate', async () => {
+    await handleToolResultSideEffects({ name: 'campaignCreate' }, 'app-1');
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['campaigns', 'app-1'] });
+  });
+
+  it('invalidates using the skill-prefixed campaignCreate tool name', async () => {
+    await handleToolResultSideEffects(
+      { name: 'marketing-campaigns__campaignCreate' },
+      'app-1'
+    );
+
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['campaigns', 'app-1'] });
+  });
+
+  it('does not invalidate when the tool errored', async () => {
+    await handleToolResultSideEffects(
+      { name: 'campaignPlanCreate', is_error: true },
+      'app-1'
+    );
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('does not invalidate when appId is null', async () => {
+    await handleToolResultSideEffects({ name: 'campaignPlanCreate' }, null);
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
   });
 });
