@@ -46,8 +46,14 @@ vi.mock('../../../../../skills/commerce/checkout-guard-workspace.js', () => ({
   runCheckoutGuardOnWorkspace: mockRunCheckoutGuardOnWorkspace,
 }));
 
-const { provisionTool, storeChannelsGetTool, storeGetTool, storeListTool, tools, hooks } =
-  await import('../index.js');
+const {
+  provisionTool,
+  storeChannelsGetTool,
+  storeGetTool,
+  storeListTool,
+  tools,
+  hooks,
+} = await import('../index.js');
 
 import { createStubWorkspaceFiles } from '../../../../../workspace/__tests__/test-workspace-files.js';
 
@@ -225,62 +231,11 @@ describe('GoDaddy Payments skill MCP tools', () => {
           storeId: 'store-1',
           channelId: 'channel-1',
           paymentSetupReady: true,
-          NEXT_STEP: expect.stringContaining(
-            "skill({ action: 'install', skill: 'payment/godaddy-payments' })"
-          ),
+          NEXT_STEP: expect.stringContaining("skill({ action: 'install', skill: 'payment/godaddy-payments' })"),
         })
       );
       expect(result).not.toHaveProperty('requiredNextActions');
       expect(result).not.toHaveProperty('forbiddenActions');
-    });
-
-    it('carries the confirmed sellingCountry into the install next-step action', async () => {
-      const savedBinding = {
-        appId: 'app-1',
-        businessId: 'business-1',
-        storeId: 'store-1',
-        channelId: 'channel-1',
-        status: 'channel_ready',
-        source: 'tool_channel_ensure',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      mockFindBindingByAppId.mockReturnValue(savedBinding);
-      mockExecuteAction.mockResolvedValueOnce({
-        success: true,
-        result: {
-          structuredContent: {
-            data: {
-              storeId: 'store-1',
-              displayName: 'Shop',
-              paymentsManualSetupRequired: false,
-            },
-          },
-        },
-      });
-
-      const result = (await runTool(
-        provisionTool,
-        { sellingCountry: 'us' },
-        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      )) as Record<string, unknown>;
-
-      expect(result.NEXT_STEP).toContain(
-        "skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' })"
-      );
-    });
-
-    it('fails closed without provisioning when sellingCountry is not US/CA', async () => {
-      const result = (await runTool(
-        provisionTool,
-        { sellingCountry: 'au' },
-        { socketId: 'socket-1', metadata: { appId: 'app-1' } }
-      )) as string;
-
-      expect(typeof result).toBe('string');
-      expect(result).toContain('United States or Canada');
-      expect(result).toContain("'AU'");
-      expect(mockExecuteAction).not.toHaveBeenCalled();
     });
 
     it('returns payments_manual_required from the existing binding verification path', async () => {
@@ -565,10 +520,7 @@ describe('GoDaddy Payments skill MCP tools', () => {
       };
       mockRunCheckoutGuardOnWorkspace.mockResolvedValue(guardResult);
 
-      const result = await hooks.onInstall?.({
-        skillName: 'payment/godaddy-payments',
-        appId: 'app-1',
-      });
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' });
 
       expect(mockRunCheckoutGuardOnWorkspace).toHaveBeenCalledWith('app-1');
       expect(result).toEqual({
@@ -582,31 +534,19 @@ describe('GoDaddy Payments skill MCP tools', () => {
         status: 'failed',
         findings: [
           { code: 'order_status_not_wired', severity: 'error', message: 'order-status not wired' },
-          {
-            code: 'success_page_missing_paid_status_gate',
-            severity: 'warning',
-            message: 'no paid gate',
-          },
-          {
-            code: 'checkout_response_redirect_url',
-            severity: 'error',
-            message: 'wrong redirect field',
-            path: 'src/checkout.tsx',
-          },
+          { code: 'success_page_missing_paid_status_gate', severity: 'warning', message: 'no paid gate' },
+          { code: 'checkout_response_redirect_url', severity: 'error', message: 'wrong redirect field', path: 'src/checkout.tsx' },
         ],
         paymentTemplatesInstalled: true,
         commerceUiTemplatesInstalled: false,
       };
       mockRunCheckoutGuardOnWorkspace.mockResolvedValue(guardResult);
 
-      const result = (await hooks.onInstall?.({
-        skillName: 'payment/godaddy-payments',
-        appId: 'app-1',
-      })) as Record<string, unknown>;
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' }) as Record<string, unknown>;
 
-      expect(
-        (result.findings as unknown[]).map((f: unknown) => (f as Record<string, unknown>).code)
-      ).toEqual(['checkout_response_redirect_url']);
+      expect((result.findings as unknown[]).map((f: unknown) => (f as Record<string, unknown>).code)).toEqual([
+        'checkout_response_redirect_url',
+      ]);
       expect(result.status).toBe('failed');
       expect(result.NEXT_STEP).toEqual(expect.stringContaining('commerce__validate_checkout'));
     });
@@ -614,10 +554,7 @@ describe('GoDaddy Payments skill MCP tools', () => {
     it('returns null and does not throw when runCheckoutGuardOnWorkspace throws', async () => {
       mockRunCheckoutGuardOnWorkspace.mockRejectedValue(new Error('workspace unavailable'));
 
-      const result = await hooks.onInstall?.({
-        skillName: 'payment/godaddy-payments',
-        appId: 'app-1',
-      });
+      const result = await hooks.onInstall?.({ skillName: 'payment/godaddy-payments', appId: 'app-1' });
 
       expect(result).toBeNull();
     });

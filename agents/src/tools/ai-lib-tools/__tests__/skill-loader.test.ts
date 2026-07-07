@@ -13,44 +13,19 @@ vi.mock('../../../logging/index.js', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-    debug: vi.fn(),
-  },
+    debug: vi.fn()
+  }
 }));
 
 // Hoisted mocks for use inside vi.mock factories
-const {
-  mockRunHook,
-  mockRegisterSkill,
-  mockUnloadSkill,
-  mockLoadSkill,
-  mockListSkills,
-  mockInstallTemplates,
-  mockLoadReference,
-  mockFindById,
-  mockIsSkillAvailableInMarket,
-  mockEmitSkillAction,
-  mockCreateSkillAction,
-  mockRecordInstall,
-  mockRecordComplete,
-} = vi.hoisted(() => ({
+const { mockRunHook, mockRegisterSkill, mockUnloadSkill, mockLoadSkill, mockListSkills, mockInstallTemplates, mockLoadReference, mockFindById, mockIsSkillAvailableInMarket, mockEmitSkillAction, mockCreateSkillAction, mockRecordInstall, mockRecordComplete } = vi.hoisted(() => ({
   mockRunHook: vi.fn().mockResolvedValue(undefined),
   mockRegisterSkill: vi.fn().mockReturnValue({ success: true, tools: ['test__tool1'] }),
   mockUnloadSkill: vi.fn().mockReturnValue(true),
-  mockLoadSkill: vi
-    .fn()
-    .mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' }),
+  mockLoadSkill: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' }),
   mockListSkills: vi.fn().mockResolvedValue({ success: true, skills: [] }),
-  mockInstallTemplates: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      skill: 'test-skill',
-      filesInstalled: 1,
-      installedFiles: ['file.ts'],
-    }),
-  mockLoadReference: vi
-    .fn()
-    .mockResolvedValue({ success: true, instructions: 'reference instructions' }),
+  mockInstallTemplates: vi.fn().mockResolvedValue({ success: true, skill: 'test-skill', filesInstalled: 1, installedFiles: ['file.ts'] }),
+  mockLoadReference: vi.fn().mockResolvedValue({ success: true, instructions: 'reference instructions' }),
   mockFindById: vi.fn().mockReturnValue({ path: '/tmp/apps/test-app' }),
   mockIsSkillAvailableInMarket: vi.fn().mockResolvedValue(true),
   mockEmitSkillAction: vi.fn(),
@@ -80,28 +55,24 @@ vi.mock('../../skill-tool-manager.js', () => ({
     registerSkill: mockRegisterSkill,
     unloadSkill: mockUnloadSkill,
     isPinned: vi.fn().mockReturnValue(false),
-    getPinnedSkills: vi.fn().mockReturnValue([]),
-  },
+    getPinnedSkills: vi.fn().mockReturnValue([])
+  }
 }));
 
 vi.mock('../../skill-loader-tool.js', () => ({
-  SkillLoaderTool: vi.fn().mockImplementation(function () {
-    return {
-      loadSkill: mockLoadSkill,
-      listSkills: mockListSkills,
-      installTemplates: mockInstallTemplates,
-      loadReference: mockLoadReference,
-      isSkillAvailableInMarket: mockIsSkillAvailableInMarket,
-    };
-  }),
+  SkillLoaderTool: vi.fn().mockImplementation(function () { return {
+    loadSkill: mockLoadSkill,
+    listSkills: mockListSkills,
+    installTemplates: mockInstallTemplates,
+    loadReference: mockLoadReference,
+    isSkillAvailableInMarket: mockIsSkillAvailableInMarket
+  }; })
 }));
 
 vi.mock('../../../database/repositories/AppRepository.js', () => ({
-  AppRepository: vi.fn().mockImplementation(function () {
-    return {
-      findById: mockFindById,
-    };
-  }),
+  AppRepository: vi.fn().mockImplementation(function () { return {
+    findById: mockFindById
+  }; })
 }));
 
 // Import after mocks
@@ -117,8 +88,8 @@ async function executeTool(input: Record<string, unknown>, context?: Record<stri
 const mockContext = {
   metadata: {
     conversationId: 'conv-123',
-    appId: 'app-456',
-  },
+    appId: 'app-456'
+  }
 };
 
 describe('skillAITool hooks', () => {
@@ -126,17 +97,8 @@ describe('skillAITool hooks', () => {
     vi.clearAllMocks();
     mockRegisterSkill.mockReturnValue({ success: true, tools: ['test__tool1'] });
     mockUnloadSkill.mockReturnValue(true);
-    mockLoadSkill.mockResolvedValue({
-      success: true,
-      skill: 'test-skill',
-      instructions: 'test instructions',
-    });
-    mockInstallTemplates.mockResolvedValue({
-      success: true,
-      skill: 'test-skill',
-      filesInstalled: 1,
-      installedFiles: ['file.ts'],
-    });
+    mockLoadSkill.mockResolvedValue({ success: true, skill: 'test-skill', instructions: 'test instructions' });
+    mockInstallTemplates.mockResolvedValue({ success: true, skill: 'test-skill', filesInstalled: 1, installedFiles: ['file.ts'] });
     mockLoadReference.mockResolvedValue({ success: true, instructions: 'reference instructions' });
     mockFindById.mockReturnValue({ path: '/tmp/apps/test-app' });
     mockCreateSkillAction.mockReturnValue({ schemaId: 'test-schema', data: {} });
@@ -177,7 +139,7 @@ describe('skillAITool hooks', () => {
 
     it('does not throw when no event emitter is present', async () => {
       await expect(
-        executeTool({ action: 'load', skill: 'authentication' }, mockContext)
+        executeTool({ action: 'load', skill: 'authentication' }, mockContext),
       ).resolves.toBeDefined();
     });
   });
@@ -189,7 +151,7 @@ describe('skillAITool hooks', () => {
       expect(mockRunHook).toHaveBeenCalledWith('authentication', 'onLoad', {
         skillName: 'authentication',
         appPath: '/tmp/apps/test-app',
-        appId: 'app-456',
+        appId: 'app-456'
       });
     });
 
@@ -198,29 +160,18 @@ describe('skillAITool hooks', () => {
 
       await executeTool({ action: 'load', skill: 'authentication' }, mockContext);
 
-      expect(mockRunHook).toHaveBeenCalledWith(
-        'authentication',
-        'onLoad',
-        expect.objectContaining({
-          skillName: 'authentication',
-        })
-      );
+      expect(mockRunHook).toHaveBeenCalledWith('authentication', 'onLoad', expect.objectContaining({
+        skillName: 'authentication'
+      }));
     });
 
     it('should call onLoad hook even without conversationId', async () => {
-      await executeTool(
-        { action: 'load', skill: 'authentication' },
-        { metadata: { appId: 'app-456' } }
-      );
+      await executeTool({ action: 'load', skill: 'authentication' }, { metadata: { appId: 'app-456' } });
 
-      expect(mockRunHook).toHaveBeenCalledWith(
-        'authentication',
-        'onLoad',
-        expect.objectContaining({
-          skillName: 'authentication',
-          appId: 'app-456',
-        })
-      );
+      expect(mockRunHook).toHaveBeenCalledWith('authentication', 'onLoad', expect.objectContaining({
+        skillName: 'authentication',
+        appId: 'app-456'
+      }));
     });
 
     it('should forward market from context metadata to loadSkill', async () => {
@@ -229,7 +180,7 @@ describe('skillAITool hooks', () => {
           conversationId: 'conv-123',
           appId: 'app-456',
           market: 'en-US',
-        },
+        }
       };
 
       await executeTool({ action: 'load', skill: 'authentication' }, contextWithMarket);
@@ -249,7 +200,7 @@ describe('skillAITool hooks', () => {
 
     it('should pass contextMetadata to loadSkill for switchboard gating', async () => {
       const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: true },
+        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: true }
       };
 
       await executeTool({ action: 'load', skill: 'marketing-campaigns' }, context);
@@ -263,32 +214,19 @@ describe('skillAITool hooks', () => {
     });
 
     it('should propagate loadSkill failure when switchboard flag blocks', async () => {
-      mockLoadSkill.mockResolvedValueOnce({
-        success: false,
-        skill: 'marketing-campaigns',
-        error: "Skill 'marketing-campaigns' is not available.",
-      });
+      mockLoadSkill.mockResolvedValueOnce({ success: false, skill: 'marketing-campaigns', error: "Skill 'marketing-campaigns' is not available." });
 
       const context = {
-        metadata: {
-          conversationId: 'conv-123',
-          appId: 'app-456',
-          marketingCampaignsEnabled: false,
-        },
+        metadata: { conversationId: 'conv-123', appId: 'app-456', marketingCampaignsEnabled: false }
       };
 
-      await expect(
-        executeTool({ action: 'load', skill: 'marketing-campaigns' }, context)
-      ).rejects.toThrow('not available');
+      await expect(executeTool({ action: 'load', skill: 'marketing-campaigns' }, context))
+        .rejects.toThrow('not available');
     });
 
     it('should pass contextMetadata to loadSkill for google-business-profile-sync switchboard gating', async () => {
       const context = {
-        metadata: {
-          conversationId: 'conv-123',
-          appId: 'app-456',
-          googleBusinessProfileSyncEnabled: true,
-        },
+        metadata: { conversationId: 'conv-123', appId: 'app-456', googleBusinessProfileSyncEnabled: true }
       };
 
       await executeTool({ action: 'load', skill: 'google-business-profile-sync' }, context);
@@ -308,7 +246,7 @@ describe('skillAITool hooks', () => {
 
       expect(mockRunHook).toHaveBeenCalledWith('authentication', 'onUnload', {
         skillName: 'authentication',
-        appId: 'app-456',
+        appId: 'app-456'
       });
     });
 
@@ -328,7 +266,7 @@ describe('skillAITool hooks', () => {
       expect(mockRunHook).toHaveBeenCalledWith('authentication', 'onInstall', {
         skillName: 'authentication',
         appPath: '/tmp/apps/test-app',
-        appId: 'app-456',
+        appId: 'app-456'
       });
     });
 
@@ -341,10 +279,7 @@ describe('skillAITool hooks', () => {
       };
       mockRunHook.mockResolvedValueOnce(hookResult);
 
-      const result = (await executeTool(
-        { action: 'install', skill: 'authentication' },
-        mockContext
-      )) as Record<string, unknown>;
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
 
       expect(result).toMatchObject({ onInstallResult: hookResult });
       expect(result.message).toContain('POST-INSTALL CHECK (FAILED)');
@@ -355,10 +290,7 @@ describe('skillAITool hooks', () => {
       const hookResult = { status: 'passed', findings: [] };
       mockRunHook.mockResolvedValueOnce(hookResult);
 
-      const result = (await executeTool(
-        { action: 'install', skill: 'authentication' },
-        mockContext
-      )) as Record<string, unknown>;
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
 
       expect(result).toMatchObject({ onInstallResult: hookResult });
       expect(result.message).not.toContain('POST-INSTALL CHECK');
@@ -367,10 +299,7 @@ describe('skillAITool hooks', () => {
     it('does not set onInstallResult when hook returns null', async () => {
       mockRunHook.mockResolvedValueOnce(null);
 
-      const result = (await executeTool(
-        { action: 'install', skill: 'authentication' },
-        mockContext
-      )) as Record<string, unknown>;
+      const result = await executeTool({ action: 'install', skill: 'authentication' }, mockContext) as Record<string, unknown>;
 
       expect(result).not.toHaveProperty('onInstallResult');
     });
@@ -389,18 +318,22 @@ describe('skillAITool hooks', () => {
           conversationId: 'conv-123',
           appId: 'app-456',
           market: 'en-US',
-        },
+        }
       };
 
       await executeTool({ action: 'list' }, contextWithMarket);
 
-      expect(mockListSkills).toHaveBeenCalledWith(expect.objectContaining({ market: 'en-US' }));
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: 'en-US' })
+      );
     });
 
     it('should pass undefined market when context has no market', async () => {
       await executeTool({ action: 'list' }, mockContext);
 
-      expect(mockListSkills).toHaveBeenCalledWith(expect.objectContaining({ market: undefined }));
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: undefined })
+      );
     });
 
     it('should pass undefined market when context metadata market is not a string', async () => {
@@ -409,12 +342,14 @@ describe('skillAITool hooks', () => {
           conversationId: 'conv-123',
           appId: 'app-456',
           market: 42,
-        },
+        }
       };
 
       await executeTool({ action: 'list' }, contextWithBadMarket);
 
-      expect(mockListSkills).toHaveBeenCalledWith(expect.objectContaining({ market: undefined }));
+      expect(mockListSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ market: undefined })
+      );
     });
   });
 
@@ -423,17 +358,15 @@ describe('skillAITool hooks', () => {
       mockIsSkillAvailableInMarket.mockResolvedValueOnce(false);
 
       const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' },
+        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' }
       };
 
       const result = await executeTool({ action: 'pin', skill: 'compliance-docs' }, context);
 
-      expect(result).toEqual(
-        expect.objectContaining({
-          success: false,
-          message: expect.stringContaining('not available in your market'),
-        })
-      );
+      expect(result).toEqual(expect.objectContaining({
+        success: false,
+        message: expect.stringContaining('not available in your market'),
+      }));
     });
   });
 
@@ -442,57 +375,22 @@ describe('skillAITool hooks', () => {
       mockIsSkillAvailableInMarket.mockResolvedValueOnce(false);
 
       const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' },
+        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'ja-JP' }
       };
 
-      await expect(
-        executeTool({ action: 'install', skill: 'compliance-docs' }, context)
-      ).rejects.toThrow('not available in your market');
-    });
-  });
-
-  describe('sellingCountry validation', () => {
-    it('rejects a non-alpha-2 sellingCountry instead of falling back to market', async () => {
-      const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'en-US' },
-      };
-
-      await expect(
-        executeTool(
-          { action: 'load', skill: 'payment/godaddy-payments', sellingCountry: 'Australia' },
-          context
-        )
-      ).rejects.toThrow(/Invalid sellingCountry/);
-      expect(mockLoadSkill).not.toHaveBeenCalled();
-    });
-
-    it('passes a well-formed sellingCountry through to loadSkill', async () => {
-      const context = {
-        metadata: { conversationId: 'conv-123', appId: 'app-456', market: 'en-US' },
-      };
-
-      await executeTool(
-        { action: 'load', skill: 'payment/godaddy-payments', sellingCountry: 'ca' },
-        context
-      );
-
-      expect(mockLoadSkill).toHaveBeenCalledWith(expect.objectContaining({ sellingCountry: 'ca' }));
+      await expect(executeTool({ action: 'install', skill: 'compliance-docs' }, context))
+        .rejects.toThrow('not available in your market');
     });
   });
 
   describe('complete action', () => {
     it('returns success and marks the skill as complete', async function completeSuccess() {
-      const result = await executeTool(
-        { action: 'complete', skill: 'authentication' },
-        mockContext
-      );
+      const result = await executeTool({ action: 'complete', skill: 'authentication' }, mockContext);
 
-      expect(result).toEqual(
-        expect.objectContaining({
-          success: true,
-          skill: 'authentication',
-        })
-      );
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        skill: 'authentication',
+      }));
     });
 
     it('calls recordComplete on the registry with the skill name and appId', async function callsRecordComplete() {
@@ -503,20 +401,15 @@ describe('skillAITool hooks', () => {
 
     it('throws when appId is missing from context', async function requiresAppId() {
       await expect(
-        executeTool(
-          { action: 'complete', skill: 'authentication' },
-          { metadata: { conversationId: 'conv-123' } }
-        )
+        executeTool({ action: 'complete', skill: 'authentication' }, { metadata: { conversationId: 'conv-123' } })
       ).rejects.toThrow('App ID not found in context');
     });
+
   });
 
   describe('loadReference action', () => {
     it('returns path, instructions and message on success', async function successResult() {
-      const result = await executeTool(
-        { action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' },
-        mockContext
-      );
+      const result = await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
 
       expect(result).toEqual({
         path: 'connecting-calendars/sections/02a-google-setup',
@@ -526,42 +419,34 @@ describe('skillAITool hooks', () => {
     });
 
     it('calls loadReference on the skill loader with the given path', async function callsLoader() {
-      await executeTool(
-        { action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' },
-        mockContext
-      );
+      await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
 
-      expect(mockLoadReference).toHaveBeenCalledWith(
-        'connecting-calendars/sections/02a-google-setup'
-      );
+      expect(mockLoadReference).toHaveBeenCalledWith('connecting-calendars/sections/02a-google-setup');
     });
 
     it('throws when path is not provided', async function requiresPath() {
-      await expect(executeTool({ action: 'loadReference' }, mockContext)).rejects.toThrow(
-        'loadReference requires the `path` parameter'
-      );
+      await expect(
+        executeTool({ action: 'loadReference' }, mockContext),
+      ).rejects.toThrow('loadReference requires the `path` parameter');
     });
 
     it('throws when loadReference returns failure', async function propagatesError() {
       mockLoadReference.mockResolvedValueOnce({ success: false, error: 'File not found' });
 
       await expect(
-        executeTool({ action: 'loadReference', path: 'bad/path' }, mockContext)
+        executeTool({ action: 'loadReference', path: 'bad/path' }, mockContext),
       ).rejects.toThrow('File not found');
     });
 
     it('uses first path segment as skillName and strips it from referencePath', async function firstSegment() {
-      await executeTool(
-        { action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' },
-        mockContext
-      );
+      await executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
 
       expect(mockCreateSkillAction).toHaveBeenCalledWith(
         expect.objectContaining({
           skillName: 'connecting-calendars',
           skillAction: 'loadReference',
           referencePath: 'sections/02a-google-setup',
-        })
+        }),
       );
     });
 
@@ -573,48 +458,33 @@ describe('skillAITool hooks', () => {
           skillName: 'authentication',
           skillAction: 'loadReference',
           referencePath: '',
-        })
+        }),
       );
     });
 
     it('ignores the skill field and always uses the first path segment as skillName', async function skillFieldIgnored() {
-      await executeTool(
-        {
-          action: 'loadReference',
-          skill: 'some-other-skill',
-          path: 'connecting-calendars/sections/02a-google-setup',
-        },
-        mockContext
-      );
+      await executeTool({ action: 'loadReference', skill: 'some-other-skill', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext);
 
       expect(mockCreateSkillAction).toHaveBeenCalledWith(
         expect.objectContaining({
           skillName: 'connecting-calendars',
           skillAction: 'loadReference',
-        })
+        }),
       );
     });
 
     it('skips emit when the first path segment is empty', async function emptySegmentSkipsEmit() {
       // Path starting with '/' produces '' as first segment — guarded by if (skillName)
-      await executeTool(
-        { action: 'loadReference', path: '/sections/02a-google-setup' },
-        mockContext
-      );
+      await executeTool({ action: 'loadReference', path: '/sections/02a-google-setup' }, mockContext);
 
       expect(mockEmitSkillAction).not.toHaveBeenCalled();
     });
 
     it('does not throw when emitSkillAction throws', async function guardedEmit() {
-      mockEmitSkillAction.mockImplementationOnce(() => {
-        throw new Error('OTel unavailable');
-      });
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
 
       await expect(
-        executeTool(
-          { action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' },
-          mockContext
-        )
+        executeTool({ action: 'loadReference', path: 'connecting-calendars/sections/02a-google-setup' }, mockContext),
       ).resolves.toMatchObject({ path: 'connecting-calendars/sections/02a-google-setup' });
     });
   });
@@ -665,10 +535,7 @@ describe('skillAITool hooks', () => {
     });
 
     it('emits loadReference event with skillName and referencePath without the skill prefix', async function emitLoadReference() {
-      await executeTool(
-        { action: 'loadReference', path: 'authentication/sections/02-oauth' },
-        mockContext
-      );
+      await executeTool({ action: 'loadReference', path: 'authentication/sections/02-oauth' }, mockContext);
 
       expect(mockCreateSkillAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -690,33 +557,24 @@ describe('skillAITool hooks', () => {
     });
 
     it('does not throw when emitSkillAction throws on load', async function guardLoad() {
-      mockEmitSkillAction.mockImplementationOnce(() => {
-        throw new Error('OTel unavailable');
-      });
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
 
-      await expect(
-        executeTool({ action: 'load', skill: 'authentication' }, mockContext)
-      ).resolves.toMatchObject({ skill: 'test-skill' });
+      await expect(executeTool({ action: 'load', skill: 'authentication' }, mockContext))
+        .resolves.toMatchObject({ skill: 'test-skill' });
     });
 
     it('does not throw when emitSkillAction throws on install', async function guardInstall() {
-      mockEmitSkillAction.mockImplementationOnce(() => {
-        throw new Error('OTel unavailable');
-      });
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
 
-      await expect(
-        executeTool({ action: 'install', skill: 'authentication' }, mockContext)
-      ).resolves.toMatchObject({ skill: 'test-skill' });
+      await expect(executeTool({ action: 'install', skill: 'authentication' }, mockContext))
+        .resolves.toMatchObject({ skill: 'test-skill' });
     });
 
     it('does not throw when emitSkillAction throws on complete', async function guardComplete() {
-      mockEmitSkillAction.mockImplementationOnce(() => {
-        throw new Error('OTel unavailable');
-      });
+      mockEmitSkillAction.mockImplementationOnce(() => { throw new Error('OTel unavailable'); });
 
-      await expect(
-        executeTool({ action: 'complete', skill: 'authentication' }, mockContext)
-      ).resolves.toMatchObject({ success: true, skill: 'authentication' });
+      await expect(executeTool({ action: 'complete', skill: 'authentication' }, mockContext))
+        .resolves.toMatchObject({ success: true, skill: 'authentication' });
     });
   });
 });
