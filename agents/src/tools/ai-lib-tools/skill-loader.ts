@@ -24,7 +24,7 @@ interface SkillDiagnosticsEvent {
  */
 function emitSkillDiagnostics(
   context: AgentContext | undefined,
-  payload: SkillDiagnosticsEvent,
+  payload: SkillDiagnosticsEvent
 ): void {
   const emitter = context?.metadata?.eventEmitter as
     | { emit: (type: string, data: unknown) => void }
@@ -36,10 +36,20 @@ type LifecycleAction = 'load' | 'loadReference' | 'unload' | 'install' | 'comple
 
 // Guarded wrapper: a throw from createSkillAction/emitSkillAction must not
 // convert an already-successful action into an error for the caller.
-function safeEmitEvent(skillName: string, skillAction: LifecycleAction, referencePath?: string): void {
+function safeEmitEvent(
+  skillName: string,
+  skillAction: LifecycleAction,
+  referencePath?: string
+): void {
   try {
     if (skillAction === 'loadReference') {
-      emitSkillAction({ eventData: createSkillAction({ skillName, skillAction: 'loadReference', referencePath: referencePath! }) });
+      emitSkillAction({
+        eventData: createSkillAction({
+          skillName,
+          skillAction: 'loadReference',
+          referencePath: referencePath!,
+        }),
+      });
     } else {
       emitSkillAction({ eventData: createSkillAction({ skillName, skillAction }) });
     }
@@ -64,14 +74,48 @@ function safeEmitEvent(skillName: string, skillAction: LifecycleAction, referenc
 export const skillAITool: Tool = createTool(
   'Manage skills - list, load, unload, pin, unpin, install, complete, or loadReference. Skills provide specialized knowledge and tools. Pinning keeps a skill loaded for the entire conversation and injects its instructions into every turn (used for mode-style skills like deep-build).',
   z.object({
-    action: z.enum(['list', 'load', 'unload', 'pin', 'unpin', 'install', 'complete', 'loadReference']).describe('Action to perform'),
-    skill: z.string().optional().describe('Skill name — use for load/unload/pin/unpin/install/complete. Short identifier like "blog" or "payment/stripe". NOT for loadReference.'),
-    path: z.string().optional().describe('Reference file path — use ONLY for loadReference. Full path from skills root without .md extension, e.g. "connecting-calendars/sections/02a-google-setup". NOT for load/install.'),
+    action: z
+      .enum(['list', 'load', 'unload', 'pin', 'unpin', 'install', 'complete', 'loadReference'])
+      .describe('Action to perform'),
+    skill: z
+      .string()
+      .optional()
+      .describe(
+        'Skill name — use for load/unload/pin/unpin/install/complete. Short identifier like "blog" or "payment/stripe". NOT for loadReference.'
+      ),
+    path: z
+      .string()
+      .optional()
+      .describe(
+        'Reference file path — use ONLY for loadReference. Full path from skills root without .md extension, e.g. "connecting-calendars/sections/02a-google-setup". NOT for load/install.'
+      ),
+    sellingCountry: z
+      .string()
+      .optional()
+      .describe(
+        'ISO-3166 alpha-2 country code (e.g. US, CA, AU) the user CONFIRMED as their selling location. Provide for region-gated payment skills (payment/godaddy-payments); it is authoritative for eligibility over the plumbed market.'
+      ),
   }),
   async (input, context?: AgentContext) => {
     const skillLoader = new SkillLoaderTool();
     const appRepo = new AppRepository();
-    const market = typeof context?.metadata?.market === 'string' ? context.metadata.market : undefined;
+    const market: string | undefined =
+      typeof context?.metadata?.market === 'string' ? context.metadata.market : undefined;
+    // The user's confirmed selling country is authoritative for region-gated
+    // payment skills, so a malformed value must NOT silently fall back to the
+    // plumbed market — that would reopen the market-hint bypass (e.g. a request
+    // market of en-US would let a merchant who typed "Australia" load GDP).
+    // The skill.md routers map the merchant's answer to an ISO-3166 alpha-2
+    // code before passing it here; reject anything else. An absent/empty value
+    // is fine and simply defers eligibility to `market`.
+    const rawSellingCountry: string | undefined =
+      typeof input.sellingCountry === 'string' ? input.sellingCountry.trim() : undefined;
+    if (rawSellingCountry && !/^[A-Za-z]{2}$/.test(rawSellingCountry)) {
+      throw new Error(
+        `Invalid sellingCountry '${input.sellingCountry}'. Provide the merchant's confirmed ISO-3166 alpha-2 country code (e.g. US, CA, AU), not a full country name or other value.`
+      );
+    }
+    const sellingCountry: string | undefined = rawSellingCountry || undefined;
 
     // List action - show all available skills
     if (input.action === 'list') {
@@ -90,13 +134,15 @@ export const skillAITool: Tool = createTool(
       return {
         skills: result.skills,
         count: result.skills?.length ?? 0,
-        message: `Found ${result.skills?.length ?? 0} available skills. Review descriptions to find the right skill for your task.`
+        message: `Found ${result.skills?.length ?? 0} available skills. Review descriptions to find the right skill for your task.`,
       };
     }
 
     if (input.action === 'loadReference') {
       if (!input.path) {
-        throw new Error('loadReference requires the `path` parameter, not `skill`. Example: { action: "loadReference", path: "connecting-calendars/sections/02a-google-setup" }');
+        throw new Error(
+          'loadReference requires the `path` parameter, not `skill`. Example: { action: "loadReference", path: "connecting-calendars/sections/02a-google-setup" }'
+        );
       }
       const result = await skillLoader.loadReference(input.path);
       if (!result.success) {
@@ -110,7 +156,7 @@ export const skillAITool: Tool = createTool(
       return {
         path: input.path,
         instructions: result.instructions,
-        message: `Reference '${input.path}' loaded.`
+        message: `Reference '${input.path}' loaded.`,
       };
     }
 
@@ -121,7 +167,12 @@ export const skillAITool: Tool = createTool(
     // Load action - load instructions AND activate skill tools
     if (input.action === 'load') {
       const contextMetadata = context?.metadata as Record<string, unknown> | undefined;
-      const result = await skillLoader.loadSkill({ skill: input.skill, market, contextMetadata });
+      const result = await skillLoader.loadSkill({
+        skill: input.skill,
+        market,
+        sellingCountry,
+        contextMetadata,
+      });
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to load skill');
@@ -136,7 +187,7 @@ export const skillAITool: Tool = createTool(
       await skillToolManager.runHook(input.skill, 'onLoad', {
         skillName: input.skill,
         appPath: app?.path,
-        appId
+        appId,
       });
 
       safeEmitEvent(input.skill, 'load');
@@ -144,7 +195,10 @@ export const skillAITool: Tool = createTool(
       if (conversationId) {
         const stamped = addSkillNameToSpan(conversationId, input.skill);
         if (!stamped) {
-          logger.warn('skill.load.agent_span.not_found', { skillName: input.skill, conversationId });
+          logger.warn('skill.load.agent_span.not_found', {
+            skillName: input.skill,
+            conversationId,
+          });
         }
       }
 
@@ -155,14 +209,14 @@ export const skillAITool: Tool = createTool(
           logger.warn('skill.tools.activation_failed', {
             skill: input.skill,
             conversationId,
-            error: toolResult.error
+            error: toolResult.error,
           });
 
           return {
             skill: result.skill,
             instructions: result.instructions,
             toolsAvailable: [],
-            message: `Skill '${result.skill}' loaded with instructions only. Tool activation failed: ${toolResult.error}`
+            message: `Skill '${result.skill}' loaded with instructions only. Tool activation failed: ${toolResult.error}`,
           };
         }
 
@@ -177,7 +231,7 @@ export const skillAITool: Tool = createTool(
           skill: result.skill,
           instructions: result.instructions,
           toolsAvailable: toolResult.tools,
-          message: `Skill '${result.skill}' loaded with ${toolResult.tools.length} tools: ${toolResult.tools.join(', ')}. The tools are now available for use.`
+          message: `Skill '${result.skill}' loaded with ${toolResult.tools.length} tools: ${toolResult.tools.join(', ')}. The tools are now available for use.`,
         };
       }
 
@@ -186,25 +240,31 @@ export const skillAITool: Tool = createTool(
         skill: result.skill,
         instructions: result.instructions,
         toolsAvailable: [],
-        message: `Skill '${result.skill}' loaded with instructions. No conversation context available for tool activation.`
+        message: `Skill '${result.skill}' loaded with instructions. No conversation context available for tool activation.`,
       };
     }
 
     if (input.action === 'pin') {
       const conversationId = context?.metadata?.conversationId as string | undefined;
       if (!conversationId) {
-        throw new Error('Conversation ID not found in context. Pin action requires conversation context.');
+        throw new Error(
+          'Conversation ID not found in context. Pin action requires conversation context.'
+        );
       }
       // Enforce the same market gating loadSkill applies — otherwise a caller
       // outside the allowlisted markets could pin a market-restricted skill
       // even though listSkills hides it from them.
-      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market))) {
-        logger.warn('skill.pin.market_restricted', { skill: input.skill, requestMarket: market });
+      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market, sellingCountry))) {
+        logger.warn('skill.pin.market_restricted', {
+          skill: input.skill,
+          requestMarket: market,
+          sellingCountry,
+        });
         return {
           success: false,
           skill: input.skill,
           pinned: false,
-          message: `Skill '${input.skill}' is not available in your market.`
+          message: `Skill '${input.skill}' is not available in your market.`,
         };
       }
       const pinAppId = context?.metadata?.appId as string | undefined;
@@ -214,21 +274,23 @@ export const skillAITool: Tool = createTool(
           success: false,
           skill: input.skill,
           pinned: false,
-          message: `Failed to pin skill '${input.skill}': ${pinResult.error}`
+          message: `Failed to pin skill '${input.skill}': ${pinResult.error}`,
         };
       }
       return {
         success: true,
         skill: input.skill,
         pinned: true,
-        message: `Skill '${input.skill}' is now pinned for this conversation. Its instructions will be included on every turn until it is unpinned.`
+        message: `Skill '${input.skill}' is now pinned for this conversation. Its instructions will be included on every turn until it is unpinned.`,
       };
     }
 
     if (input.action === 'unpin') {
       const conversationId = context?.metadata?.conversationId as string | undefined;
       if (!conversationId) {
-        throw new Error('Conversation ID not found in context. Unpin action requires conversation context.');
+        throw new Error(
+          'Conversation ID not found in context. Unpin action requires conversation context.'
+        );
       }
       const unpinAppId = context?.metadata?.appId as string | undefined;
       skillToolManager.unpinSkill(conversationId, input.skill, unpinAppId);
@@ -236,7 +298,7 @@ export const skillAITool: Tool = createTool(
         success: true,
         skill: input.skill,
         pinned: false,
-        message: `Skill '${input.skill}' has been unpinned.`
+        message: `Skill '${input.skill}' has been unpinned.`,
       };
     }
 
@@ -245,14 +307,16 @@ export const skillAITool: Tool = createTool(
       const conversationId = context?.metadata?.conversationId as string | undefined;
 
       if (!conversationId) {
-        throw new Error('Conversation ID not found in context. Unload action requires conversation context.');
+        throw new Error(
+          'Conversation ID not found in context. Unload action requires conversation context.'
+        );
       }
 
       if (skillToolManager.isPinned(conversationId, input.skill)) {
         return {
           success: false,
           skill: input.skill,
-          message: `Skill '${input.skill}' is pinned and cannot be unloaded. Call action 'unpin' first.`
+          message: `Skill '${input.skill}' is pinned and cannot be unloaded. Call action 'unpin' first.`,
         };
       }
 
@@ -262,7 +326,7 @@ export const skillAITool: Tool = createTool(
         return {
           success: false,
           skill: input.skill,
-          message: `Skill '${input.skill}' is not currently loaded or does not exist.`
+          message: `Skill '${input.skill}' is not currently loaded or does not exist.`,
         };
       }
 
@@ -270,7 +334,7 @@ export const skillAITool: Tool = createTool(
       const appId = context?.metadata?.appId as string | undefined;
       await skillToolManager.runHook(input.skill, 'onUnload', {
         skillName: input.skill,
-        appId
+        appId,
       });
 
       emitSkillDiagnostics(context, {
@@ -283,7 +347,7 @@ export const skillAITool: Tool = createTool(
       return {
         success: true,
         skill: input.skill,
-        message: `Skill '${input.skill}' has been unloaded. Its tools are no longer available.`
+        message: `Skill '${input.skill}' has been unloaded. Its tools are no longer available.`,
       };
     }
 
@@ -301,8 +365,12 @@ export const skillAITool: Tool = createTool(
       // outside the allowlisted markets could install a market-restricted
       // skill (e.g. region-specific legal templates) even though listSkills
       // hides it from them.
-      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market))) {
-        logger.warn('skill.install.market_restricted', { skill: input.skill, requestMarket: market });
+      if (!(await skillLoader.isSkillAvailableInMarket(input.skill, market, sellingCountry))) {
+        logger.warn('skill.install.market_restricted', {
+          skill: input.skill,
+          requestMarket: market,
+          sellingCountry,
+        });
         throw new Error(`Skill '${input.skill}' is not available in your market.`);
       }
 
@@ -318,7 +386,7 @@ export const skillAITool: Tool = createTool(
       const result = await skillLoader.installTemplates({
         skill: input.skill,
         appPath: app.path,
-        appId
+        appId,
       });
 
       if (!result.success) {
@@ -329,54 +397,66 @@ export const skillAITool: Tool = createTool(
       const hookResult = await skillToolManager.runHook(input.skill, 'onInstall', {
         skillName: input.skill,
         appPath: app.path,
-        appId
+        appId,
       });
 
       if (conversationId) {
         const stamped = addSkillNameToSpan(conversationId, input.skill);
         if (!stamped) {
-          logger.warn('skill.install.agent_span.not_found', { skillName: input.skill, conversationId });
+          logger.warn('skill.install.agent_span.not_found', {
+            skillName: input.skill,
+            conversationId,
+          });
         }
       }
 
       // Auto-restart dev server if npm dependencies were installed.
       // Vite needs a restart to resolve newly installed packages —
       // without this, imports like 'better-auth/react' fail until manual restart.
-      const depsInstalled = result.dependenciesInstalled?.some(d => d.success);
+      const depsInstalled = result.dependenciesInstalled?.some((d) => d.success);
       if (depsInstalled) {
         try {
           const { ServerManagementTool } = await import('../../tools/server-management-tool.js');
           const serverTool = new ServerManagementTool();
-          const restartResult = await serverTool.restartServer({ reason: `skill '${input.skill}' installed new dependencies` }, appId);
+          const restartResult = await serverTool.restartServer(
+            { reason: `skill '${input.skill}' installed new dependencies` },
+            appId
+          );
           if (restartResult.success) {
             logger.info('skill.install.server-restarted', { skill: input.skill, appId });
           } else {
-            logger.warn('skill.install.server-restart-failed', { skill: input.skill, appId, error: restartResult.error });
+            logger.warn('skill.install.server-restart-failed', {
+              skill: input.skill,
+              appId,
+              error: restartResult.error,
+            });
           }
         } catch (error) {
           // Non-fatal — agent can restart manually if needed
           logger.warn('skill.install.server-restart-failed', {
             skill: input.skill,
             appId,
-            error: error instanceof Error ? error.message : String(error)
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
 
       // Build response with dependency info
-      const skippedNote = result.filesSkipped ? `, ${result.filesSkipped} existing files skipped` : '';
+      const skippedNote = result.filesSkipped
+        ? `, ${result.filesSkipped} existing files skipped`
+        : '';
       const response: Record<string, unknown> = {
         skill: result.skill,
         filesInstalled: result.filesInstalled,
         installedFiles: result.installedFiles,
         ...(result.filesSkipped && { filesSkipped: result.filesSkipped }),
-        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}${skippedNote}`
+        message: `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied to ${app.path}${skippedNote}`,
       };
 
       // Include dependency info if available
       if (result.dependenciesInstalled && result.dependenciesInstalled.length > 0) {
         response.dependenciesInstalled = result.dependenciesInstalled;
-        const successCount = result.dependenciesInstalled.filter(d => d.success).length;
+        const successCount = result.dependenciesInstalled.filter((d) => d.success).length;
         response.message = `Skill '${result.skill}' installed successfully. ${result.filesInstalled} files copied, ${successCount}/${result.dependenciesInstalled.length} packages installed.`;
       }
 
@@ -386,7 +466,7 @@ export const skillAITool: Tool = createTool(
 
       if (result.devDependenciesInstalled && result.devDependenciesInstalled.length > 0) {
         response.devDependenciesInstalled = result.devDependenciesInstalled;
-        const devSuccessCount = result.devDependenciesInstalled.filter(d => d.success).length;
+        const devSuccessCount = result.devDependenciesInstalled.filter((d) => d.success).length;
         // Only append to the prod-deps message when prod deps existed (otherwise
         // the base "files copied to /path" message dangles awkwardly). For the
         // devDeps-only case, replace the base message with the deps-style format
@@ -425,16 +505,12 @@ export const skillAITool: Tool = createTool(
       if (hookResult != null) {
         response.onInstallResult = hookResult;
         const hookRecord = hookResult as Record<string, unknown>;
-        if (
-          Array.isArray(hookRecord.findings) &&
-          (hookRecord.findings as unknown[]).length > 0
-        ) {
+        if (Array.isArray(hookRecord.findings) && (hookRecord.findings as unknown[]).length > 0) {
           const findingLines = (hookRecord.findings as Array<{ code: string; message: string }>)
             .map((f) => `- [${f.code}] ${f.message}`)
             .join('\n');
-          const statusLabel = typeof hookRecord.status === 'string'
-            ? hookRecord.status.toUpperCase()
-            : 'CHECK';
+          const statusLabel =
+            typeof hookRecord.status === 'string' ? hookRecord.status.toUpperCase() : 'CHECK';
           response.message = `${response.message}\n\nPOST-INSTALL CHECK (${statusLabel}): Resolve these before writing checkout UI:\n${findingLines}`;
         }
         if (typeof hookRecord.NEXT_STEP === 'string') {
@@ -462,7 +538,7 @@ export const skillAITool: Tool = createTool(
       return {
         success: true,
         skill: input.skill,
-        message: `Skill '${input.skill}' marked as complete.`
+        message: `Skill '${input.skill}' marked as complete.`,
       };
     }
 

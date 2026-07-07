@@ -4,47 +4,70 @@ import {
   type ResolverContext,
   createPromptBuilder,
   type SessionStateManager,
-  createSessionStateManager
-} from '@airo/ai-lib'
-import { getAgentModelWithName } from '../utils/model-selection.js'
-import { allAILibTools } from '../tools/ai-lib-tools/index.js'
-import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js'
-import { getModularPromptPaths } from '../utils/prompt-utils.js'
-import { Logger } from '../logging/index.js'
-import { createAgentTelemetryLogger } from '../utils/agent-logger.js'
-import { skills } from '../services/features.js'
-import { SkillLoaderTool, buildSkillsPromptSection } from '../tools/skill-loader-tool.js'
+  createSessionStateManager,
+} from '@airo/ai-lib';
+import { getAgentModelWithName } from '../utils/model-selection.js';
+import { allAILibTools } from '../tools/ai-lib-tools/index.js';
+import { createAgentHandoffTool } from '../tools/create-agent-handoff-tool.js';
+import { getModularPromptPaths } from '../utils/prompt-utils.js';
+import { Logger } from '../logging/index.js';
+import { createAgentTelemetryLogger } from '../utils/agent-logger.js';
+import { skills } from '../services/features.js';
+import {
+  SkillLoaderTool,
+  buildSkillsPromptSection,
+  escapeXml,
+} from '../tools/skill-loader-tool.js';
 
-const logger = Logger.create({ component: 'marketing-agent' })
+const logger = Logger.create({ component: 'marketing-agent' });
 
-async function buildMarketingSystemPrompt(options?: { contextMetadata?: Record<string, unknown> }): Promise<string> {
-  const promptBuilder = createPromptBuilder()
-  const paths = getModularPromptPaths(import.meta.url)
+async function buildMarketingSystemPrompt(options?: {
+  contextMetadata?: Record<string, unknown>;
+}): Promise<string> {
+  const promptBuilder = createPromptBuilder();
+  const paths = getModularPromptPaths(import.meta.url);
 
-  const market: string | undefined = typeof options?.contextMetadata?.market === 'string' ? options.contextMetadata.market : undefined;
-  const skillLoader = new SkillLoaderTool()
-  const skillsResult = await skillLoader.listSkills({ market, agentId: 'marketing', contextMetadata: options?.contextMetadata })
-  const skillsSection = skillsResult.success && skillsResult.skills?.length
-    ? buildSkillsPromptSection(skillsResult.skills)
-    : ''
+  const market: string | undefined =
+    typeof options?.contextMetadata?.market === 'string'
+      ? options.contextMetadata.market
+      : undefined;
+  const skillLoader = new SkillLoaderTool();
+  const skillsResult = await skillLoader.listSkills({
+    market,
+    agentId: 'marketing',
+    contextMetadata: options?.contextMetadata,
+  });
+  const skillsSection =
+    skillsResult.success && skillsResult.skills?.length
+      ? buildSkillsPromptSection(skillsResult.skills)
+      : '';
 
   // Order: Identity → Voice → Technical details
   promptBuilder
     .file(paths.getAgentFile('marketing', 'core.md'))
     .file(paths.getSharedFile('communication.md'))
     .file(paths.getSharedFile('security.md'))
-    .file(paths.getSharedFile('consent-requirements.md'))
+    .file(paths.getSharedFile('consent-requirements.md'));
+
+  // Neutral market context only. This is a hint sourced from the request
+  // locale (JWT/visitor) and may be inaccurate or absent; the merchant's true
+  // selling country must be confirmed by the skill that needs it. No
+  // per-skill routing/provider names belong here — see skills/README.md
+  // (Self-Containment Rule); region routing lives in the relevant skill.md.
+  promptBuilder.text(
+    `\n## Merchant context\nMerchant market (hint only — may be inaccurate or missing; confirm with the user before relying on it): ${escapeXml(market ?? 'unknown')}.\n`
+  );
 
   if (skillsSection) {
-    promptBuilder.text(`\n${skillsSection}\n`)
+    promptBuilder.text(`\n${skillsSection}\n`);
   }
 
-  return await promptBuilder.build()
+  return await promptBuilder.build();
 }
 
 export async function createMarketingAgent(): Promise<AgentConfig> {
-  const { model, modelName } = await getAgentModelWithName('full')
-  const isSocialEnabled = skills.isEnabled('social')
+  const { model, modelName } = await getAgentModelWithName('full');
+  const isSocialEnabled = skills.isEnabled('social');
 
   const baseTools = {
     seoAnalysis: allAILibTools.seoAnalysis,
@@ -56,15 +79,17 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     skill: allAILibTools.skill,
     media: allAILibTools.media,
     brandIdentity: allAILibTools.brandBook,
-  }
+  };
 
-  const socialTools = isSocialEnabled ? {
-    socialRead: allAILibTools.socialRead,
-    socialPostCreate: allAILibTools.socialPostCreate,
-    socialPostPublish: allAILibTools.socialPostPublish,
-    socialPostEdit: allAILibTools.socialPostEdit,
-    socialPostDelete: allAILibTools.socialPostDelete,
-  } : {}
+  const socialTools = isSocialEnabled
+    ? {
+        socialRead: allAILibTools.socialRead,
+        socialPostCreate: allAILibTools.socialPostCreate,
+        socialPostPublish: allAILibTools.socialPostPublish,
+        socialPostEdit: allAILibTools.socialPostEdit,
+        socialPostDelete: allAILibTools.socialPostDelete,
+      }
+    : {};
 
   return {
     id: 'marketing',
@@ -75,7 +100,7 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
     modelName,
     tools: {
       ...baseTools,
-      ...socialTools
+      ...socialTools,
     },
 
     handoffs: [
@@ -100,113 +125,115 @@ export async function createMarketingAgent(): Promise<AgentConfig> {
         includeAppContext: true,
         includeVisualContext: true,
         includeConversationHistory: true,
-        includeTemplateDescription: true
-      }
-    }
-  }
+        includeTemplateDescription: true,
+      },
+    },
+  };
 }
 
 export async function createMarketingAgentFactory(options?: {
-  appPath?: string
-  stateManager?: SessionStateManager
-  sessionId?: string
+  appPath?: string;
+  stateManager?: SessionStateManager;
+  sessionId?: string;
 }) {
-  const factory = createAgentFactory()
-  const stateManager = options?.stateManager || createSessionStateManager({
-    defaultAgentId: 'marketing'
-  })
+  const factory = createAgentFactory();
+  const stateManager =
+    options?.stateManager ||
+    createSessionStateManager({
+      defaultAgentId: 'marketing',
+    });
 
-  const marketingConfig = await createMarketingAgent()
+  const marketingConfig = await createMarketingAgent();
 
   if (options?.sessionId) {
-    const validTargets = (marketingConfig.handoffs || []).map(h => h.agentName)
+    const validTargets = (marketingConfig.handoffs || []).map((h) => h.agentName);
     marketingConfig.tools = {
       ...marketingConfig.tools,
       handoff: createAgentHandoffTool({
         sourceAgentId: 'marketing',
         validTargets,
         stateManager,
-        sessionId: options.sessionId
-      })
-    }
+        sessionId: options.sessionId,
+      }),
+    };
   }
 
   const agents = factory.defineAgents({
-    marketing: marketingConfig
-  })
+    marketing: marketingConfig,
+  });
 
   return {
     factory,
     agents,
     getAgent: () => agents.get('marketing'),
     stateManager,
-    appPath: options?.appPath
-  }
+    appPath: options?.appPath,
+  };
 }
 
 export class MarketingAgent {
-  private factory: Awaited<ReturnType<typeof createMarketingAgentFactory>>
-  private appPath: string
-  private sessionId?: string
-  private stateManager?: SessionStateManager
+  private factory: Awaited<ReturnType<typeof createMarketingAgentFactory>>;
+  private appPath: string;
+  private sessionId?: string;
+  private stateManager?: SessionStateManager;
 
   constructor(options?: {
-    appPath?: string
-    sessionId?: string
-    stateManager?: SessionStateManager
+    appPath?: string;
+    sessionId?: string;
+    stateManager?: SessionStateManager;
   }) {
-    this.appPath = options?.appPath || process.cwd()
-    if (options?.sessionId) this.sessionId = options.sessionId
-    if (options?.stateManager) this.stateManager = options.stateManager
-    this.factory = null as any
+    this.appPath = options?.appPath || process.cwd();
+    if (options?.sessionId) this.sessionId = options.sessionId;
+    if (options?.stateManager) this.stateManager = options.stateManager;
+    this.factory = null as any;
   }
 
   async initialize(): Promise<void> {
     logger.info('marketing_agent.initialization.start', {
       appPath: this.appPath,
       hasSessionId: !!this.sessionId,
-      hasStateManager: !!this.stateManager
+      hasStateManager: !!this.stateManager,
     });
 
     const factoryOptions: {
-      appPath: string
-      sessionId?: string
-      stateManager?: SessionStateManager
-    } = { appPath: this.appPath }
+      appPath: string;
+      sessionId?: string;
+      stateManager?: SessionStateManager;
+    } = { appPath: this.appPath };
 
-    if (this.sessionId) factoryOptions.sessionId = this.sessionId
-    if (this.stateManager) factoryOptions.stateManager = this.stateManager
+    if (this.sessionId) factoryOptions.sessionId = this.sessionId;
+    if (this.stateManager) factoryOptions.stateManager = this.stateManager;
 
-    this.factory = await createMarketingAgentFactory(factoryOptions)
+    this.factory = await createMarketingAgentFactory(factoryOptions);
     logger.info('marketing_agent.initialization.complete', {
-      appPath: this.appPath
+      appPath: this.appPath,
     });
   }
 
   getAgent() {
     if (!this.factory) {
-      throw new Error('Agent not initialized. Call initialize() first.')
+      throw new Error('Agent not initialized. Call initialize() first.');
     }
-    return this.factory.getAgent()
+    return this.factory.getAgent();
   }
 
   async streamGenerate(prompt: string, options?: any) {
-    const agent = this.getAgent()
-    return agent.streamGenerate(prompt, options)
+    const agent = this.getAgent();
+    return agent.streamGenerate(prompt, options);
   }
 
   async generate(prompt: string, options?: any) {
-    const agent = this.getAgent()
-    return agent.generate(prompt, options)
+    const agent = this.getAgent();
+    return agent.generate(prompt, options);
   }
 
   getName(): string {
-    return this.getAgent().getName()
+    return this.getAgent().getName();
   }
 
   async cleanup(): Promise<void> {
     logger.info('marketing_agent.cleanup.complete', {
-      appPath: this.appPath
+      appPath: this.appPath,
     });
   }
 }

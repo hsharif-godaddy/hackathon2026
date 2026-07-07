@@ -2,17 +2,17 @@ import { z } from 'zod';
 import type { SkillHooks, SkillToolDefinition } from '@airo/ai-skills';
 
 import { logger } from '../../../../logging/index.js';
-import {
-  callCommerceMcpTool,
-  formatToolError,
-  isRecord,
-} from '../../../commerce/mcp.js';
+import { callCommerceMcpTool, formatToolError, isRecord } from '../../../commerce/mcp.js';
 import { provisionCommerceForApp } from '../../../commerce/provisioning.js';
 import { runCheckoutGuardOnWorkspace } from '../../../commerce/checkout-guard-workspace.js';
 import type { CommerceCheckoutGuardFindingCode } from '../../../commerce/checkout-guard.js';
 
-const PAYMENT_TEMPLATE_INSTALL_ACTION =
-  "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
+function paymentTemplateInstallAction(sellingCountry?: string): string {
+  const country: string | undefined = sellingCountry?.trim().toUpperCase();
+  return country
+    ? `skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: '${country}' })`
+    : "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
+}
 
 function logDispatchError(toolName: string, err: unknown): void {
   logger.warn('godaddy_payments_skill.tool.dispatch_error', {
@@ -82,17 +82,32 @@ IDEMPOTENT: If commerce__provision already created a channel_ready binding for t
       .min(1)
       .optional()
       .describe('Optional store name for new store creation.'),
+    sellingCountry: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{2}$/)
+      .optional()
+      .describe(
+        'ISO-3166 alpha-2 country the merchant confirmed they sell from (e.g. US, CA). When provided, it is carried into the install next-step action so the eligibility check uses the confirmed country instead of a stale market.'
+      ),
   }),
   config: { timeout: 185_000 },
   async execute(input, context) {
     try {
-      const result = await provisionCommerceForApp(input, context, 'payments');
+      const { sellingCountry, ...provisionInput } = input;
+      const confirmedCountry: string | undefined = sellingCountry?.trim().toUpperCase();
+      if (confirmedCountry && confirmedCountry !== 'US' && confirmedCountry !== 'CA') {
+        logger.warn('godaddy_payments.provision.region_ineligible', {
+          sellingCountry: confirmedCountry,
+        });
+        return `GoDaddy Payments is available only to merchants selling from the United States or Canada. The confirmed selling country '${confirmedCountry}' is not eligible, so no store, channel, or env bindings were provisioned. Do not provision or install GoDaddy Payments for this merchant. Return to the payment router and offer an alternative such as Stripe buy buttons via the payment skill, or manage checkout/orders externally.`;
+      }
+      const result = await provisionCommerceForApp(provisionInput, context, 'payments');
       if (!isRecord(result) || result.status !== 'ready') return result;
 
       return {
         ...result,
-        NEXT_STEP:
-          `GoDaddy Payments is configured and env vars have been written. Before writing any UI or server code, complete these steps in order: (1) If the user's request includes a product catalog, shopping cart, or product listing pages — call commerce__provision now (it will return ready instantly by reusing the binding just created) to enable catalog management tools (search_tools, execute_tool). Then install commerce/ui templates by calling skill({ action: 'install', skill: 'commerce/ui' }). Commerce/ui provides the hooks required to fetch products and manage cart state; writing catalog or cart UI without these templates produces broken pages. (2) Call ${PAYMENT_TEMPLATE_INSTALL_ACTION} to install the checkout and order-status server routes. Do not create checkout or order-status routes manually. (3) Only after all required template installs are complete, write the UI.`,
+        NEXT_STEP: `GoDaddy Payments is configured and env vars have been written. Before writing any UI or server code, complete these steps in order: (1) If the user's request includes a product catalog, shopping cart, or product listing pages — call commerce__provision now (it will return ready instantly by reusing the binding just created) to enable catalog management tools (search_tools, execute_tool). Then install commerce/ui templates by calling skill({ action: 'install', skill: 'commerce/ui' }). Commerce/ui provides the hooks required to fetch products and manage cart state; writing catalog or cart UI without these templates produces broken pages. (2) Call ${paymentTemplateInstallAction(sellingCountry)} to install the checkout and order-status server routes. Do not create checkout or order-status routes manually. (3) Only after all required template installs are complete, write the UI.`,
       };
     } catch (err) {
       logDispatchError('provision', err);
@@ -142,7 +157,7 @@ export const storeGetTool: SkillToolDefinition = {
 export const storeChannelsGetTool: SkillToolDefinition = {
   name: 'store_channels_get',
   description:
-    "List all sales channels registered to a GoDaddy Commerce store. Use this only for debugging GoDaddy Payments routing; normal setup uses provision.",
+    'List all sales channels registered to a GoDaddy Commerce store. Use this only for debugging GoDaddy Payments routing; normal setup uses provision.',
   parameters: z.object({
     storeId: z
       .string()

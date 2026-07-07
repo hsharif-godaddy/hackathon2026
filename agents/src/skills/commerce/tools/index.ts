@@ -5,24 +5,29 @@ import { logger } from '../../../logging/index.js';
 import { GODADDY_PAYMENTS_TEMPLATE_PATHS } from '../checkout-guard.js';
 import { runCheckoutGuardOnWorkspace } from '../checkout-guard-workspace.js';
 import { readCurrentCommerceBinding } from '../binding.js';
-import {
-  callCommerceMcpTool,
-  formatToolError,
-  isRecord,
-  requireAppId,
-} from '../mcp.js';
+import { callCommerceMcpTool, formatToolError, isRecord, requireAppId } from '../mcp.js';
 import { provisionCommerceForApp } from '../provisioning.js';
 
 export { mergeEnvContent } from '../binding.js';
 
 const COMMERCE_UI_TEMPLATE_LOAD_ACTION = "skill({ action: 'load', skill: 'commerce/ui' })";
 const COMMERCE_UI_TEMPLATE_INSTALL_ACTION = "skill({ action: 'install', skill: 'commerce/ui' })";
-const GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION =
-  "skill({ action: 'load', skill: 'payment/godaddy-payments' })";
-const GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION =
-  "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
 
-function buildCommerceCapabilityChecklists(): Record<string, unknown> {
+function godaddyPaymentsLoadAction(sellingCountry?: string): string {
+  const country: string | undefined = sellingCountry?.trim().toUpperCase();
+  return country
+    ? `skill({ action: 'load', skill: 'payment/godaddy-payments', sellingCountry: '${country}' })`
+    : "skill({ action: 'load', skill: 'payment/godaddy-payments' })";
+}
+
+function godaddyPaymentsInstallAction(sellingCountry?: string): string {
+  const country: string | undefined = sellingCountry?.trim().toUpperCase();
+  return country
+    ? `skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: '${country}' })`
+    : "skill({ action: 'install', skill: 'payment/godaddy-payments' })";
+}
+
+function buildCommerceCapabilityChecklists(sellingCountry?: string): Record<string, unknown> {
   const commerceProvisioned = {
     id: 'commerce_store_channel_ready',
     status: 'complete',
@@ -54,7 +59,7 @@ function buildCommerceCapabilityChecklists(): Record<string, unknown> {
   const godaddyPaymentsLoaded = {
     id: 'godaddy_payments_skill_loaded',
     status: 'required',
-    requiredAction: GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION,
+    requiredAction: godaddyPaymentsLoadAction(sellingCountry),
   };
   const godaddyPaymentsProvisioned = {
     id: 'godaddy_payments_provisioned',
@@ -65,7 +70,7 @@ function buildCommerceCapabilityChecklists(): Record<string, unknown> {
   const godaddyPaymentsTemplates = {
     id: 'godaddy_payments_templates_installed',
     status: 'required',
-    requiredAction: GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION,
+    requiredAction: godaddyPaymentsInstallAction(sellingCountry),
     mustCompleteBefore: [
       'checkout UI',
       'checkout buttons',
@@ -321,18 +326,26 @@ IDEMPOTENT: Re-calling with the same or additional inputs resumes from the last 
       .min(1)
       .optional()
       .describe('Optional store name for new store creation.'),
+    sellingCountry: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{2}$/)
+      .optional()
+      .describe(
+        'ISO-3166 alpha-2 country the merchant confirmed they sell from (e.g. US, CA). When provided, it is carried into the payment/godaddy-payments next-step actions so the eligibility check uses the confirmed country instead of a stale market.'
+      ),
   }),
   config: { timeout: 185_000 },
   async execute(input, context) {
     try {
-      const result = await provisionCommerceForApp(input, context, 'commerce');
+      const { sellingCountry, ...provisionInput } = input;
+      const result = await provisionCommerceForApp(provisionInput, context, 'commerce');
       if (!isRecord(result) || result.status !== 'ready') return result;
 
       return {
         ...result,
-        NEXT_STEP:
-          `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. CRITICAL: If the user's request contains ANY cart, checkout button, buy button, hosted checkout, place order, or order confirmation — payment/godaddy-payments is REQUIRED, not optional. Do not build a Checkout button, /checkout page, or order-confirmation route without first calling ${GODADDY_PAYMENTS_TEMPLATE_LOAD_ACTION}, then godaddy-payments__provision, then ${GODADDY_PAYMENTS_TEMPLATE_INSTALL_ACTION}. A cart checkout button wired to nothing is a broken app — do not deliver it.`,
-        capabilityChecklists: buildCommerceCapabilityChecklists(),
+        NEXT_STEP: `Commerce is configured and env vars have been written. Classify the user's original request. For catalog, product detail, shop, or cart UI, the next skill calls must be ${COMMERCE_UI_TEMPLATE_LOAD_ACTION} and then ${COMMERCE_UI_TEMPLATE_INSTALL_ACTION} before writing UI, catalog hooks, or Commerce API routes. After templates are installed, use commerce__search_tools and commerce__execute_tool for requested product/catalog/inventory work. If the catalog is empty and the user did not provide products, ask whether to create starter products with the agent, manage products in Commerce Home, or continue with an empty catalog. Include the Commerce Home link from commerceHomeUrl or selectedCommerceResources.storeUrl when available. CRITICAL: If the user's request contains ANY cart, checkout button, buy button, hosted checkout, place order, or order confirmation — payment/godaddy-payments is REQUIRED, not optional. Do not build a Checkout button, /checkout page, or order-confirmation route without first calling ${godaddyPaymentsLoadAction(sellingCountry)}, then godaddy-payments__provision, then ${godaddyPaymentsInstallAction(sellingCountry)}. A cart checkout button wired to nothing is a broken app — do not deliver it.`,
+        capabilityChecklists: buildCommerceCapabilityChecklists(sellingCountry),
       };
     } catch (err) {
       logDispatchError('commerce_provision', err);

@@ -2,26 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import { skillNonSelectionScenario } from '../skill-non-selection.js';
 import { wrongSkillRoutingScenario } from '../wrong-skill-routing.js';
 import { seoNonSelectionScenario } from '../seo-non-selection.js';
-import { googleAnalyticsNonSelectionScenario }
-  from '../google-analytics-non-selection.js';
-import { googleReviewsNonSelectionScenario }
-  from '../google-reviews-non-selection.js';
-import { authenticationNonSelectionScenario }
-  from '../authentication-non-selection.js';
-import { onlineAppointmentsNonSelectionScenario }
-  from '../online-appointments-non-selection.js';
-import { commerceVsPaymentRoutingScenario }
-  from '../commerce-vs-payment-routing.js';
-import { emailNonSelectionScenario }
-  from '../email-non-selection.js';
-import { appointmentsVsConferencingRoutingScenario }
-  from '../appointments-vs-conferencing-routing.js';
-import { inboxVsAiAgentRoutingScenario }
-  from '../inbox-vs-ai-agent-routing.js';
+import { googleAnalyticsNonSelectionScenario } from '../google-analytics-non-selection.js';
+import { googleReviewsNonSelectionScenario } from '../google-reviews-non-selection.js';
+import { authenticationNonSelectionScenario } from '../authentication-non-selection.js';
+import { onlineAppointmentsNonSelectionScenario } from '../online-appointments-non-selection.js';
+import { commerceVsPaymentRoutingScenario } from '../commerce-vs-payment-routing.js';
+import { paymentRegionEligibilityScenario } from '../payment-region-eligibility.js';
+import { emailNonSelectionScenario } from '../email-non-selection.js';
+import { appointmentsVsConferencingRoutingScenario } from '../appointments-vs-conferencing-routing.js';
+import { inboxVsAiAgentRoutingScenario } from '../inbox-vs-ai-agent-routing.js';
 import type { Scenario } from '../../types.js';
 import type { IGocodeClient } from '../../../clients/gocode-client.js';
-import type { AABCtrlPlaneClient }
-  from '../../../clients/aab-ctrl-plane-client.js';
+import type { AABCtrlPlaneClient } from '../../../clients/aab-ctrl-plane-client.js';
 
 function stubGocode(): IGocodeClient {
   return {
@@ -63,14 +55,10 @@ describe('skill-issue scenarios (1d)', () => {
     });
 
     it('requires using the skill (instruction-level signal independent of diagnostics)', () => {
-      const required = (scenario.skillInstructions ?? []).filter(
-        (i) => i.priority === 'required',
-      );
+      const required = (scenario.skillInstructions ?? []).filter((i) => i.priority === 'required');
       expect(required.length).toBeGreaterThan(0);
       expect(
-        (scenario.skillInstructions ?? []).some((i) =>
-          /database skill/i.test(i.instruction),
-        ),
+        (scenario.skillInstructions ?? []).some((i) => /database skill/i.test(i.instruction))
       ).toBe(true);
     });
 
@@ -89,9 +77,7 @@ describe('skill-issue scenarios (1d)', () => {
     });
 
     it('forbids the email skill so the misroute is caught by the judge', () => {
-      const noEmail = (scenario.skillInstructions ?? []).find(
-        (i) => i.id === 'no-email-skill',
-      );
+      const noEmail = (scenario.skillInstructions ?? []).find((i) => i.id === 'no-email-skill');
       expect(noEmail).toBeDefined();
       expect(noEmail!.priority).toBe('required');
       expect(noEmail!.instruction.toLowerCase()).toContain('email');
@@ -151,43 +137,37 @@ describe('skill-issue scenarios (1d)', () => {
     },
   ];
 
-  describe.each(nonSelectionCases)(
-    '$label',
-    ({ factory, skill, forbiddenIntentWords }) => {
-      const scenario = factory(gocode, ctrlPlane);
+  describe.each(nonSelectionCases)('$label', ({ factory, skill, forbiddenIntentWords }) => {
+    const scenario = factory(gocode, ctrlPlane);
 
-      it(`expects the ${skill} skill so non-selection is detectable`, () => {
-        expect(scenario.expectedSkills).toEqual([skill]);
-      });
+    it(`expects the ${skill} skill so non-selection is detectable`, () => {
+      expect(scenario.expectedSkills).toEqual([skill]);
+    });
 
-      it('wires the skill-selection evaluator', () => {
-        expect(scenario.evaluators.map((e) => e.name)).toContain(
-          'skill-selection',
-        );
-      });
+    it('wires the skill-selection evaluator', () => {
+      expect(scenario.evaluators.map((e) => e.name)).toContain('skill-selection');
+    });
 
-      it('has a required instruction naming the skill', () => {
-        const required = (scenario.skillInstructions ?? []).filter(
-          (i) => i.priority === 'required',
-        );
-        expect(required.length).toBeGreaterThan(0);
-        expect(
-          required.some((i) =>
-            i.instruction.toLowerCase().includes(skill.replace(/-/g, ' '))
-            || i.instruction.toLowerCase().includes(skill),
-          ),
-        ).toBe(true);
-      });
+    it('has a required instruction naming the skill', () => {
+      const required = (scenario.skillInstructions ?? []).filter((i) => i.priority === 'required');
+      expect(required.length).toBeGreaterThan(0);
+      expect(
+        required.some(
+          (i) =>
+            i.instruction.toLowerCase().includes(skill.replace(/-/g, ' ')) ||
+            i.instruction.toLowerCase().includes(skill)
+        )
+      ).toBe(true);
+    });
 
-      it('phrases the intent without naming the skill', () => {
-        expect(scenario.staticFirstMessage).toBeDefined();
-        const intent = scenario.staticFirstMessage!.toLowerCase();
-        for (const word of forbiddenIntentWords) {
-          expect(intent).not.toContain(word);
-        }
-      });
-    },
-  );
+    it('phrases the intent without naming the skill', () => {
+      expect(scenario.staticFirstMessage).toBeDefined();
+      const intent = scenario.staticFirstMessage!.toLowerCase();
+      for (const word of forbiddenIntentWords) {
+        expect(intent).not.toContain(word);
+      }
+    });
+  });
 
   describe('commerceVsPaymentRoutingScenario', () => {
     const scenario = commerceVsPaymentRoutingScenario(gocode, ctrlPlane);
@@ -198,7 +178,7 @@ describe('skill-issue scenarios (1d)', () => {
 
     it('forbids the payment router so the misroute is caught by the judge', () => {
       const noPayment = (scenario.skillInstructions ?? []).find(
-        (i) => i.id === 'no-payment-router',
+        (i) => i.id === 'no-payment-router'
       );
       expect(noPayment).toBeDefined();
       expect(noPayment!.priority).toBe('required');
@@ -206,9 +186,33 @@ describe('skill-issue scenarios (1d)', () => {
     });
 
     it('wires the skill-selection evaluator', () => {
-      expect(scenario.evaluators.map((e) => e.name)).toContain(
-        'skill-selection',
-      );
+      expect(scenario.evaluators.map((e) => e.name)).toContain('skill-selection');
+    });
+  });
+
+  describe('paymentRegionEligibilityScenario', () => {
+    const scenario = paymentRegionEligibilityScenario(gocode, ctrlPlane);
+
+    it('expects the payment router skill', () => {
+      expect(scenario.expectedSkills).toEqual(['payment']);
+    });
+
+    it('forbids GoDaddy Payments for a non-US/CA merchant', () => {
+      const noGdp = (scenario.skillInstructions ?? []).find((i) => i.id === 'no-gdp-outside-us-ca');
+      expect(noGdp).toBeDefined();
+      expect(noGdp!.priority).toBe('required');
+      expect(noGdp!.instruction.toLowerCase()).toContain('godaddy-payments');
+    });
+
+    it('requires routing to Stripe', () => {
+      const toStripe = (scenario.skillInstructions ?? []).find((i) => i.id === 'routes-to-stripe');
+      expect(toStripe).toBeDefined();
+      expect(toStripe!.priority).toBe('required');
+      expect(toStripe!.instruction.toLowerCase()).toContain('stripe');
+    });
+
+    it('wires the skill-selection evaluator', () => {
+      expect(scenario.evaluators.map((e) => e.name)).toContain('skill-selection');
     });
   });
 

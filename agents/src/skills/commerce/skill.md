@@ -20,6 +20,34 @@ This skill requires an active AAB browser/WebSocket session because its MCP adap
 
 This is a tools-first skill. Do not install the `commerce` skill itself. If a generic skill activation workflow says to load then install skills, skip installation for this skill.
 
+### Step 0 — Reuse an existing store first, then gate region before creating a new one
+
+When the request is to build or set up a store/shop, storefront, or checkout, do the lookup **before** asking anything:
+
+1. **Look up an existing setup first.** Call `commerce__provision` with no params. This resumes an existing binding or lists stores already on the account — it does NOT create a store on its own (creation only happens when you later pass `storePreference: "new"` or complete `needs_identity`). Read its status:
+   - **`status: 'ready'`** — this app is already bound to a store. Reuse it and continue with the flow below; do not create a new store, and do not ask for the country.
+   - **`needs_store_choice` with a non-empty `stores` array** — the account already has one or more stores. Ask the user whether to reuse an existing store or create a new one (see the `needs_store_choice` handling below). Reusing avoids creating a duplicate store and payment setup. If they pick an existing store, continue with it — do not ask for the country.
+   - **`needs_identity`, `noExistingStoreFound`, or an empty store list** — the account has no store yet. Do NOT create one yet — go to step 2 to confirm the region first.
+
+2. **No existing store → confirm where they sell before creating one.** Ask where the business sells from (do NOT rely on the market hint — the user's answer is the source of truth):
+
+   ```json
+   {
+     "questions": [{
+       "question": "Where does your business sell from?",
+       "type": "chips_single",
+       "suggestions": ["United States", "Canada", "Somewhere else"],
+       "subtitle": "GoDaddy Commerce checkout is available for businesses in the US and Canada.",
+       "allowOther": true
+     }]
+   }
+   ```
+
+   Map the answer to an ISO-3166 alpha-2 country code (United States → `US`, Canada → `CA`, Australia → `AU`, etc.).
+
+   - **US or Canada:** proceed to create the store (complete the `needs_identity` / `storePreference: "new"` flow) and continue below. When checkout is expected, pass the confirmed country as `sellingCountry` to `commerce__provision` (e.g. `commerce__provision({ sellingCountry: 'US' })`) so the returned checkout next-steps carry it into the `payment/godaddy-payments` eligibility check.
+   - **Anywhere else:** GoDaddy Commerce cart checkout (GoDaddy Payments) is not available in their region. Explain this first, then ask whether to continue with a product catalog/storefront **without** GoDaddy checkout, or take a different route (e.g. Stripe buy buttons via the `payment` skill). Only create the store if they choose to continue with the catalog/storefront. Never provision or install GoDaddy Payments for a merchant outside the US/Canada.
+
 Before any catalog/product/inventory operation, call `commerce__provision`. If it returns `status: 'ready'`, proceed with catalog work.
 
 If provision returns a `needs_*` status, use `askQuestion` for the required info, then re-call `commerce__provision` with the answer plus every field from `resumeInput` when the response includes it. When provision fails or required env values cannot be written, stop.
@@ -43,7 +71,7 @@ For `needs_store_choice`: the response includes a `stores` array. Call `askQuest
 9. Do not invent bespoke product API routes, `useProducts` hooks, or static product catalogs for a Commerce-backed UI unless the user explicitly asks for non-Commerce/mock/static data.
 10. Do not expose internal tool or skill names to the user. Describe actions in plain language.
 11. When reporting a connected store to the user, include full Store ID, Channel ID, Business ID when available, and Commerce Home link when available. Do not abbreviate or truncate UUIDs.
-12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`.
+12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`. Cart checkout is powered by GoDaddy Payments, which is available ONLY to merchants in the US/Canada — before loading or provisioning `payment/godaddy-payments`, confirm the merchant's selling country per the `commerce/ui` Checkout Handoff. For merchants outside the US/Canada, build the catalog/storefront/cart UI without GoDaddy checkout and offer alternatives; do not provision GoDaddy Payments.
 13. Before reporting checkout as complete, run `commerce__validate_checkout` and fix every finding.
 14. Once the Commerce work is fully done — the store/business is selected, the channel is ensured (`commerce__provision` returned `status: 'ready'`), all required files are created (templates installed, catalog/UI/checkout wired), and any checkout has passed `commerce__validate_checkout` — signal completion as the final step:
     ```typescript
@@ -65,7 +93,7 @@ For catalog UI/full-shop requests, install `commerce/ui` first, then handle cata
 `commerce__provision` returns structured `capabilityChecklists` when it reaches `status: 'ready'`.
 
 - `catalogOrCartUi` — Commerce store/channel, `commerce/ui` templates, and catalog data decision.
-- `fullShopWithCheckout` — Commerce store/channel, `commerce/ui`, catalog data decision, GoDaddy Payments provision, GoDaddy Payments templates, and cart checkout wiring to `POST /api/commerce/checkout`.
+- `fullShopWithCheckout` — Commerce store/channel, `commerce/ui`, catalog data decision, GoDaddy Payments provision, GoDaddy Payments templates, and cart checkout wiring to `POST /api/commerce/checkout`. Requires a US/Canada merchant (GoDaddy Payments restriction) — confirm the selling country before provisioning payments.
 - `nonCatalogPayment` — GoDaddy Payments provision/templates plus direct `lineItemData` checkout.
 
 For cart checkout, the checklist is authoritative. Loading `payment/godaddy-payments` is not enough; `godaddy-payments__provision` must return `ready` and `payment/godaddy-payments` templates must be installed before checkout UI or server code is written.

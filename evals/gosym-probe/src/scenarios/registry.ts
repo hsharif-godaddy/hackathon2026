@@ -8,9 +8,7 @@ import { buildWithExplicitNameScenario } from './todo-lifecycle/build-with-expli
 import { reAskInToolCallScenario } from './todo-lifecycle/re-ask-in-tool-call.js';
 import { buildLandingPageScenario } from './build-landing-page.js';
 import { midConversationIncrementScenario } from './mid-conversation-increment.js';
-import {
-  complexPromptLatencyScenario,
-} from './complex-prompt-latency.js';
+import { complexPromptLatencyScenario } from './complex-prompt-latency.js';
 import { brandLogoScenario } from './brand-logo.js';
 import {
   handoffVoiceHandbackScenario,
@@ -56,6 +54,7 @@ import {
   authenticationNonSelectionScenario,
   onlineAppointmentsNonSelectionScenario,
   commerceVsPaymentRoutingScenario,
+  paymentRegionEligibilityScenario,
   emailNonSelectionScenario,
   appointmentsVsConferencingRoutingScenario,
   inboxVsAiAgentRoutingScenario,
@@ -100,9 +99,7 @@ import {
 import { postFixVerificationScenario }
   from './skills/security/index.js';
 import type { IGocodeClient } from '../clients/gocode-client.js';
-import type {
-  AABCtrlPlaneClient,
-} from '../clients/aab-ctrl-plane-client.js';
+import type { AABCtrlPlaneClient } from '../clients/aab-ctrl-plane-client.js';
 import type { Config } from '../../config/environments/types.js';
 import type { Scenario } from './types.js';
 
@@ -110,7 +107,7 @@ export function createAllScenarios(
   gocode: IGocodeClient,
   ctrlPlane: AABCtrlPlaneClient,
   config?: Config,
-  calibrate: boolean = false,
+  calibrate: boolean = false
 ): Scenario[] {
   // The AAB agent gates the social tools behind ENABLE_SOCIAL, so the
   // social-posts scenarios are only meaningful when the flag is on.
@@ -167,6 +164,7 @@ export function createAllScenarios(
     authenticationNonSelectionScenario(gocode, ctrlPlane, config),
     onlineAppointmentsNonSelectionScenario(gocode, ctrlPlane, config),
     commerceVsPaymentRoutingScenario(gocode, ctrlPlane, config),
+    paymentRegionEligibilityScenario(gocode, ctrlPlane, config),
     emailNonSelectionScenario(gocode, ctrlPlane, config),
     appointmentsVsConferencingRoutingScenario(gocode, ctrlPlane, config),
     inboxVsAiAgentRoutingScenario(gocode, ctrlPlane, config),

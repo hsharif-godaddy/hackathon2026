@@ -162,16 +162,38 @@ Override any of these if the user's prompt is explicit; otherwise these are the 
 - Any page named "checkout", "order", "place-order", or "order-confirmation"
 - Any buy button, hosted-checkout redirect, or complete-purchase flow
 
+- Finish the catalog/PDP/cart UI using this pack's installed routes.
+- **Reuse an existing setup before creating a new one.** If this app already has a store/payment setup — a `## Commerce Binding` section is present in your context, or `godaddy-payments__provision` resumes a persisted binding — do NOT create a second store. Prefer reusing the bound store: skip the store-choice questions and let `godaddy-payments__provision` resume from the existing binding. Only fall through to a fresh setup when no binding exists.
+- **Confirm checkout eligibility — GoDaddy checkout is US/Canada only.** GoDaddy Commerce cart checkout is powered by GoDaddy Payments, which is available ONLY to merchants in the United States and Canada. Before loading or provisioning `payment/godaddy-payments`, ask the merchant where their business sells from. Do NOT rely on the market hint in your prompt — the user's answer is the source of truth:
+
+   ```json
+   {
+     "questions": [{
+       "question": "Where does your business sell from?",
+       "type": "chips_single",
+       "suggestions": ["United States", "Canada", "Somewhere else"],
+       "subtitle": "GoDaddy checkout is available for businesses in the US and Canada.",
+       "allowOther": true
+     }]
+   }
+   ```
+
+   Map the answer to an ISO-3166 alpha-2 country code (United States → `US`, Canada → `CA`, Australia → `AU`, etc.).
+
+   - **US or Canada:** continue with the GoDaddy Payments steps below, passing the confirmed country as `sellingCountry`.
+   - **Anywhere else:** do NOT load, provision, or install `payment/godaddy-payments`, and do NOT wire the cart to `/api/commerce/checkout`. Keep the catalog/storefront/cart UI you built and explain that integrated GoDaddy checkout is only available in the US/Canada. Offer alternatives: add simple Stripe buy buttons via the `payment` skill for individual products, or manage checkout/orders externally. Stripe is not wired into the Commerce cart, so a full Commerce cart checkout is not available in their region.
+
 **STOP all cart/storefront work now and run this sequence exactly, in order, before writing a single line of checkout UI, checkout-adjacent buttons, or order pages:**
 
 1. Load the payment skill:
 ```ts
-skill({ action: 'load', skill: 'payment/godaddy-payments' });
+skill({ action: 'load', skill: 'payment/godaddy-payments', sellingCountry: 'US' });
 ```
-2. Call `godaddy-payments__provision` (no params). Handle any `needs_*` responses per that skill's flow.
+
+2. Call `godaddy-payments__provision`, passing the confirmed country so its returned next-step carries it forward: `godaddy-payments__provision({ sellingCountry: 'US' })`. It reuses the Commerce binding for this app, verifies payment readiness, and handles any `needs_*` responses per that skill's flow.
 3. When provision returns `status: "ready"`, install templates immediately:
 ```ts
-skill({ action: 'install', skill: 'payment/godaddy-payments' });
+skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'US' });
 ```
 4. Wire the cart checkout button to `POST /api/commerce/checkout` with `draftOrderId`, `returnUrl`, and `successUrl`, then redirect to `data.url`.
 5. Call `commerce__validate_checkout` and fix every finding before continuing.
