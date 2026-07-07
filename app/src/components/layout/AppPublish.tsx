@@ -365,6 +365,11 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       .filter((d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.ACTIVE && !!d.fqdn)
       .map((d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase()),
   );
+  // Custom-domain connection already in progress — suppresses the connect picker so we don't
+  // re-offer a domain that's already attaching (its PENDING status shows in the Domains tab).
+  const hasPendingCustomDomain: boolean = (site?.domains ?? []).some(
+    (d) => d.domainType !== DomainType.PREFIX && d.status === DomainStatus.PENDING && !!d.fqdn,
+  );
   // Domains active on the customer's OTHER AAB apps — drives the "in use" tag + Move Domain modal.
   // Fetched lazily since the develop page doesn't hydrate the sites list.
   const allSites = useSitesStore((state) => state.allSites);
@@ -671,7 +676,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         (d) => d.domainType !== DomainType.PREFIX && !!d.fqdn,
       );
       const isCustomDomainSelected =
-        showDomainSelector && !!selectedDomainFqdn && selectedDomainFqdn !== freeProjectUrl;
+        showDomainSelector && !hasPendingCustomDomain && !!selectedDomainFqdn && selectedDomainFqdn !== freeProjectUrl;
       const isAlreadyConnected = appCustomDomains.some(
         (d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase() === normalizedSelected,
       );
@@ -741,7 +746,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
       setIsPublishing(currentAppId, false);
     }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, performPublish, runGate, setSecurityAnalysisResult, showDomainSelector, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, performPublish, runGate, setSecurityAnalysisResult, showDomainSelector, hasPendingCustomDomain, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
 
   // Override: transfer the domain off the other project, then publish.
   const handleOverrideAndPublish = useCallback(async () => {
@@ -817,6 +822,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     const normalizedSelected: string = targetFqdn.replace(/^https?:\/\//, '').toLowerCase();
     const needsDomainConnect: boolean =
       showDomainSelector &&
+      !hasPendingCustomDomain &&
       !!targetFqdn &&
       normalizedSelected !== freeProjectUrl.replace(/^https?:\/\//, '').toLowerCase() &&
       !(site?.domains ?? []).some(
@@ -845,7 +851,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       return;
     }
     setShowConnectConfirm(true);
-  }, [effectiveSelectedFqdn, showDomainSelector, freeProjectUrl, site, otherAppByFqdn, handleDeploy]);
+  }, [effectiveSelectedFqdn, showDomainSelector, hasPendingCustomDomain, freeProjectUrl, site, otherAppByFqdn, handleDeploy]);
 
   const handleConfirmConnect = useCallback(() => {
     setShowConnectConfirm(false);
@@ -1078,6 +1084,15 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       setActiveChatTab(ChatTab.SETTINGS);
     }
   }, [clickContext, closePopover, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isCanvasTabsEnabled, isMobile, isTopLevelDomainEnabled, location, openCanvas, setActiveChatTab, setActiveSettingsSection]);
+
+  // "Use a domain I own elsewhere": open Domains and deep-link to the external input via the hash
+  // (DomainAttach reads it to open the External tab + focus the input).
+  const handleUseExternalDomain = useCallback(() => {
+    handleViewDomain();
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'custom-domain-slug';
+    }
+  }, [handleViewDomain]);
 
   const handleViewSecurityFixes = useCallback(() => {
     shipAnalyticsLog('security.publish_footer.view_fixes_clicked', { ...(clickContext ?? {}) });
@@ -1351,7 +1366,9 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
             {getPublishStatusAlert()}
 
             {/* Domain Editing */}
-            {showDomainSelector && isPublishedOnCustomDomain ? (
+            {/* Published on a custom domain, or one is mid-connect: show the published URL card, not
+                the connect picker (re-offering an attaching domain is redundant). */}
+            {showDomainSelector && (isPublishedOnCustomDomain || hasPendingCustomDomain) ? (
               <PublishedDomainCard
                 domain={hostnameFqdn}
                 lastPublishLabel={publishedLastPublishLabel}
@@ -1379,7 +1396,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                   onSelect={setSelectedDomainFqdn}
                   onNewDomain={handleViewDomain}
                   onSeeAllDomains={handleViewDomain}
-                  onUseExternalDomain={handleViewDomain}
+                  onUseExternalDomain={handleUseExternalDomain}
                 />
               </>
             ) : fqdn ? (

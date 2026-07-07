@@ -293,6 +293,10 @@ export function useModifyDomains() {
         useSiteStore.getState().updateSite(variables.siteId, { domains: nextDomains });
       }
 
+      // Refresh the site store so site-derived UI (publish popover's URL/badge + connected-domain
+      // state) reflects the change without a manual reload. Silent + forced to avoid a skeleton flash.
+      void useSiteStore.getState().fetchSite(variables.siteId, true, true);
+
       // Push domain state to agent so context reflects the change
       void (async () => {
         try {

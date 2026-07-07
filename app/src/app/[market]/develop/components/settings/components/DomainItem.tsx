@@ -92,7 +92,8 @@ export default function DomainItem({
   radioMode = false,
   isSelected = false,
   onSelect,
-  mutationError = null
+  mutationError = null,
+  isPrePublishConnect = false
 }: {
   domain: Domain;
   appDomain?: AppDomain;
@@ -107,6 +108,8 @@ export default function DomainItem({
   isSelected?: boolean;
   onSelect?: (domainName: string) => void;
   mutationError?: Error | null;
+  // Pre-publish treatment: connect publishes first, then attaches. Relabels the CTA.
+  isPrePublishConnect?: boolean;
 }) {
   const t = useTranslations();
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
@@ -560,6 +563,7 @@ export default function DomainItem({
                 onConfirm={handleConfirmConnect}
                 onCancel={handleCancelConnect}
                 isInternalOnly
+                isPrePublishConnect={isPrePublishConnect}
               />
             ) : isDomainConnectEnabled && radioMode ? (
               <div className="flex w-max flex-col gap-0.5">
@@ -606,7 +610,9 @@ export default function DomainItem({
                     data-eid={generateClickEID(
                       `settings-domains.custom_domain.connect`,
                     )}
-                    text={t("builder_domain_button_connect")}
+                    text={isPrePublishConnect
+                      ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+                      : t('builder_domain_button_connect')}
                     size="sm"
                     stretch
                     className="!justify-start"

@@ -93,6 +93,13 @@ vi.mock('./usePublishForDomain', () => ({
   })),
 }));
 
+const mockHivemindCohort = vi.hoisted(function hoistedHivemind() {
+  return { value: undefined as string | undefined };
+});
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: vi.fn(() => ({ cohort: mockHivemindCohort.value, data: undefined, experiment: undefined })),
+}));
+
 vi.mock('@/utils/instrumentation', () => mockInstrumentation());
 
 vi.mock('@/lib/logging', () => ({
@@ -105,6 +112,10 @@ describe('DomainPanel', function domainPanelTests() {
     domainPanelLayoutTestState.rootBoxGap = undefined;
     domainPanelLayoutTestState.appDetails = { domains: [] };
     domainPanelLayoutTestState.isAppDetailsFetched = true;
+    mockHivemindCohort.value = undefined;
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
   });
 
   function expectSectionOrder(firstText: string, secondText: string) {
@@ -326,6 +337,59 @@ describe('DomainPanel', function domainPanelTests() {
       await user.click(publishButton);
 
       expect(mockHandlePublish).toHaveBeenCalled();
+    });
+
+    it('should bypass the publish-required empty state for the default-domain-selection treatment cohort', async function bypassEmptyStateForTreatment() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSiteStore } = await import('@/stores/useSiteStore');
+
+      mockHivemindCohort.value = 'on';
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+        const mockSite = createMockSite({ variants: [] }); // Not published
+        const state = {
+          getSite: vi.fn(() => mockSite),
+          loading: {},
+        };
+        return selector(state);
+      });
+
+      renderWithProviders(<DomainPanel />);
+
+      // Treatment connects pre-publish, so the empty state is skipped for the domain management UI.
+      expect(screen.queryByText('builder_domain_publish_required_title')).not.toBeInTheDocument();
+      expect(screen.queryByText('builder_domain_publish_now')).not.toBeInTheDocument();
+      // Title renders via its default message ('Domains'), not the raw key.
+      expect(screen.getByRole('heading', { name: 'Domains' })).toBeInTheDocument();
+    });
+
+    it('should bypass the empty state when deep-linked via #custom-domain-slug even without the treatment cohort', async function bypassEmptyStateForDeepLink() {
+      const { useSwitchboard } = await import('@/hooks/useSwitchboard');
+      const { usePaywallEligibility } = await import('@/hooks/usePaywallEligibility');
+      const { useSiteStore } = await import('@/stores/useSiteStore');
+
+      // Cohort intentionally left off — the deep link is a treatment-only entry point and must show
+      // the connect UI regardless of how the cohort resolves in this dynamically-imported panel.
+      mockHivemindCohort.value = undefined;
+      window.location.hash = 'custom-domain-slug';
+      vi.mocked(useSwitchboard).mockReturnValue(true);
+      vi.mocked(usePaywallEligibility).mockReturnValue({ showPaywall: false, isLoading: false });
+      vi.mocked(useSiteStore).mockImplementation((selector: any) => {
+        const mockSite = createMockSite({ variants: [] }); // Not published
+        const state = {
+          getSite: vi.fn(() => mockSite),
+          loading: {},
+        };
+        return selector(state);
+      });
+
+      renderWithProviders(<DomainPanel />);
+
+      expect(screen.queryByText('builder_domain_publish_required_title')).not.toBeInTheDocument();
+      // Title renders via its default message ('Domains'), not the raw key.
+      expect(screen.getByRole('heading', { name: 'Domains' })).toBeInTheDocument();
     });
   });
 

@@ -12,6 +12,8 @@ interface DomainConnectConfirmationProps {
   onConfirm: () => void;
   onCancel: () => void;
   isInternalOnly: boolean;
+  // Pre-publish treatment: confirm publishes then attaches, so the CTA reads "Publish and Connect".
+  isPrePublishConnect?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ interface DomainConnectConfirmationProps {
 export default function DomainConnectConfirmation({
   onConfirm,
   onCancel,
+  isPrePublishConnect = false,
 }: DomainConnectConfirmationProps) {
   const t = useTranslations();
   
@@ -42,7 +45,9 @@ export default function DomainConnectConfirmation({
         <Button
           design="primary"
           onClick={onConfirm}
-          text={t('builder_custom_domain_modal_button_continue')}
+          text={isPrePublishConnect
+            ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+            : t('builder_custom_domain_modal_button_continue')}
           data-eid={generateClickEID(`settings.domains.connect_continue`)}
           size="sm"
         />

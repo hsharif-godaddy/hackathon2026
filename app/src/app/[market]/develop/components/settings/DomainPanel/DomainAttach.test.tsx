@@ -138,6 +138,28 @@ vi.mock('@/hooks/useModifyDomains', async function importActual() {
   };
 });
 
+const domainAttachHivemindState = vi.hoisted(function hoistedHivemind() {
+  return { cohort: undefined as string | undefined };
+});
+vi.mock('@/hooks/useHivemind', () => ({
+  useHivemind: vi.fn(() => ({ cohort: domainAttachHivemindState.cohort, data: undefined, experiment: undefined })),
+}));
+
+const publishForConnectState = vi.hoisted(function hoistedPublishForConnect() {
+  return {
+    handlePublish: vi.fn(),
+    isPublishDisabled: false,
+    publishState: { isPublishing: false, publishError: false },
+  };
+});
+vi.mock('./usePublishForDomain', () => ({
+  usePublishForDomain: vi.fn(() => ({
+    handlePublish: publishForConnectState.handlePublish,
+    isPublishDisabled: publishForConnectState.isPublishDisabled,
+    publishState: publishForConnectState.publishState,
+  })),
+}));
+
 // -- Component utility mocks --
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -262,6 +284,13 @@ describe('DomainAttach', function domainAttachTests() {
       error: null,
       isFetched: true,
     } as any);
+
+    domainAttachHivemindState.cohort = undefined;
+    publishForConnectState.handlePublish = vi.fn();
+    publishForConnectState.isPublishDisabled = false;
+    publishForConnectState.publishState = { isPublishing: false, publishError: false };
+    const { hasBeenPublished } = await import('@/utils/site');
+    vi.mocked(hasBeenPublished).mockReturnValue(true);
   });
 
   it('renders legacy domain attach UI when domain-connect flag is disabled', async function rendersLegacyUiWhenFlagOff() {
@@ -1742,6 +1771,157 @@ describe('DomainAttach', function domainAttachTests() {
       fireEvent.click(screen.getByRole('button', { name: 'builder_domain_attach_external_button' }));
 
       expect(logClickEvent).toHaveBeenCalledWith('settings.domains.external_connect_button');
+    });
+  });
+
+  describe('pre-publish Publish and Connect (default-domain-selection treatment)', function prePublishConnectTests() {
+    async function setupUnpublishedTreatment() {
+      const { hasBeenPublished } = await import('@/utils/site');
+      vi.mocked(hasBeenPublished).mockReturnValue(false);
+      domainAttachHivemindState.cohort = 'on';
+      const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+      vi.mocked(useDomainValidationQuery).mockReturnValue({
+        data: { available: true, errors: [] },
+        isLoading: false,
+        isError: false,
+      } as any);
+    }
+
+    function renderUnpublishedTreatment() {
+      return renderWithProviders(
+        <DomainAttach
+          appDetails={{ id: 'test-app-123', name: 'Test App', status: 'running', domains: [] } as any}
+          isAppDetailsFetched={true}
+        />
+      );
+    }
+
+    it('labels the external CTA "Publish and Connect" and publishes instead of attaching directly', async function externalPublishAndConnect() {
+      await setupUnpublishedTreatment();
+      renderUnpublishedTreatment();
+
+      selectDomainAttachTab('external');
+      const input = document.getElementById('custom-domain-slug');
+      fireEvent.change(input!, { target: { value: 'mybusiness.com' } });
+
+      await waitFor(function waitForCta() {
+        expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
+      });
+
+      // Open the confirmation modal, then confirm on its (also relabeled) primary button.
+      fireEvent.click(screen.getByRole('button', { name: 'Publish and Connect' }));
+      const publishAndConnectButtons = screen.getAllByRole('button', { name: 'Publish and Connect' });
+      fireEvent.click(publishAndConnectButtons[publishAndConnectButtons.length - 1]);
+
+      await waitFor(function waitForPublish() {
+        expect(publishForConnectState.handlePublish).toHaveBeenCalled();
+      });
+      // Attach is deferred until the deployment completes — it must not fire alongside publish.
+      expect(mockModifyDomainsMutation.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('shows the in-progress banner once Publish and Connect is triggered', async function showsProgressBanner() {
+      await setupUnpublishedTreatment();
+      renderUnpublishedTreatment();
+
+      expect(screen.queryByTestId('domain-publish-connect-progress')).not.toBeInTheDocument();
+
+      selectDomainAttachTab('external');
+      fireEvent.change(document.getElementById('custom-domain-slug')!, { target: { value: 'mybusiness.com' } });
+      await waitFor(function waitForCta() {
+        expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Publish and Connect' }));
+      const publishAndConnectButtons = screen.getAllByRole('button', { name: 'Publish and Connect' });
+      fireEvent.click(publishAndConnectButtons[publishAndConnectButtons.length - 1]);
+
+      await waitFor(function waitForBanner() {
+        expect(screen.getByTestId('domain-publish-connect-progress')).toBeInTheDocument();
+      });
+    });
+
+    it('disables the CTA and never shows the banner when publish is blocked (compliance)', async function blockedPublishNoHang() {
+      await setupUnpublishedTreatment();
+      publishForConnectState.isPublishDisabled = true;
+      renderUnpublishedTreatment();
+
+      selectDomainAttachTab('external');
+      fireEvent.change(document.getElementById('custom-domain-slug')!, { target: { value: 'mybusiness.com' } });
+
+      // CTA stays disabled, so the click can't dead-end the banner into a forever-spin.
+      const cta = await screen.findByRole('button', { name: 'Publish and Connect' });
+      expect(cta).toBeDisabled();
+      fireEvent.click(cta);
+
+      expect(publishForConnectState.handlePublish).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('domain-publish-connect-progress')).not.toBeInTheDocument();
+    });
+
+    it('attaches the pending domain once the publish deployment completes', async function attachAfterPublish() {
+      await setupUnpublishedTreatment();
+      const { rerender } = renderUnpublishedTreatment();
+
+      selectDomainAttachTab('external');
+      fireEvent.change(document.getElementById('custom-domain-slug')!, { target: { value: 'mybusiness.com' } });
+      await waitFor(function waitForCta() {
+        expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Publish and Connect' }));
+      const publishAndConnectButtons = screen.getAllByRole('button', { name: 'Publish and Connect' });
+      fireEvent.click(publishAndConnectButtons[publishAndConnectButtons.length - 1]);
+      await waitFor(function waitForPublish() {
+        expect(publishForConnectState.handlePublish).toHaveBeenCalled();
+      });
+
+      // Simulate the publish + deployment completing: the site is now published.
+      const { hasBeenPublished } = await import('@/utils/site');
+      vi.mocked(hasBeenPublished).mockReturnValue(true);
+      rerender(
+        <DomainAttach
+          appDetails={{ id: 'test-app-123', name: 'Test App', status: 'running', domains: [] } as any}
+          isAppDetailsFetched={true}
+        />
+      );
+
+      await waitFor(function waitForAttach() {
+        expect(mockModifyDomainsMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            siteId: 'test-app-123',
+            payload: expect.objectContaining({
+              domainsToCreate: [{ fqdn: 'mybusiness.com', primary: false }],
+            }),
+          }),
+        );
+      });
+    });
+
+    it('enables Publish and Connect via the deep-link nonce even when the cohort is not on', async function deepLinkForcesPrePublishConnect() {
+      const { hasBeenPublished } = await import('@/utils/site');
+      vi.mocked(hasBeenPublished).mockReturnValue(false);
+      domainAttachHivemindState.cohort = undefined; // cohort intentionally off
+      const { useDomainValidationQuery } = await import('@/hooks/useDomainValidationQuery');
+      vi.mocked(useDomainValidationQuery).mockReturnValue({
+        data: { available: true, errors: [] },
+        isLoading: false,
+        isError: false,
+      } as any);
+
+      renderWithProviders(
+        <DomainAttach
+          appDetails={{ id: 'test-app-123', name: 'Test App', status: 'running', domains: [] } as any}
+          isAppDetailsFetched={true}
+          externalConnectDeepLinkNonce={1}
+        />
+      );
+
+      // The deep link enables the pre-publish connect CTA even though the cohort is off.
+      selectDomainAttachTab('external');
+      const input = document.getElementById('custom-domain-slug');
+      fireEvent.change(input!, { target: { value: 'mybusiness.com' } });
+
+      await waitFor(function waitForCta() {
+        expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
+      });
     });
   });
 });

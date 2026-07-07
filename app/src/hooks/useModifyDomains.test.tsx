@@ -46,6 +46,7 @@ vi.mock('@/hooks/shared/domainJourneyFunnel', () => ({
 
 describe('useModifyDomains', () => {
   let queryClient: QueryClient;
+  let fetchSiteSpy: ReturnType<typeof vi.spyOn>;
 
   const createWrapper = () => {
     queryClient = new QueryClient({
@@ -60,6 +61,9 @@ describe('useModifyDomains', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useSiteStore.setState({ sites: {}, loading: {}, error: null, _pendingRequests: {} });
+    // Stub the post-mutation site refetch: it is fire-and-forget and, with appFetch globally mocked
+    // to the domain-op response, would otherwise clobber the seeded store. Tests assert it is called.
+    fetchSiteSpy = vi.spyOn(useSiteStore.getState(), 'fetchSite').mockResolvedValue(null);
   });
 
   const makeDomain = (overrides: Partial<SiteDomain>): SiteDomain => ({
@@ -235,6 +239,29 @@ describe('useModifyDomains', () => {
     });
 
     expect(useSiteStore.getState().sites['app-123']?.domains).toHaveLength(0);
+  });
+
+  it('should refetch the site on connect success so site-derived UI (publish popover) refreshes', async function connectRefetchesSite() {
+    seedStore([makeDomain({ fqdn: 'myapp.airoapp.ai', domainType: DomainType.PREFIX, prefix: 'myapp' })]);
+    vi.mocked(appFetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ statusJobId: 'job-connect', status: 'pending', message: 'Connect started' }),
+    } as Response);
+
+    const { result } = renderHook(() => useModifyDomains(), {
+      wrapper: createWrapper(),
+    });
+
+    result.current.mutate({
+      siteId: 'app-123',
+      payload: { domainsToCreate: [{ fqdn: 'new.example.com', primary: false }] },
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(fetchSiteSpy).toHaveBeenCalledWith('app-123', true, true);
   });
 
   it('should not throw when deleting and the site is not cached in useSiteStore', async function deleteNoCachedSite() {

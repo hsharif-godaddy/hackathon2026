@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Box from "@ux/box";
 import Button from "@ux/button";
 import WebsiteIcon from '@ux/icon/website';
@@ -11,8 +11,10 @@ import { ChatTab, SettingsSection } from "@/app/[market]/develop/components/type
 import { useAppIdFromParams } from "@/app/[market]/develop/components/utils";
 import EmptyStateCard from '@/components/layout/EmptyStateCard';
 import { EnterpriseUpgradeNotice } from '@/components/upgrade/EnterpriseUpgradeNotice';
+import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import { useDomainPolling } from '@/hooks/useDomainPolling';
 import { useEnterpriseManaged } from '@/hooks/useEnterpriseManaged';
+import { useHivemind } from '@/hooks/useHivemind';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { useSwitchboard } from "@/hooks/useSwitchboard";
 import { useTranslations } from '@/hooks/useTranslations';
@@ -61,6 +63,32 @@ export default function DomainPanel() {
 
   const { handlePublish, isPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
   const canManageDomains = canAccessDomainManagement(site);
+  // Treatment cohort connects pre-publish, so it skips the "publish first" empty state.
+  const { cohort: defaultDomainSelectionCohort } = useHivemind(EXPERIMENT_IDS.defaultDomainSelection);
+  const isPrePublishConnectEnabled: boolean = defaultDomainSelectionCohort === COHORT_ON;
+
+  // "Use a domain I own elsewhere" deep-links here via #custom-domain-slug. Tracked as a nonce so
+  // the connect UI shows pre-publish and acts as a treatment-only bypass regardless of cohort.
+  const [externalConnectDeepLinkNonce, setExternalConnectDeepLinkNonce] = useState<number>(
+    () => (typeof window !== 'undefined' && window.location.hash === '#custom-domain-slug' ? 1 : 0),
+  );
+  useEffect(function watchExternalConnectDeepLink() {
+    if (typeof window === 'undefined') return;
+    // Clear the hash captured at mount (initializer already counted it) so it doesn't linger.
+    if (window.location.hash === '#custom-domain-slug') {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    function onHashChange() {
+      if (window.location.hash !== '#custom-domain-slug') return;
+      setExternalConnectDeepLinkNonce((nonce) => nonce + 1);
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return function cleanup() {
+      window.removeEventListener('hashchange', onHashChange);
+    };
+  }, []);
+  const isExternalConnectDeepLink: boolean = externalConnectDeepLinkNonce > 0;
 
   const hasActiveDomainJob = useDevelopPageStore(
     (s) => Boolean(currentAppId && s.domainJobsInProgress?.[currentAppId]),
@@ -114,8 +142,9 @@ export default function DomainPanel() {
     );
   }
 
-  // First-time publish prompt when nothing is published and no custom domains remain
-  if (!isSiteLoading && !canManageDomains && (isDomainAttachEnabled || isProjectDomainEnabled)) {
+  // First-time publish prompt (nothing published, no custom domains). Treatment cohort or the
+  // deep link skips it and connects pre-publish from the management UI below.
+  if (!isSiteLoading && !canManageDomains && !isPrePublishConnectEnabled && !isExternalConnectDeepLink && (isDomainAttachEnabled || isProjectDomainEnabled)) {
     return (
       <Box gap="lg" className="@container">
         <EmptyStateCard
@@ -154,7 +183,7 @@ export default function DomainPanel() {
 
         {isDomainAttachEnabled && (
           <Box className="w-full min-w-0">
-            <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />
+            <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} externalConnectDeepLinkNonce={externalConnectDeepLinkNonce} />
           </Box>
         )}
 
@@ -175,15 +204,15 @@ export default function DomainPanel() {
       )}
       {isDomainConnectEnabled ? (
         <>
-          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} externalConnectDeepLinkNonce={externalConnectDeepLinkNonce} />}
         </>
       ) : hasActiveCustomDomain ? (
         <>
-          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} externalConnectDeepLinkNonce={externalConnectDeepLinkNonce} />}
         </>
       ) : (
         <>
-          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} />}
+          {isDomainAttachEnabled && <DomainAttach appDetails={appDetails} isAppDetailsFetched={isAppDetailsFetched} externalConnectDeepLinkNonce={externalConnectDeepLinkNonce} />}
         </>
       )}
     </Box>

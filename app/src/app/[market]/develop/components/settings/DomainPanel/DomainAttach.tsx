@@ -7,6 +7,7 @@ import SearchIcon from "@ux/icon/search";
 import Modal from "@ux/modal";
 import Pagination from "@ux/pagination";
 import Skeleton from "@ux/skeleton";
+import Spinner from "@ux/spinner";
 import Tabs from "@ux/tabs";
 import text from "@ux/text";
 import TextEntry from "@ux/text-entry";
@@ -22,6 +23,7 @@ import {
   DomainDisconnectConfirmationModal,
   DomainDisconnectSuccessAlert,
 } from '@/app/[market]/develop/components/widgets/DomainDisconnectConfirmationModal';
+import { COHORT_ON, EXPERIMENT_IDS } from '@/config/experiments';
 import type { AppDetailsResponse, AppDomain } from '@/hooks/useAppDetails';
 import { useAuth } from '@/hooks/useAuth';
 import { useCustomerDomainAttach } from '@/hooks/useCustomerDomainAttach';
@@ -31,6 +33,7 @@ import { useDomainDnsOwnership } from '@/hooks/useDomainDnsOwnership';
 import { type Domain, useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useDomainTransfer } from '@/hooks/useDomainTransfer';
 import { useDomainValidationQuery } from '@/hooks/useDomainValidationQuery';
+import { useHivemind } from '@/hooks/useHivemind';
 import {
   type DomainMutationDetails,
   DomainMutationError,
@@ -62,6 +65,7 @@ import { countDomainListRows, isDomainJobStillInProgress } from '@/utils/domainA
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
 import { hasBeenPublished } from '@/utils/site';
+import { usePublishForDomain } from './usePublishForDomain';
 
 // The domain list is a compact fixed-height scroll area (~5-6 rows visible);
 // it holds up to one page of domains, and we paginate once the count exceeds it.
@@ -125,6 +129,9 @@ function getErrorMessage(error: unknown, t: ReturnType<typeof useTranslations>):
 interface DomainAttachProps {
   appDetails: AppDetailsResponse | undefined;
   isAppDetailsFetched: boolean;
+  // Bumped by "Use a domain I own elsewhere". A nonzero value opens the External tab, focuses the
+  // input, and (pre-publish) enables the Publish-and-Connect flow regardless of cohort.
+  externalConnectDeepLinkNonce?: number;
 }
 
 /**
@@ -133,7 +140,7 @@ interface DomainAttachProps {
  * Handles connecting and managing custom domains for the application,
  * including DNS configuration instructions for pending domains.
  */
-export default function DomainAttach({ appDetails, isAppDetailsFetched }: DomainAttachProps) {
+export default function DomainAttach({ appDetails, isAppDetailsFetched, externalConnectDeepLinkNonce }: DomainAttachProps) {
   const t = useTranslations();
   const currentAppId = useAppIdFromParams()
   const isDomainConnectEnabled = useSwitchboard('appbuilder-domain-connect');
@@ -147,6 +154,9 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const [showAddConfirmation, setShowAddConfirmation] = useState(false);
   const [showConnectSelectedConfirmation, setShowConnectSelectedConfirmation] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  // Spans the whole pre-publish publish→attach op; drives the in-progress banner (the per-row
+  // menu's popover closes on click, so the button alone can't show progress).
+  const [isPublishAndConnectInFlight, setIsPublishAndConnectInFlight] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<DomainAttachTab>(DOMAIN_ATTACH_TAB.CONNECT);
   const [conflictData, setConflictData] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<string | null>(null);
@@ -156,11 +166,18 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
   const trackedAppIdRef = useRef<string | null>(null);
   const panelViewedAppIdRef = useRef<string | null>(null);
   const dnsShownDomainRef = useRef<string | null>(null);
+  // Pre-publish "Publish and Connect": the fqdn to attach once the publish deployment completes.
+  const pendingConnectFqdnRef = useRef<string | null>(null);
 
   const site = useSiteStore((state) => {
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
+
+  // Treatment cohort: connect a domain before first publish (reuses the empty-state publish plumbing).
+  const { cohort: defaultDomainSelectionCohort } = useHivemind(EXPERIMENT_IDS.defaultDomainSelection);
+  const isDefaultDomainSelectionTreatment: boolean = defaultDomainSelectionCohort === COHORT_ON;
+  const { handlePublish: publishForConnect, isPublishDisabled: isPrePublishPublishDisabled, publishState } = usePublishForDomain(currentAppId, site);
 
   const hasActiveDomainJob = useDevelopPageStore(
     (s) => Boolean(currentAppId && s.domainJobsInProgress?.[currentAppId]),
@@ -743,15 +760,43 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
     // Use the sanitized domain (with protocol removed)
     const sanitizedDomain = sanitizeDomainInput(customDomain);
-    await handleConnectDomain(sanitizedDomain);
     setCustomDomain('');
     setDebouncedDomain('');
+    if (isPrePublishConnect) {
+      await beginPublishThenConnect(sanitizedDomain);
+      return;
+    }
+    await handleConnectDomain(sanitizedDomain);
   }
 
   async function handleConfirmAdd() {
     logClickEvent('settings.domains.external_confirm')();
     setShowAddConfirmation(false);
     await handleAddCustomDomain();
+  }
+
+  // Pre-publish: stash the fqdn and publish; the completion effect below attaches once deployed
+  // (keeps the attach off a long-lived promise since deploys can take minutes).
+  async function beginPublishThenConnect(domainName: string): Promise<void> {
+    // Bail before setting in-flight state if publish can't start (e.g. compliance-blocked). Otherwise
+    // handlePublish bare-returns without isPublishing/publishError and the completion effect never
+    // clears the banner — it would spin forever with no attach and no error.
+    if (!currentAppId || isPrePublishPublishDisabled) return;
+    pendingConnectFqdnRef.current = domainName;
+    setSelectedDomain(domainName);
+    setIsPublishAndConnectInFlight(true);
+    logClickEvent('settings.domains.publish_and_connect')();
+    shipAnalyticsLog('domain.custom.publish_and_connect.started', { appId: currentAppId, domainName });
+    await publishForConnect();
+  }
+
+  // Per-row menu connect: pre-publish publishes then attaches; otherwise attaches directly.
+  function handleDomainItemConnect(domainName: string): void {
+    if (isPrePublishConnect) {
+      void beginPublishThenConnect(domainName);
+      return;
+    }
+    void handleConnectDomain(domainName);
   }
 
   // Get customer domain entries (includes root domains + connected subdomains)
@@ -831,9 +876,56 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
     ?.some((d) => d.status === DomainStatus.DELETING) ?? false;
 
   const isPublished = hasBeenPublished(site);
+  // Treatment cohort or the "Use a domain I own elsewhere" deep link (also treatment-only) can
+  // connect before publish; everyone else still needs a published app first.
+  const isExternalConnectDeepLink: boolean = (externalConnectDeepLinkNonce ?? 0) > 0;
+  const isPrePublishConnect: boolean = (isDefaultDomainSelectionTreatment || isExternalConnectDeepLink) && !isPublished;
+  // Store-backed publishing flag: drives the disable gate + CTA label while the publish+deploy runs.
+  const isPublishingForConnect: boolean = publishState.isPublishing;
 
-  const isDomainMutationBusy = !isPublished || modifyDomainsMutation.isPending || hasDeletingDomain;
+  const isDomainMutationBusy =
+    (!isPublished && !isPrePublishConnect) ||
+    modifyDomainsMutation.isPending ||
+    hasDeletingDomain ||
+    isPublishingForConnect ||
+    // Pre-publish connect can't proceed if the publish itself is blocked (compliance, in-flight
+    // deploy, active conversation); disable the CTAs so the click can't dead-end the banner.
+    (isPrePublishConnect && isPrePublishPublishDisabled);
   const isDomainDataReady = isDomainsFetched && isAppDetailsFetched;
+
+  // Once the deployment lands (isPublished flips true), attach the picked domain; on publish
+  // failure, drop the pending attach (the publish-error UI reports it).
+  useEffect(function attachPendingDomainAfterPublish() {
+    const pendingFqdn = pendingConnectFqdnRef.current;
+    if (!pendingFqdn) return;
+    if (publishState.publishError) {
+      pendingConnectFqdnRef.current = null;
+      setIsPublishAndConnectInFlight(false);
+      return;
+    }
+    if (isPublished && !publishState.isPublishing) {
+      pendingConnectFqdnRef.current = null;
+      void handleConnectDomain(pendingFqdn).finally(function clearPublishAndConnectFlag() {
+        setIsPublishAndConnectInFlight(false);
+      });
+    }
+  }, [isPublished, publishState.isPublishing, publishState.publishError]);
+
+  // Deep link: open the External tab and focus the custom-domain input. Nonce-driven so a repeat
+  // click re-triggers it (DomainPanel owns hash detection).
+  useEffect(function focusExternalInputOnDeepLink() {
+    if (!externalConnectDeepLinkNonce) return;
+    setActiveTab(DOMAIN_ATTACH_TAB.EXTERNAL);
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(function focusInput() {
+      const input = document.getElementById('custom-domain-slug');
+      if (!input) return;
+      if (typeof input.scrollIntoView === 'function') {
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      (input as HTMLInputElement).focus();
+    });
+  }, [externalConnectDeepLinkNonce]);
 
   const isSelectedDomainAlreadyConnected = Boolean(
     selectedDomain &&
@@ -856,7 +948,18 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
 
   const externalDomainButtonText = isExternalDomainChecking
     ? t('builder_custom_domain_button_checking')
-    : t('builder_domain_attach_external_button');
+    : isPublishingForConnect
+      ? t('builder_domain_publishing')
+      : isPrePublishConnect
+        ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+        : t('builder_domain_attach_external_button');
+
+  // "Connect" list CTA + connect-confirm modal: treatment cohort publishes then connects.
+  const connectCtaLabel: string = isPublishingForConnect
+    ? t('builder_domain_publishing')
+    : isPrePublishConnect
+      ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+      : t('builder_domain_button_connect');
 
   const isExternalDomainButtonDisabled = Boolean(
     isDomainMutationBusy ||
@@ -890,8 +993,12 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       return;
     }
     logClickEvent('settings.domains.connect_confirm')();
-    await handleConnectDomain(selectedDomain);
     setShowConnectSelectedConfirmation(false);
+    if (isPrePublishConnect) {
+      await beginPublishThenConnect(selectedDomain);
+      return;
+    }
+    await handleConnectDomain(selectedDomain);
   }
 
   const customDomainSectionStatus = useMemo(() => {
@@ -1027,7 +1134,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
             appDomain={rootAppDomain}
             siteId={currentAppId}
             appId={currentAppId}
-            onConnect={handleConnectDomain}
+            onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
             onDisconnect={handleDisconnectDomain}
             isLoading={modifyDomainsMutation.isPending}
             disableConnect={isDomainMutationBusy}
@@ -1045,7 +1153,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 appDomain={subdomain}
                 siteId={currentAppId}
                 appId={currentAppId}
-                onConnect={handleConnectDomain}
+                onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                 onDisconnect={handleDisconnectDomain}
                 isLoading={modifyDomainsMutation.isPending}
                 disableConnect={isDomainMutationBusy}
@@ -1069,7 +1178,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
           appDomain={appDomain}
           siteId={currentAppId}
           appId={currentAppId}
-          onConnect={handleConnectDomain}
+          onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
           onDisconnect={handleDisconnectDomain}
           isLoading={modifyDomainsMutation.isPending}
           disableConnect={isDomainMutationBusy}
@@ -1088,7 +1198,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
         appDomain={undefined}
         siteId={currentAppId}
         appId={currentAppId}
-        onConnect={handleConnectDomain}
+        onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
         onDisconnect={handleDisconnectDomain}
         isLoading={modifyDomainsMutation.isPending}
         disableConnect={isDomainMutationBusy}
@@ -1120,6 +1231,22 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
       useDomainConnectLayout={isDomainConnectEnabled}
     >
       <Box orientation="vertical" gap="md" className="w-full">
+        {isPublishAndConnectInFlight && (
+          <Box
+            orientation="horizontal"
+            gap="sm"
+            blockAlignChildren="center"
+            className="bg-intents-ux-box-backgroundColor rounded-lg px-3 py-2"
+            data-testid="domain-publish-connect-progress"
+          >
+            <Spinner size="sm" />
+            <text.p className="!m-0 text-intents-ux-text-secondaryColor">
+              {isPublishingForConnect
+                ? t('builder_domain_publishing')
+                : t('builder_domain_attach_connecting')}
+            </text.p>
+          </Box>
+        )}
         {isDomainConnectEnabled ? (
           <>
             <Tabs
@@ -1202,7 +1329,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 {!isLoading && !error && totalDomainUnits > 0 && (
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Button
-                      text={t('builder_domain_button_connect')}
+                      text={connectCtaLabel}
+                      icon={isPublishingForConnect ? <Spinner size="sm" /> : undefined}
                       design="primary"
                       size="sm"
                       disabled={isConnectSelectedDisabled}
@@ -1302,6 +1430,7 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     />
                     <Button
                       text={externalDomainButtonText}
+                      icon={isPublishingForConnect ? <Spinner size="sm" /> : undefined}
                       design="primary"
                       onClick={() => {
                         logClickEvent('settings.domains.external_connect_button')();
@@ -1419,7 +1548,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                           appDomain={rootAppDomain}
                           appId={currentAppId}
                           siteId={currentAppId}
-                          onConnect={handleConnectDomain}
+                          onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                           onDisconnect={handleDisconnectDomain}
                           isLoading={modifyDomainsMutation.isPending}
                           disableConnect={isDomainMutationBusy}
@@ -1436,7 +1566,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                           appDomain={subdomain}
                           appId={currentAppId}
                           siteId={currentAppId}
-                          onConnect={handleConnectDomain}
+                          onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                           onDisconnect={handleDisconnectDomain}
                           isLoading={modifyDomainsMutation.isPending}
                           disableConnect={isDomainMutationBusy}
@@ -1454,7 +1585,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                   appDomain={appDomain}
                   appId={currentAppId}
                   siteId={currentAppId}
-                  onConnect={handleConnectDomain}
+                  onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                   onDisconnect={handleDisconnectDomain}
                   isLoading={modifyDomainsMutation.isPending}
                   disableConnect={isDomainMutationBusy}
@@ -1469,7 +1601,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                   appDomain={appDomain}
                   appId={currentAppId}
                   siteId={currentAppId}
-                  onConnect={handleConnectDomain}
+                  onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                   onDisconnect={handleDisconnectDomain}
                   isLoading={modifyDomainsMutation.isPending}
                   disableConnect={isDomainMutationBusy}
@@ -1486,7 +1619,8 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     appDomain={undefined}
                     appId={currentAppId}
                     siteId={currentAppId}
-                    onConnect={handleConnectDomain}
+                    onConnect={handleDomainItemConnect}
+            isPrePublishConnect={isPrePublishConnect}
                     onDisconnect={handleDisconnectDomain}
                     isLoading={modifyDomainsMutation.isPending}
                     disableConnect={isDomainMutationBusy}
@@ -1534,8 +1668,13 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                     <Button
                       text={isExternalDomainChecking
                         ? t('builder_custom_domain_button_checking')
-                        : t('builder_custom_domain_button_add')
+                        : isPublishingForConnect
+                          ? t('builder_domain_publishing')
+                          : isPrePublishConnect
+                            ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+                            : t('builder_custom_domain_button_add')
                       }
+                      icon={isPublishingForConnect ? <Spinner size="sm" /> : undefined}
                       design="primary"
                       onClick={() => {
                         logClickEvent('settings.domains.external_connect_button')();
@@ -1585,7 +1724,9 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
                 text={
                   modifyDomainsMutation.isPending
                     ? t('builder_domain_attach_connecting')
-                    : t('builder_custom_domain_modal_button_continue')
+                    : isPrePublishConnect
+                      ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+                      : t('builder_custom_domain_modal_button_continue')
                 }
                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
                 size="sm"
@@ -1614,7 +1755,9 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched }: Domain
               <Button
                 design="primary"
                 onClick={() => void handleConfirmAdd()}
-                text={t('builder_custom_domain_modal_button_continue')}
+                text={isPrePublishConnect
+                  ? t('builder_domain_publish_and_connect', undefined, 'Publish and Connect')
+                  : t('builder_custom_domain_modal_button_continue')}
                 data-eid={generateClickEID(`settings.domains.connect_continue`)}
                 size="sm"
               />
