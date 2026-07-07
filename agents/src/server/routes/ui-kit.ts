@@ -19,7 +19,7 @@ if (!existsSync(TEMP_DIR)) {
   mkdirSync(TEMP_DIR, { recursive: true })
 }
 
-const ALLOWED_EXTENSIONS = ['.zip', '.md', '.txt', '.xml', '.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']
+const ALLOWED_EXTENSIONS = ['.zip', '.md', '.txt', '.xml', '.html', '.htm', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.pdf']
 
 const fileUpload = multer({
   storage: multer.diskStorage({
@@ -224,13 +224,8 @@ router.post('/apps/:id/file-upload', (req: Request, res: Response) => {
         }
 
         mkdirSync(dirname(targetPath), { recursive: true })
-        if (isImage) {
-          const buf = readFileSync(filePath)
-          writeFileSync(targetPath, buf)
-        } else {
-          const content = readFileSync(filePath, 'utf-8')
-          writeFileSync(targetPath, content, 'utf-8')
-        }
+        const buf = readFileSync(filePath)
+        writeFileSync(targetPath, buf)
         await rm(filePath, { force: true })
 
         const writtenPath = `${targetDir}/${fileName}`

@@ -78,6 +78,7 @@ catalog:
   '@types/express': ^4.17.25
   # Shared type definitions
   '@types/multer': ^2.1.0
+  '@types/pdf-parse': ^1.1.4
   '@types/node': ^22.19.18
   '@types/react': ^19.2.14
   '@types/react-dom': ^19.2.3
@@ -128,6 +129,7 @@ catalog:
   next: ^16.2.9
   openai: ^6.37.0
   parquetjs: ^0.11.2
+  pdf-parse: ^1.1.1
   prettier: 3.8.3
   pusher-js: ^8.5.0
   qrcode.react: ^4.2.0

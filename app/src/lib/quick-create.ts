@@ -307,6 +307,7 @@ export async function retrieveAndUploadFiles(
 
     const mimeMap: Record<string, string> = {
       '.zip': 'application/zip',
+      '.pdf': 'application/pdf',
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',

@@ -7,7 +7,7 @@ import PlusIcon from '@ux/icon/plus';
 import { useTranslations } from '@/hooks/useTranslations';
 import { getFileUploadAgent } from '@/lib/file-agent';
 import { logger } from '@/lib/request-context';
-import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
+import { CHAT_UPLOAD_ACCEPTED_TYPES } from '@/utils/file-types';
 import { UPLOAD_TIMEOUT_MS, UPLOAD_TIMEOUT_SECONDS, validate } from '@/utils/file-upload-validation';
 import { logImpressionEvent } from '@/utils/instrumentation';
 
@@ -146,7 +146,7 @@ export default function FileUploadButton({
         onChange={handleFileSelect}
         style={{ display: 'none' }}
         data-testid="file-input"
-        accept={ACCEPTED_UPLOAD_FILE_TYPES}
+        accept={CHAT_UPLOAD_ACCEPTED_TYPES}
       />
       <Button
         onClick={handleButtonClick}

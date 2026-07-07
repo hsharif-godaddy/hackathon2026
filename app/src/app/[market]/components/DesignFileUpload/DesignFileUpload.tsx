@@ -5,6 +5,7 @@ import AttachmentIcon from '@ux/icon/attachment'
 import { MutedIconButton } from '@/components/home/MutedIconButton'
 import { useBreakpoints } from '@/hooks/useBreakpoints'
 import { useTranslations } from '@/hooks/useTranslations'
+import { DESIGN_UPLOAD_ACCEPTED_TYPES } from '@/utils/file-types'
 import { generateClickEID, logImpressionEvent } from '@/utils/instrumentation'
 import type { UploadedDesignFile } from '../types'
 
@@ -62,7 +63,7 @@ export default function DesignFileUpload({ currentFilesRef, onFilesChange, onErr
       <input
         ref={inputRef}
         type="file"
-        accept=".md,.txt,.xml,.html,.htm,.zip,.png,.jpg,.jpeg,.gif,.svg,.webp"
+        accept={DESIGN_UPLOAD_ACCEPTED_TYPES}
         multiple
         onChange={handleFileSelect}
         className="hidden"

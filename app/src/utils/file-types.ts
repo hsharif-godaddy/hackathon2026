@@ -85,8 +85,8 @@ export function getFileExtension(filePath: string): string {
 }
 
 /**
- * Accepted file types for file upload inputs
- * Used in the HTML accept attribute to filter file picker
+ * Accepted file types for the chat file upload input (agent conversation in develop page).
+ * Broad set — the agent can use any of these to build or modify the site.
  *
  * Includes:
  * - Images: image/* (all image types)
@@ -97,5 +97,17 @@ export function getFileExtension(filePath: string): string {
  * - Audio: audio/* (all audio types), .mp3, .wav, .m4a
  * - Code: .js, .ts, .jsx, .tsx, .css, .html
  */
-export const ACCEPTED_UPLOAD_FILE_TYPES =
+export const CHAT_UPLOAD_ACCEPTED_TYPES =
   'image/*,video/*,audio/*,.pdf,.json,.xml,.yaml,.yml,.txt,.md,.csv,.ttf,.otf,.woff,.woff2,.mp3,.wav,.m4a,.js,.ts,.jsx,.tsx,.css,.html'
+
+/**
+ * Accepted file types for the design file upload on the initial build prompt (homepage).
+ * Restricted to design and content files — the user defines the site before it exists.
+ *
+ * Includes:
+ * - Documents: .md, .txt, .xml, .html, .htm, .pdf
+ * - Archives: .zip (UI kits, app imports)
+ * - Images: .png, .jpg, .jpeg, .gif, .svg, .webp
+ */
+export const DESIGN_UPLOAD_ACCEPTED_TYPES =
+  '.zip,.md,.txt,.xml,.html,.htm,.png,.jpg,.jpeg,.gif,.svg,.webp,.pdf'

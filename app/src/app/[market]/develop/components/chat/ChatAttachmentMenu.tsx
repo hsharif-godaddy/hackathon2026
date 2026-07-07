@@ -11,7 +11,7 @@ import FileReferenceModal from '@/app/[market]/develop/components/chat/FileRefer
 import { useTranslations } from '@/hooks/useTranslations';
 import { logger } from '@/lib/request-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover';
-import { ACCEPTED_UPLOAD_FILE_TYPES } from '@/utils/file-types';
+import { CHAT_UPLOAD_ACCEPTED_TYPES } from '@/utils/file-types';
 import { validateForStaging } from '@/utils/file-upload-validation';
 import { logClickEvent } from '@/utils/instrumentation';
 
@@ -221,7 +221,7 @@ export default function ChatAttachmentMenu({
         onChange={handleFileSelect}
         style={{ display: 'none' }}
         data-testid="file-input"
-        accept={ACCEPTED_UPLOAD_FILE_TYPES}
+        accept={CHAT_UPLOAD_ACCEPTED_TYPES}
       />
 
       <Popover open={open} onOpenChange={setOpen}>

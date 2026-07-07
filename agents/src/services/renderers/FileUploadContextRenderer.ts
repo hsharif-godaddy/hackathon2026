@@ -17,6 +17,8 @@ import { resizeForVision } from '../../utils/image-resize.js'
 import { isDevSupervisorNotFound } from '../../services/DevSupervisorClient.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { collectBoundedBuffer } from '../../workspace/files.js'
+import { TEXT_CONTENT_EXTRACTOR } from '../text-content-extractors/index.js'
+import { runWithTimeout } from '../text-content-extractors/utils.js'
 import {
   readPersistedClassifications,
   persistClassifications,
@@ -516,10 +518,18 @@ export class FileUploadContextRenderer implements ContextAttachmentRenderer {
       }
     }
 
-    // Text file
+    // Text file — binary formats (e.g. PDF) are extracted via TEXT_CONTENT_EXTRACTOR;
+    // plain text files fall through to readText.
     let content: string
     try {
-      content = await workspace.files.readText({ path: `docs/${fileName}` })
+      const textContentParser = TEXT_CONTENT_EXTRACTOR[ext]
+      if (textContentParser) {
+        const { stream, contentLength } = await workspace.files.download({ path: `docs/${fileName}` })
+        const buffer = await collectBoundedBuffer(stream, contentLength)
+        content = await runWithTimeout(textContentParser(buffer))
+      } else {
+        content = await workspace.files.readText({ path: `docs/${fileName}` })
+      }
     } catch (err) {
       if (isDevSupervisorNotFound(err)) {
         logger.warn('context.renderer.file_upload.text_not_found', {
