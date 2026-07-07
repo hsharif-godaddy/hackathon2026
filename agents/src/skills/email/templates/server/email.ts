@@ -62,6 +62,12 @@ export type SendEmailInput = {
 	 * From header like: "Acme Bakery" <sender@domain>.
 	 */
 	fromName?: string;
+	/**
+	 * When true, if From and any recipient share the same domain, the gateway
+	 * rewrites From to the platform default sender (e.g. <appId>@airoapp.ai).
+	 * Use when same-domain emails are being quarantined by inbound filters.
+	 */
+	sameDomainFallback?: boolean;
 	/** Up to 10 attachments, each ≤ 2 MB decoded. */
 	attachments?: EmailAttachment[];
 };
@@ -81,6 +87,7 @@ type GatewayPayload = {
 	replyTo?: string;
 	from?: string;
 	fromName?: string;
+	sameDomainFallback?: boolean;
 	attachments?: { filename: string; content: string; contentType?: string }[];
 };
 
@@ -139,6 +146,7 @@ function buildPayload(input: SendEmailInput): GatewayPayload {
 	if (input.replyTo) payload.replyTo = input.replyTo;
 	if (input.from) payload.from = input.from;
 	if (input.fromName) payload.fromName = input.fromName;
+	if (input.sameDomainFallback) payload.sameDomainFallback = true;
 	if (input.attachments && input.attachments.length > 0) {
 		payload.attachments = input.attachments.map(encodeAttachment);
 	}

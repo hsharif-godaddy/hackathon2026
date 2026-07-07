@@ -1005,8 +1005,8 @@ func TestGateway_AttachmentRejectedUnknownField(t *testing.T) {
 // so we verify by routing to a closed port and expecting a wrapped
 // connection error from the real ForwardSMTP.
 // TestGateway_SameDomainFallback verifies that when the From and a
-// recipient share a domain, the gateway rewrites From to the platform
-// domain.
+// recipient share a domain AND sameDomainFallback is true, the gateway
+// rewrites From to the platform domain.
 func TestGateway_SameDomainFallback(t *testing.T) {
 	t.Parallel()
 	rec := &recordingForward{}
@@ -1014,9 +1014,10 @@ func TestGateway_SameDomainFallback(t *testing.T) {
 	defer cleanup()
 
 	resp, body := postJSON(t, url, map[string]any{
-		"to":      []string{"john@acme.com"},
-		"subject": "hi",
-		"text":    "hello",
+		"to":                 []string{"john@acme.com"},
+		"subject":            "hi",
+		"text":               "hello",
+		"sameDomainFallback": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
@@ -1035,7 +1036,7 @@ func TestGateway_SameDomainFallback(t *testing.T) {
 }
 
 // TestGateway_SameDomainFallback_NoConflict verifies no rewrite when
-// the recipient is on a different domain.
+// the recipient is on a different domain (even with the flag enabled).
 func TestGateway_SameDomainFallback_NoConflict(t *testing.T) {
 	t.Parallel()
 	rec := &recordingForward{}
@@ -1043,9 +1044,10 @@ func TestGateway_SameDomainFallback_NoConflict(t *testing.T) {
 	defer cleanup()
 
 	resp, body := postJSON(t, url, map[string]any{
-		"to":      []string{"user@example.net"},
-		"subject": "hi",
-		"text":    "hello",
+		"to":                 []string{"user@example.net"},
+		"subject":            "hi",
+		"text":               "hello",
+		"sameDomainFallback": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
@@ -1069,10 +1071,11 @@ func TestGateway_SameDomainFallback_CCOnly(t *testing.T) {
 	defer cleanup()
 
 	resp, body := postJSON(t, url, map[string]any{
-		"to":      []string{"user@example.net"},
-		"cc":      []string{"colleague@acme.com"},
-		"subject": "hi",
-		"text":    "hello",
+		"to":                 []string{"user@example.net"},
+		"cc":                 []string{"colleague@acme.com"},
+		"subject":            "hi",
+		"text":               "hello",
+		"sameDomainFallback": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
@@ -1095,10 +1098,11 @@ func TestGateway_SameDomainFallback_BCCOnly(t *testing.T) {
 	defer cleanup()
 
 	resp, body := postJSON(t, url, map[string]any{
-		"to":      []string{"user@example.net"},
-		"bcc":     []string{"admin@acme.com"},
-		"subject": "hi",
-		"text":    "hello",
+		"to":                 []string{"user@example.net"},
+		"bcc":                []string{"admin@acme.com"},
+		"subject":            "hi",
+		"text":               "hello",
+		"sameDomainFallback": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
@@ -1110,6 +1114,32 @@ func TestGateway_SameDomainFallback_BCCOnly(t *testing.T) {
 	// BCC on same domain triggers fallback.
 	if calls[0].envelopeFrom != "abc123@airoapp.ai" {
 		t.Errorf("envelopeFrom = %q, want abc123@airoapp.ai", calls[0].envelopeFrom)
+	}
+}
+
+// TestGateway_SameDomainFallback_NotEnabled verifies that same-domain
+// From/To does NOT trigger a rewrite when the flag is absent.
+func TestGateway_SameDomainFallback_NotEnabled(t *testing.T) {
+	t.Parallel()
+	rec := &recordingForward{}
+	url, cleanup := startGateway(t, fixedIdentity(defaultIdentity()), rec.fn)
+	defer cleanup()
+
+	resp, body := postJSON(t, url, map[string]any{
+		"to":      []string{"john@acme.com"},
+		"subject": "hi",
+		"text":    "hello",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	calls := rec.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("forward calls = %d, want 1", len(calls))
+	}
+	// Without the flag, From stays on the custom domain even with same-domain recipient.
+	if calls[0].envelopeFrom != "abc123@acme.com" {
+		t.Errorf("envelopeFrom = %q, want abc123@acme.com (no fallback)", calls[0].envelopeFrom)
 	}
 }
 
@@ -1260,11 +1290,12 @@ func TestGateway_FromNameWithSameDomainFallback(t *testing.T) {
 	defer cleanup()
 
 	resp, body := postJSON(t, url, map[string]any{
-		"from":     "support@acme.com",
-		"fromName": "Acme Store",
-		"to":       []string{"john@acme.com"},
-		"subject":  "Your order",
-		"text":     "Thanks for your order.",
+		"from":               "support@acme.com",
+		"fromName":           "Acme Store",
+		"to":                 []string{"john@acme.com"},
+		"subject":            "Your order",
+		"text":               "Thanks for your order.",
+		"sameDomainFallback": true,
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)

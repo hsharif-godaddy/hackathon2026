@@ -337,20 +337,19 @@ func (s *proxySession) Data(r io.Reader) error {
 
 	enforced := enforceMessageFrom(data, s.identity)
 
-	// Same-domain fallback: check the RFC 5322 From header (not the
-	// envelope From) because impersonation filters like ProofPoint key
-	// on the visible header, and the two surfaces can diverge after
-	// independent enforcement in Mail() vs enforceMessageFrom().
+	// Same-domain conflict detection (observe-only). Key on the RFC 5322
+	// header From (not envelope) because ProofPoint-style filters
+	// quarantine based on the visible From:. The SMTP path does not
+	// support the opt-in sameDomainFallback flag (no request body);
+	// apps hitting same-domain quarantine should migrate to the HTTP
+	// gateway (port 2525) and pass sameDomainFallback: true.
 	headerFrom := extractHeaderFrom(enforced)
-	if s.identity.HasSameDomainConflict(headerFrom, s.to) {
-		fallback := s.identity.DefaultDomainSender()
-		enforced = rewriteFromHeader(enforced, fallback)
-		slog.Info("smtp.same_domain_fallback",
-			"original_from", headerFrom,
-			"fallback_from", fallback,
+	if headerFrom != "" && s.identity.HasSameDomainConflict(headerFrom, s.to) {
+		slog.Warn("smtp.same_domain_conflict_not_mitigated",
+			"header_from", headerFrom,
+			"to", s.to,
 			"app_id", s.identity.AppID,
 		)
-		s.from = fallback
 	}
 
 	modifiedData := injectHeaders(enforced, s.backend.customHeaders)
@@ -596,8 +595,7 @@ func isFromHeaderLine(line []byte) bool {
 }
 
 // extractHeaderFrom parses the RFC 5322 From header from message bytes.
-// Returns the first From value, or "" if the message cannot be parsed or
-// has no From header.
+// Returns the first From address, or "" if unparseable.
 func extractHeaderFrom(data []byte) string {
 	msg, err := mail.ReadMessage(bytes.NewReader(data))
 	if err != nil {

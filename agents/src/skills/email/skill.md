@@ -107,7 +107,7 @@ The gateway resolves the sender per-app from configuration the app cannot see:
 1. **Default sender.** When `from` is omitted, the gateway uses `<appId>@<primaryDomain>`.
 2. **Attached custom domains.** When the customer attaches a domain via Settings, the gateway updates automatically — no code change required.
 3. **Unverified `from` rejection.** If you pass a `from` address on an unverified domain, the gateway returns 400.
-4. **Same-domain delivery fallback.** If any recipient shares the same domain as the From address, the gateway rewrites From to the default platform sender to prevent mail-filter quarantine.
+4. **Same-domain delivery fallback (opt-in).** When From and recipient(s) share the same domain and the customer reports emails being quarantined, ask before enabling: `sameDomainFallback: true` rewrites From to the platform sender (`<appId>@airoapp.ai`) to bypass impersonation filters, but recipients will see that address instead of the original. Only apply if the customer accepts the trade-off.
 
 ---
 

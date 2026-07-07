@@ -117,17 +117,23 @@ const (
 // ReplyTo is just Reply-To: it sets the Reply-To header verbatim. No
 // domain-matching, no promotion, no special cases. To control the
 // sender's local-part, attach the relevant domain and pass From.
+//
+// SameDomainFallback opts in to same-domain delivery protection: when
+// true and the resolved From shares a domain with any recipient, the
+// gateway rewrites From to DefaultDomainSender() (the platform domain).
+// Off by default — most same-domain sends deliver fine without it.
 type SendRequest struct {
-	To          []string     `json:"to"`
-	From        string       `json:"from,omitempty"`
-	FromName    string       `json:"fromName,omitempty"`
-	CC          []string     `json:"cc,omitempty"`
-	BCC         []string     `json:"bcc,omitempty"`
-	Subject     string       `json:"subject"`
-	Text        string       `json:"text,omitempty"`
-	HTML        string       `json:"html,omitempty"`
-	ReplyTo     string       `json:"replyTo,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
+	To                 []string     `json:"to"`
+	From               string       `json:"from,omitempty"`
+	FromName           string       `json:"fromName,omitempty"`
+	CC                 []string     `json:"cc,omitempty"`
+	BCC                []string     `json:"bcc,omitempty"`
+	Subject            string       `json:"subject"`
+	Text               string       `json:"text,omitempty"`
+	HTML               string       `json:"html,omitempty"`
+	ReplyTo            string       `json:"replyTo,omitempty"`
+	SameDomainFallback bool         `json:"sameDomainFallback,omitempty"`
+	Attachments        []Attachment `json:"attachments,omitempty"`
 }
 
 // Attachment is a single file attached to an outbound message.
@@ -437,7 +443,7 @@ func (g *Gateway) handleSend(w http.ResponseWriter, r *http.Request) {
 	allRecipients = append(allRecipients, req.CC...)
 	allRecipients = append(allRecipients, req.BCC...)
 
-	if id.HasSameDomainConflict(from, allRecipients) {
+	if req.SameDomainFallback && id.HasSameDomainConflict(from, allRecipients) {
 		originalFrom := from
 		from = id.DefaultDomainSender()
 		slog.Info("email_gateway.same_domain_fallback",
