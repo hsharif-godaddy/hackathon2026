@@ -623,6 +623,30 @@ const SYNC_MANIFEST = [
       '9357402532fcf2d03048b152338e7600', // before doc-accuracy fix: removed nonexistent <RootLayout config> example, pathless route
     ],
     force: false,
+  },
+  // AIROBUILD-2976 / PR #6107: the kit button-radius feature changed these two v8
+  // files together — button.tsx's cva consumes `rounded-[var(--radius-button)]`,
+  // which globals.css defines. They share one syncGroup so an existing app receives
+  // the new button.tsx ONLY if its globals.css also syncs (i.e. it is still pristine).
+  // A customer-customised globals.css blocks the whole group, so that app keeps BOTH
+  // old files and never renders a button against an undefined --radius-button.
+  {
+    file: 'src/components/ui/button.tsx',
+    description: 'shadcn Button — cva consumes rounded-[var(--radius-button)] (kit button radius, AIROBUILD-2976)',
+    known_hashes: [
+      '51ae9ce13ccaf65010d3b28bdfb198ad', // PR #6107 - before --radius-button (rounded-md cva)
+    ],
+    syncGroup: 'kitButtonRadius',
+    force: false,
+  },
+  {
+    file: 'src/styles/globals.css',
+    description: 'Global CSS tokens incl. the --radius-button default consumed by Button (kit button radius, AIROBUILD-2976)',
+    known_hashes: [
+      '8e85b126a65d1fc1799baa8428a4435f', // PR #6107 - before --radius-button default
+    ],
+    syncGroup: 'kitButtonRadius',
+    force: false,
   }
 ];
 
