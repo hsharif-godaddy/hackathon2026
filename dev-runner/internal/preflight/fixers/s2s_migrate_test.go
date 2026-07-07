@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 func TestS2SMigrateFixer_FlipsExistingApiKeyEnvToS2S(t *testing.T) {
@@ -47,7 +49,7 @@ func TestS2SMigrateFixer_FillsMissingProfileWithDefault(t *testing.T) {
 	}
 
 	env := readEnvMap(t, filepath.Join(root, "agents/.env"))
-	assertEq(t, env, "AWS_PROFILE", defaultAWSProfile)
+	assertEq(t, env, "AWS_PROFILE", awsconfig.DefaultProfile)
 	assertEq(t, env, "GOCODE_USE_S2S_AUTH", "true")
 }
 

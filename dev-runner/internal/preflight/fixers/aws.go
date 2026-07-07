@@ -1,23 +1,14 @@
 package fixers
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-)
 
-const (
-	defaultAWSProfile = "airobuild-dev-private-sso"
-	ssoSessionName    = "airo-sso"
-	ssoStartURL       = "https://d-9267a7c4d5.awsapps.com/start/#"
-	ssoSessionConfig  = `[sso-session airo-sso]
-sso_start_url = https://d-9267a7c4d5.awsapps.com/start/#
-sso_region = us-west-2
-sso_registration_scopes = sso:account:access`
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 // profileConfig builds the default profile block, referencing the given
@@ -25,10 +16,10 @@ sso_registration_scopes = sso:account:access`
 func profileConfig(sessionName string) string {
 	return fmt.Sprintf(`[profile %s]
 sso_session = %s
-sso_account_id = 694282668781
-sso_role_name = PowerUser
+sso_account_id = %s
+sso_role_name = %s
 region = us-west-2
-output = json`, defaultAWSProfile, sessionName)
+output = json`, awsconfig.DefaultProfile, sessionName, awsconfig.SSOAccountID, awsconfig.ExpectedRoleName)
 }
 
 // AWSSSOFixer triggers an AWS SSO login and waits for credentials to become valid.
@@ -41,13 +32,12 @@ func (f *AWSSSOFixer) profile() string {
 	if f.Profile != "" {
 		return f.Profile
 	}
-	return defaultAWSProfile
+	return awsconfig.DefaultProfile
 }
 
 func (f *AWSSSOFixer) Fix(ctx context.Context, projectRoot string) error {
 	profile := f.profile()
 
-	// Ensure the profile and sso-session exist in ~/.aws/config
 	if err := ensureAWSConfig(profile); err != nil {
 		return fmt.Errorf("setting up AWS config: %w", err)
 	}
@@ -86,12 +76,10 @@ func (f *AWSSSOFixer) Fix(ctx context.Context, projectRoot string) error {
 // session), and only fall back to creating the airo-sso session when none
 // matches.
 func ensureAWSConfig(profile string) error {
-	home, err := os.UserHomeDir()
+	configPath, err := awsconfig.ConfigPath()
 	if err != nil {
-		return fmt.Errorf("getting home dir: %w", err)
+		return fmt.Errorf("getting config path: %w", err)
 	}
-
-	configPath := filepath.Join(home, ".aws", "config")
 
 	// Ensure ~/.aws/ directory exists
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -104,23 +92,23 @@ func ensureAWSConfig(profile string) error {
 	}
 
 	// Profile already present: assume its session exists, change nothing.
-	if containsSection(string(content), "profile "+profile) {
+	if awsconfig.SectionExists(string(content), "profile "+profile) {
 		return nil
 	}
 
 	// We can only auto-create the default profile. A custom profile that's
 	// missing is left for the login command to report.
-	if profile != defaultAWSProfile {
+	if profile != awsconfig.DefaultProfile {
 		return nil
 	}
 
 	var toAppend []string
 
 	// Reuse an existing session pointing at our start URL, else create airo-sso.
-	sessionName, found := findReusableSSOSession(string(content))
+	sessionName, found := awsconfig.FindSSOSessionByStartURL(string(content), awsconfig.SSOStartURL)
 	if !found {
-		sessionName = ssoSessionName
-		toAppend = append(toAppend, ssoSessionConfig)
+		sessionName = awsconfig.SSOSessionName
+		toAppend = append(toAppend, awsconfig.SSOSessionConfig())
 	}
 	toAppend = append(toAppend, profileConfig(sessionName))
 
@@ -144,61 +132,4 @@ func ensureAWSConfig(profile string) error {
 	}
 
 	return nil
-}
-
-// findReusableSSOSession scans the config for an existing [sso-session NAME]
-// block whose sso_start_url matches the non-PCI SSO portal, returning its name.
-// Matching is on the start URL only — the session can be named anything.
-func findReusableSSOSession(content string) (name string, found bool) {
-	var (
-		curName  string
-		inTarget bool
-	)
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			header := strings.TrimSpace(line[1 : len(line)-1])
-			if rest, ok := strings.CutPrefix(header, "sso-session "); ok {
-				curName = strings.TrimSpace(rest)
-				inTarget = curName != ""
-			} else {
-				curName = ""
-				inTarget = false
-			}
-			continue
-		}
-
-		if !inTarget {
-			continue
-		}
-
-		key, value, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) != "sso_start_url" {
-			continue
-		}
-		if normalizeStartURL(value) == normalizeStartURL(ssoStartURL) {
-			return curName, true
-		}
-	}
-	return "", false
-}
-
-// normalizeStartURL trims trailing "#" and "/" so cosmetic URL differences
-// (e.g. a missing trailing "#") still compare equal.
-func normalizeStartURL(url string) string {
-	return strings.TrimRight(strings.TrimSpace(url), "#/")
-}
-
-// containsSection checks if an AWS config file contains a [section] header.
-func containsSection(content, section string) bool {
-	target := "[" + section + "]"
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	for scanner.Scan() {
-		if strings.TrimSpace(scanner.Text()) == target {
-			return true
-		}
-	}
-	return false
 }

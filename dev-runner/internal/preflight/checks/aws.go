@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awssdkconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
-
-const defaultAWSProfile = "airobuild-dev-private-sso"
 
 // AWSCLICheck verifies that the AWS CLI is installed.
 type AWSCLICheck struct{}
@@ -102,9 +101,9 @@ func (c *AWSSSOCheck) Run(ctx context.Context, projectRoot string) preflight.Che
 			}
 		}
 
-		cfg, err := awsconfig.LoadDefaultConfig(ctx,
-			awsconfig.WithRegion("us-west-2"),
-			awsconfig.WithSharedConfigProfile(profile),
+		cfg, err := awssdkconfig.LoadDefaultConfig(ctx,
+			awssdkconfig.WithRegion("us-west-2"),
+			awssdkconfig.WithSharedConfigProfile(profile),
 		)
 		if err != nil {
 			return preflight.CheckResult{
@@ -160,7 +159,7 @@ func (c *AWSSSOCheck) ResolveProfiles(projectRoot string) []string {
 	}
 
 	if len(profiles) == 0 {
-		return []string{defaultAWSProfile}
+		return []string{awsconfig.DefaultProfile}
 	}
 	return profiles
 }

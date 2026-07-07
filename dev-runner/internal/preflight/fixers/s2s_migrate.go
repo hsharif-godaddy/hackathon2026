@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 // S2SMigrateFixer flips an existing agents/.env from GoCode api-key auth to
@@ -28,7 +29,7 @@ func (f *S2SMigrateFixer) Fix(ctx context.Context, projectRoot string) error {
 	}
 	awsProfile := strings.TrimSpace(env["AWS_PROFILE"])
 	if awsProfile == "" {
-		awsProfile = defaultAWSProfile
+		awsProfile = awsconfig.DefaultProfile
 	}
 
 	inner := &EnvFixer{

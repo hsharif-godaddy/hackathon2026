@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 type EnvFixer struct {
@@ -134,7 +135,7 @@ func DefaultEnvValues() *EnvValues {
 	values := &EnvValues{
 		BaseURL:    "https://caas-gocode-prod.caas-prod.prod.onkatana.net",
 		AuthType:   "jwt",
-		AWSProfile: defaultAWSProfile,
+		AWSProfile: awsconfig.DefaultProfile,
 		GoCodeAuth: "s2s",
 	}
 	if envKey := os.Getenv("APPBUILDER_GOCODE_API_TOKEN"); envKey != "" {

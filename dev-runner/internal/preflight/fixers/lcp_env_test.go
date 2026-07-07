@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 func TestLCPEnvFixer_SyncsJWTAuthType(t *testing.T) {
@@ -50,7 +52,7 @@ func TestLCPEnvFixer_DefaultsAWSProfileWhenAppEnvMissingProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading .env: %v", err)
 	}
-	if !strings.Contains(string(content), "AWS_PROFILE="+defaultAWSProfile) {
+	if !strings.Contains(string(content), "AWS_PROFILE="+awsconfig.DefaultProfile) {
 		t.Errorf("expected default AWS_PROFILE, got:\n%s", string(content))
 	}
 }
@@ -124,7 +126,7 @@ func TestLCPEnvFixer_DefaultsToNoneWhenAppEnvMissing(t *testing.T) {
 	if !strings.Contains(string(content), "AUTH_TYPE=none") {
 		t.Errorf("expected AUTH_TYPE=none when app/.env missing, got:\n%s", string(content))
 	}
-	if !strings.Contains(string(content), "AWS_PROFILE="+defaultAWSProfile) {
+	if !strings.Contains(string(content), "AWS_PROFILE="+awsconfig.DefaultProfile) {
 		t.Errorf("expected default AWS_PROFILE when app/.env missing, got:\n%s", string(content))
 	}
 }

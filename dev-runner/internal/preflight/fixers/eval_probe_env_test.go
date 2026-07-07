@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 func TestEvalProbeEnvFixer_FirstTimeCreate_S2S(t *testing.T) {
@@ -60,7 +62,7 @@ func TestEvalProbeEnvFixer_FirstTimeCreate_MissingAgentsEnvDefaults(t *testing.T
 	env := readEnvMap(t, filepath.Join(root, "evals/gosym-probe/.env"))
 	assertEq(t, env, "GD_ENV", "local.dev")
 	assertEq(t, env, "OPENAI_BASE_URL", defaultGoCodeBaseURL)
-	assertEq(t, env, "AWS_PROFILE", defaultAWSProfile)
+	assertEq(t, env, "AWS_PROFILE", awsconfig.DefaultProfile)
 	assertEq(t, env, "OPENAI_MODEL", "claude-sonnet-4-6")
 	assertAbsent(t, env, "OPENAI_API_KEY")
 }

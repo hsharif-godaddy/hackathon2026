@@ -530,6 +530,7 @@ func buildPreflightRunner(projectRoot string) *preflight.Runner {
 					{Check: &checks.EvalProbeEnvCheck{}, Fixer: &fixers.EvalProbeEnvFixer{}},
 					{Check: &checks.EvalProbePlaywrightCheck{}, Fixer: &fixers.EvalProbePlaywrightFixer{}},
 					{Check: &checks.AWSSSOCheck{}, Fixer: &fixers.AWSSSOFixer{}},
+					{Check: &checks.AWSRoleCheck{}, Fixer: &fixers.AWSRoleFixer{}},
 					{Check: &checks.GasketDevCertsCheck{}, Fixer: &fixers.GasketDevCertsFixer{}},
 					{Check: &checks.WorkspaceBuildCheck{}, Fixer: &fixers.WorkspaceBuildFixer{}},
 					{Check: &checks.S2SCertsCheck{}, Fixer: &fixers.S2SCertsFixer{}},

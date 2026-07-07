@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 // LCPEnvFixer generates local-control-plane/.env, deriving AUTH_TYPE and
@@ -58,7 +59,7 @@ type lcpEnvValues struct {
 func readLCPValuesFromAppEnv(projectRoot string) lcpEnvValues {
 	values := lcpEnvValues{
 		authType:   "none",
-		awsProfile: defaultAWSProfile,
+		awsProfile: awsconfig.DefaultProfile,
 	}
 
 	env, err := preflight.ParseEnvFile(filepath.Join(projectRoot, "app/.env"))

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/airo-ai-builder/dev-runner/internal/preflight"
+	"github.com/airo-ai-builder/dev-runner/internal/preflight/awsconfig"
 )
 
 // S2S (sso-jwt) GoCode dev endpoint; /v1 is required because the OpenAI
@@ -90,7 +91,7 @@ OPENAI_MODEL=claude-sonnet-4-6
 func readAgentsEnvValues(projectRoot string) evalProbeValues {
 	values := evalProbeValues{
 		useS2S:     true,
-		awsProfile: defaultAWSProfile,
+		awsProfile: awsconfig.DefaultProfile,
 		baseURL:    defaultGoCodeBaseURL,
 	}
 
