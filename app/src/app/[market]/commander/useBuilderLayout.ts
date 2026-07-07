@@ -12,6 +12,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { shipAnalyticsLog } from '@/lib/logging'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useWizardStore } from '@/stores/useWizardStore'
+import { logImpressionEvent } from '@/utils/instrumentation'
 import { readBuilderLayoutDevOverride } from './builderLayoutDevOverride'
 import { descriptorToClientLayout } from './descriptorToClientLayout'
 import { BuilderLayout } from './types'
@@ -69,7 +70,7 @@ export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
     }
   }, [appId, persistedPhase, setPhase])
 
-  // Real customers reach Commander via /develop/[id], so the triggered log can only fire client-side; both `on` and `off` are the metric denominator.
+  // Real customers reach Commander via /develop/[id], so the triggered log can only fire client-side; both `on` and `off` are the metric denominator. The CSP impression mirrors the ES log so FullStory can segment sessions by cohort.
   const triggeredLogAppRef = useRef<string | null>(null)
   useEffect(() => {
     if (!appId) return
@@ -81,6 +82,10 @@ export function useBuilderLayout(layoutProp?: BuilderLayout): BuilderLayout {
       cohortId: commanderCohort,
       appId,
     })
+    logImpressionEvent('commander.experiment.exposure', {
+      cohort: commanderCohort,
+      appId,
+    })()
   }, [appId, commanderCohort])
 
   const base = layoutProp ?? (commanderEnabled ? BuilderLayout.Commander : BuilderLayout.Develop)

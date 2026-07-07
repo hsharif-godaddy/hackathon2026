@@ -23,6 +23,7 @@ let mockPersistedPhase: WizardPhase | undefined
 let mockBrandError: Error | null
 let mockCommanderCohort: string | undefined
 const shipAnalyticsLogMock = vi.fn()
+const logImpressionEventMock = vi.fn()
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: () => mockAppId,
@@ -44,6 +45,10 @@ vi.mock('@/hooks/useHivemind', () => ({
 
 vi.mock('@/lib/logging', () => ({
   shipAnalyticsLog: (event: string, data: Record<string, unknown>) => shipAnalyticsLogMock(event, data),
+}))
+
+vi.mock('@/utils/instrumentation', () => ({
+  logImpressionEvent: (eid: string, props: Record<string, unknown>) => () => logImpressionEventMock(eid, props),
 }))
 
 // The persisted phase (brand-data) is what lets a finished app hand off to the builder
@@ -79,6 +84,7 @@ describe('useBuilderLayout', () => {
     mockBrandError = null
     mockCommanderCohort = undefined
     shipAnalyticsLogMock.mockClear()
+    logImpressionEventMock.mockClear()
     setLiveWizardPhase(undefined)
     useDevelopPageStore.setState({ app: null })
     useWizardStore.setState({ builderLayoutByApp: {} })
@@ -278,7 +284,7 @@ describe('useBuilderLayout', () => {
       expect(result.current).toBe(BuilderLayout.Commander)
     })
 
-    it('fires hivemind.experiment.triggered exactly once when cohort is `on`', () => {
+    it('fires hivemind.experiment.triggered AND the CSP exposure impression exactly once when cohort is `on`', () => {
       mockCommanderCohort = 'on'
       const { rerender } = renderHook(() => useBuilderLayout())
       rerender()
@@ -289,9 +295,14 @@ describe('useBuilderLayout', () => {
         cohortId: 'on',
         appId: APP_ID,
       })
+      expect(logImpressionEventMock).toHaveBeenCalledTimes(1)
+      expect(logImpressionEventMock).toHaveBeenCalledWith('commander.experiment.exposure', {
+        cohort: 'on',
+        appId: APP_ID,
+      })
     })
 
-    it('fires hivemind.experiment.triggered when cohort is `off` (both cohorts are the denominator)', () => {
+    it('fires both the ES log and the CSP exposure impression when cohort is `off` (both cohorts are the denominator)', () => {
       mockCommanderCohort = 'off'
       renderHook(() => useBuilderLayout())
       expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
@@ -300,34 +311,44 @@ describe('useBuilderLayout', () => {
         cohortId: 'off',
         appId: APP_ID,
       })
+      expect(logImpressionEventMock).toHaveBeenCalledTimes(1)
+      expect(logImpressionEventMock).toHaveBeenCalledWith('commander.experiment.exposure', {
+        cohort: 'off',
+        appId: APP_ID,
+      })
     })
 
-    it('does NOT fire the triggered log for `unassigned` / `ineligible` / `not_bucketed` cohorts', () => {
+    it('does NOT fire either exposure event for `unassigned` / `ineligible` / `not_bucketed` cohorts', () => {
       for (const excluded of ['unassigned', 'ineligible', 'not_bucketed'] as const) {
         shipAnalyticsLogMock.mockClear()
+        logImpressionEventMock.mockClear()
         mockCommanderCohort = excluded
         renderHook(() => useBuilderLayout())
         expect(shipAnalyticsLogMock, `cohort ${excluded}`).not.toHaveBeenCalled()
+        expect(logImpressionEventMock, `cohort ${excluded}`).not.toHaveBeenCalled()
       }
     })
 
-    it('does NOT fire the triggered log when there is no cohort assignment (undefined)', () => {
+    it('does NOT fire either exposure event when there is no cohort assignment (undefined)', () => {
       mockCommanderCohort = undefined
       renderHook(() => useBuilderLayout())
       expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+      expect(logImpressionEventMock).not.toHaveBeenCalled()
     })
 
-    it('does NOT fire the triggered log when only the switchboard flag is on (dev override, no real assignment)', () => {
+    it('does NOT fire either exposure event when only the switchboard flag is on (dev override, no real assignment)', () => {
       mockCommanderEnabled = true
       mockCommanderCohort = undefined
       renderHook(() => useBuilderLayout())
       expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+      expect(logImpressionEventMock).not.toHaveBeenCalled()
     })
 
-    it('re-fires the triggered log when navigating to a different appId', () => {
+    it('re-fires both exposure events when navigating to a different appId', () => {
       mockCommanderCohort = 'on'
       const { rerender } = renderHook(() => useBuilderLayout())
       expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+      expect(logImpressionEventMock).toHaveBeenCalledTimes(1)
       mockAppId = OTHER_APP_ID
       rerender()
       expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(2)
@@ -336,18 +357,23 @@ describe('useBuilderLayout', () => {
         cohortId: 'on',
         appId: OTHER_APP_ID,
       })
+      expect(logImpressionEventMock).toHaveBeenCalledTimes(2)
+      expect(logImpressionEventMock).toHaveBeenLastCalledWith('commander.experiment.exposure', {
+        cohort: 'on',
+        appId: OTHER_APP_ID,
+      })
     })
 
-    it('is Commander with a single triggered log when BOTH the flag and cohort `on` are set', () => {
-      // Guards against a double-firing regression if the effect deps or the OR expression drift.
+    it('is Commander with a single exposure pair when BOTH the flag and cohort `on` are set', () => {
       mockCommanderEnabled = true
       mockCommanderCohort = 'on'
       const { result } = renderHook(() => useBuilderLayout())
       expect(result.current).toBe(BuilderLayout.Commander)
       expect(shipAnalyticsLogMock).toHaveBeenCalledTimes(1)
+      expect(logImpressionEventMock).toHaveBeenCalledTimes(1)
     })
 
-    it('fires the triggered log with cohortId=off when the flag override forces Commander over an off assignment', () => {
+    it('fires both exposure events with cohort=off when the flag override forces Commander over an off assignment', () => {
       // The dev override changes the visible layout but does NOT change the real cohort
       // assignment — metrics must still record this user in the `off` denominator.
       mockCommanderEnabled = true
@@ -358,15 +384,20 @@ describe('useBuilderLayout', () => {
         cohortId: 'off',
         appId: APP_ID,
       })
+      expect(logImpressionEventMock).toHaveBeenCalledWith('commander.experiment.exposure', {
+        cohort: 'off',
+        appId: APP_ID,
+      })
     })
 
-    it('does NOT fire the triggered log for unexpected cohort strings and stays Develop', () => {
+    it('does NOT fire either exposure event for unexpected cohort strings and stays Develop', () => {
       // Defensive: someone renaming `on` in the Hivemind portal to `treatment` would silently
-      // land here — we neither fire the triggered log nor activate the rollout branch.
+      // land here — we neither fire the exposure events nor activate the rollout branch.
       mockCommanderCohort = 'treatment'
       const { result } = renderHook(() => useBuilderLayout())
       expect(result.current).toBe(BuilderLayout.Develop)
       expect(shipAnalyticsLogMock).not.toHaveBeenCalled()
+      expect(logImpressionEventMock).not.toHaveBeenCalled()
     })
   })
 })
