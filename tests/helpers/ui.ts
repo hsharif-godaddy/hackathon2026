@@ -87,6 +87,48 @@ export async function switchboardFlag(page: Page, flag: string): Promise<boolean
 }
 
 /**
+ * Force CLIENT-read Switchboard values on for the page — boolean flags or string
+ * settings like `appbuilder-agent-profile` — surviving the server's inline
+ * `window.gasketData = {…}` assignment: a `defineProperty` setter merges the
+ * injected values into whatever the server assigns, regardless of timing. Inject
+ * BEFORE the first navigation. Mirrors the inline pattern in apps-page.spec.ts.
+ */
+export async function forceClientFlags(page: Page, values: Record<string, string | boolean>): Promise<void> {
+  await page.addInitScript((injected: Record<string, string | boolean>) => {
+    let gd: { switchboard?: Record<string, unknown> } | undefined;
+    Object.defineProperty(window, 'gasketData', {
+      configurable: true,
+      get: () => gd,
+      set: (v: { switchboard?: Record<string, unknown> } | undefined) => {
+        gd = v || {};
+        gd.switchboard = { ...(gd.switchboard || {}), ...injected };
+      },
+    });
+  }, values);
+}
+
+/**
+ * Assert the values injected by `forceClientFlags` are live in
+ * `window.gasketData.switchboard` (what the app's `useSwitchboard` /
+ * `getSwitchboardValue` read). Call after navigation/reload, before flag-gated
+ * assertions — proves the injection took effect so those assertions can't
+ * false-pass through a fallback path when the injection silently breaks.
+ */
+export async function expectClientFlags(page: Page, values: Record<string, string | boolean>): Promise<void> {
+  for (const [flag, expected] of Object.entries(values)) {
+    await expect
+      .poll((): Promise<unknown> =>
+        page.evaluate(
+          (key: string): unknown =>
+            (window as unknown as { gasketData?: { switchboard?: Record<string, unknown> } }).gasketData?.switchboard?.[key],
+          flag,
+        ),
+      )
+      .toBe(expected);
+  }
+}
+
+/**
  * Log test start banner. Use in beforeEach to mark the beginning of each test.
  */
 export function logTestStart(testInfo: TestInfo): void {

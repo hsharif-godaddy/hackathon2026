@@ -48,6 +48,7 @@ on:
           - develop-media
           - develop-publish
           - develop-brand-book
+          - develop-design-kit
           - develop-dpp-handoff
           - develop-analytics-period
           - develop-view-share
