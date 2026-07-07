@@ -1864,6 +1864,29 @@ describe('DomainAttach', function domainAttachTests() {
       expect(screen.queryByTestId('domain-publish-connect-progress')).not.toBeInTheDocument();
     });
 
+    it('injects a chat progress notice mentioning the domain when Publish and Connect starts', async function injectsChatNotice() {
+      const { useStreamingConversationStore } = await import('@/stores/useStreamingConversationStore');
+      const addSpy = vi.spyOn(useStreamingConversationStore.getState(), 'addCompletedMessage');
+      await setupUnpublishedTreatment();
+      renderUnpublishedTreatment();
+
+      selectDomainAttachTab('external');
+      fireEvent.change(document.getElementById('custom-domain-slug')!, { target: { value: 'mybusiness.com' } });
+      await waitFor(function waitForCta() {
+        expect(screen.getByRole('button', { name: 'Publish and Connect' })).not.toBeDisabled();
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Publish and Connect' }));
+      const publishAndConnectButtons = screen.getAllByRole('button', { name: 'Publish and Connect' });
+      fireEvent.click(publishAndConnectButtons[publishAndConnectButtons.length - 1]);
+
+      await waitFor(function waitForNotice() {
+        expect(addSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ role: 'user', content: expect.stringContaining('mybusiness.com') }),
+        );
+      });
+      addSpy.mockRestore();
+    });
+
     it('attaches the pending domain once the publish deployment completes', async function attachAfterPublish() {
       await setupUnpublishedTreatment();
       const { rerender } = renderUnpublishedTreatment();

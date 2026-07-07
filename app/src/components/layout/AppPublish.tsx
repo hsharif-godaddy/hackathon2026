@@ -322,6 +322,11 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const buildErrorDetails = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.buildErrorDetails ?? null
   );
+  // The deployment this publish attempt is tracking. Used to ignore a stale prior deployment that is
+  // still the "most recent" until the new one surfaces (prevents a false "publish failed").
+  const deploymentInProgressId = useDevelopPageStore(
+    (state) => state.publishStates?.[currentAppId]?.deploymentInProgressId ?? null
+  );
   const seoRegressionAlert = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.seoRegressionAlert ?? null
   );
@@ -491,6 +496,15 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     const status = mostRecentDeployment.status;
     const isNonTerminal: boolean = ![DeploymentStatus.DEPLOYED, DeploymentStatus.FAILED].includes(status as DeploymentStatus);
 
+    // We just triggered a deployment but the query hasn't surfaced it yet (the "most recent" is still
+    // a prior/stale deployment). Stay in the publishing state and don't let that stale deployment's
+    // status decide this attempt — otherwise a leftover FAILED would fire a false "publish failed".
+    if (deploymentInProgressId && mostRecentDeployment.id !== deploymentInProgressId) {
+      setIsPublishing(currentAppId, true);
+      setPublishError(currentAppId, false);
+      return;
+    }
+
     // Guard: stale non-terminal deployments (older than the polling window) should
     // surface as an error rather than holding the spinner indefinitely.
     if (isNonTerminal && mostRecentDeployment.createdAt) {
@@ -520,7 +534,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         setPublishError(currentAppId, false);
       }
     }
-  }, [mostRecentDeployment, isDeploymentInProgress, currentAppId, queryEnabled, setIsPublishing, setPublishError]);
+  }, [mostRecentDeployment, isDeploymentInProgress, deploymentInProgressId, currentAppId, queryEnabled, setIsPublishing, setPublishError]);
 
   useEffect(() => {
     if (!currentAppId) {
@@ -1289,7 +1303,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         existingAppName={domainConflict?.existingAppName}
         existingAppId={domainConflict?.existingAppId ?? ''}
         isTransferring={isOverriding}
-        onClose={() => { if (!isOverriding) handleChangeDomain(); }}
+        onClose={isOverriding ? undefined : handleChangeDomain}
         onConfirm={handleOverrideAndPublish}
       />
       <ResponsivePopover

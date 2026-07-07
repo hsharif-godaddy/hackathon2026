@@ -42,8 +42,16 @@ export function DomainConflictModal({
         <text.p>
           {t(
             'builder_domain_conflict_body',
-            { domain, projectName: existingAppName || existingAppId },
-            '"{domain}" is currently attached to your project "{projectName}." To use it here, we\'ll need to remove it from that project first.'
+            {
+              domain,
+              // Show the app name; when it's unnamed the control plane returns the raw app id as
+              // `name` (title || app.id), so fall back to the untitled label rather than the id.
+              projectName:
+                existingAppName?.trim() && existingAppName !== existingAppId
+                  ? existingAppName
+                  : t('builder_apps_alert_delete_untitled', undefined, 'Untitled'),
+            },
+            '"{domain}" is currently attached to your project "{projectName}". To use it here, we\'ll need to remove it from that project first.'
           )}
         </text.p>
         {error && (

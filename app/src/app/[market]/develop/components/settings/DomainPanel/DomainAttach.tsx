@@ -52,6 +52,7 @@ import { logger } from '@/lib/request-context';
 import { cn } from '@/lib/utils';
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSiteStore } from "@/stores/useSiteStore";
+import { type ChatMessage, useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import {
   dedupeSiteDomainsByFqdn,
   detectDomainConnectProvider,
@@ -189,6 +190,10 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
     if (!currentAppId) return null;
     return state.getSite(currentAppId);
   });
+
+  // Inject a local chat notice when Publish-and-Connect starts (mirrors DomainBar): a real agent turn
+  // would be killed by the publish redeploy, so we append the message locally instead.
+  const addCompletedMessage = useStreamingConversationStore((s) => s.addCompletedMessage);
 
   // Treatment cohort: connect a domain before first publish (reuses the empty-state publish plumbing).
   const { cohort: defaultDomainSelectionCohort } = useHivemind(EXPERIMENT_IDS.defaultDomainSelection);
@@ -826,6 +831,14 @@ export default function DomainAttach({ appDetails, isAppDetailsFetched, external
     setIsPublishAndConnectInFlight(true);
     logClickEvent('settings.domains.publish_and_connect')();
     shipAnalyticsLog('domain.custom.publish_and_connect.started', { appId: currentAppId, domainName });
+    // Populate the chat with a progress notice (untranslated, matching existing synthetic acks).
+    const notice: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `Publishing my project and connecting ${domainName} to it — this runs automatically once the publish completes, so no action is needed from me.`,
+      timestamp: new Date(),
+    };
+    addCompletedMessage(notice);
     await publishForConnect();
   }
 
