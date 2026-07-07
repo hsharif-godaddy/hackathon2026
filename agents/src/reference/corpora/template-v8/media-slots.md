@@ -48,7 +48,7 @@ The dev-tools layer detects these URLs and adds hover controls for image replace
 
 ## Cache Busting
 
-The `vite-media-versions-plugin` watches `airo-media.json` and exposes `lastUpdated` timestamps via the virtual module `virtual:media-versions`. Dev-tools use this to append version query params to image URLs, ensuring the browser loads fresh images after replacements without a full page reload.
+The `vite-media-versions-plugin` watches `airo-media.json` and pushes `lastUpdated` timestamps to dev-tools via the Vite HMR WebSocket (`media-versions-update` event). Dev-tools fetch the initial manifest from `/airo-media.json` and subscribe to live updates via `import.meta.hot`, appending version query params to image URLs to ensure the browser loads fresh images after replacements without a full page reload.
 
 ## Adding a New Slot
 

@@ -271,7 +271,6 @@ export default function DevelopmentMode() {
     // Track slots recently updated by RELOAD_MEDIA_SLOT to prevent HMR-driven patchAllImages
     // from reverting them with stale manifest data (race between postMessage and file-watcher)
     const recentSlotOverrides: Record<string, number> = {}
-    let mediaVersionsCleanup: (() => void) | null = null
     let mediaObserver: MutationObserver | null = null
 
     const SLOT_URL_PREFIX = '/airo-assets/images/'
@@ -506,63 +505,60 @@ export default function DevelopmentMode() {
       attributeFilter: ['src', 'style'],
     })
 
-    // Load version map from virtual module (dev mode only)
-    // Use a variable to prevent Vite from statically resolving this import —
-    // older apps without the mediaVersionsPlugin will gracefully fall back via .catch()
+    // Load initial media state from manifest and subscribe to live HMR updates.
+    // Uses fetch + import.meta.hot directly instead of the virtual module (which
+    // never resolved through the dev-supervisor proxy, always hitting a CORS error).
     if (import.meta.env.MODE === 'development') {
-      const mediaVersionsModule = 'virtual:' + 'media-versions'
-      import(/* @vite-ignore */ mediaVersionsModule).then(({ getVersions, getMediaTypes, getCaptions, onVersionsUpdate }) => {
-        mediaState.versions = getVersions()
-        mediaState.types = getMediaTypes()
-        mediaState.captions = getCaptions?.() || {}
-        patchAllImages()
-        mediaVersionsCleanup = onVersionsUpdate((newVersions: Record<string, string>, newMediaTypes: Record<string, string>, newCaptions?: Record<string, string>) => {
-          mediaState.versions = newVersions
-          // Apply new captions but preserve recent RELOAD_MEDIA_SLOT overrides
-          if (newCaptions) {
-            const now = Date.now()
-            for (const [slot, cap] of Object.entries(newCaptions)) {
-              const overrideTime = recentSlotOverrides[slot]
-              if (overrideTime && now - overrideTime < 5000) continue
-              mediaState.captions[slot] = cap
-            }
-            for (const slot of Object.keys(mediaState.captions)) {
-              if (!(slot in newCaptions) && !recentSlotOverrides[slot]) {
-                delete mediaState.captions[slot]
-              }
-            }
-          }
-          // Apply new mediaTypes but preserve recent RELOAD_MEDIA_SLOT overrides
-          // (prevents stale file-watcher data from reverting explicit swaps)
-          const now = Date.now()
-          for (const [slot, type] of Object.entries(newMediaTypes)) {
-            const overrideTime = recentSlotOverrides[slot]
-            if (overrideTime && now - overrideTime < 5000) {
-              // Skip — this slot was explicitly set by RELOAD_MEDIA_SLOT within the last 5s
-              continue
-            }
-            mediaState.types[slot] = type
-          }
-          // Also remove types that no longer exist in manifest (unless overridden)
-          for (const slot of Object.keys(mediaState.types)) {
-            if (!(slot in newMediaTypes) && !recentSlotOverrides[slot]) {
-              delete mediaState.types[slot]
-            }
-          }
-          patchAllImages()
-        })
-      }).catch(() => {
-        // Virtual module not available (e.g. CORS error through dev-supervisor proxy) —
-        // fall back to fetching /airo-media.json directly for mediaTypes
-        fetch('/airo-media.json').then(r => r.ok ? r.json() : {}).then((manifest: Record<string, { lastUpdated?: string; mediaType?: string; caption?: string }>) => {
+      fetch('/airo-media.json')
+        .then(r => r.ok ? r.json() : {})
+        .then((manifest: Record<string, { lastUpdated?: string; mediaType?: string; caption?: string }>) => {
           for (const [slot, data] of Object.entries(manifest)) {
             if (data.lastUpdated) mediaState.versions[slot] = String(new Date(data.lastUpdated).getTime())
             if (data.mediaType) mediaState.types[slot] = data.mediaType
             if (data.caption) mediaState.captions[slot] = data.caption
           }
           patchAllImages()
-        }).catch(() => { /* no manifest available */ })
-      })
+        })
+        .catch((err) => { console.warn('[DevTools] media manifest fetch failed', err) })
+
+      if (import.meta.hot) {
+        const handleMediaVersionsUpdate = (data: { versions: Record<string, string>; mediaTypes: Record<string, string>; captions?: Record<string, string> }) => {
+          mediaState.versions = data.versions
+          // Apply new captions but preserve recent RELOAD_MEDIA_SLOT overrides
+          if (data.captions) {
+            const now = Date.now()
+            for (const [slot, cap] of Object.entries(data.captions)) {
+              const overrideTime = recentSlotOverrides[slot]
+              if (overrideTime && now - overrideTime < 5000) continue
+              mediaState.captions[slot] = cap
+            }
+            for (const slot of Object.keys(mediaState.captions)) {
+              if (!(slot in data.captions!) && !recentSlotOverrides[slot]) {
+                delete mediaState.captions[slot]
+              }
+            }
+          }
+          // Apply new mediaTypes but preserve recent RELOAD_MEDIA_SLOT overrides
+          if (data.mediaTypes) {
+            const now = Date.now()
+            for (const [slot, type] of Object.entries(data.mediaTypes)) {
+              const overrideTime = recentSlotOverrides[slot]
+              if (overrideTime && now - overrideTime < 5000) continue
+              mediaState.types[slot] = type
+            }
+            for (const slot of Object.keys(mediaState.types)) {
+              if (!(slot in data.mediaTypes) && !recentSlotOverrides[slot]) {
+                delete mediaState.types[slot]
+              }
+            }
+          }
+          patchAllImages()
+        }
+        import.meta.hot.on('media-versions-update', handleMediaVersionsUpdate)
+        import.meta.hot.dispose(() => {
+          import.meta.hot!.off('media-versions-update', handleMediaVersionsUpdate)
+        })
+      }
     }
 
     // Reload images for a specific media slot by adding cache-busting timestamp.
@@ -1534,7 +1530,6 @@ export default function DevelopmentMode() {
 
     return () => {
       if (mediaObserver) mediaObserver.disconnect()
-      if (mediaVersionsCleanup) mediaVersionsCleanup()
       if (sectionsObserver) {
         sectionsObserver.disconnect()
       }

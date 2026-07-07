@@ -3,14 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MANIFEST_FILENAME = 'airo-media.json';
-const VIRTUAL_MODULE_ID = 'virtual:media-versions';
-const RESOLVED_VIRTUAL_ID = '\0' + VIRTUAL_MODULE_ID;
 
 /**
- * Vite plugin that watches airo-media.json and extracts slot version data
- * (lastUpdated timestamps) for cache-busting. Pushes updates to the browser
- * via HMR WebSocket. Provides a virtual module that dev-tools can import to
- * get the current version map and subscribe to updates.
+ * Vite plugin that watches airo-media.json and pushes slot version data
+ * (lastUpdated timestamps) to the browser via HMR WebSocket for cache-busting.
+ * Also serves /airo-media.json from the project root so dev-tools can fetch
+ * the initial manifest directly.
  */
 export function mediaVersionsPlugin(): Plugin {
   let manifestPath = '';
@@ -92,7 +90,7 @@ export function mediaVersionsPlugin(): Plugin {
       currentCaptions = data.captions;
       startWatching(server);
 
-      // Serve /airo-media.json from project root so airo-video-slots.js can fetch it
+      // Serve /airo-media.json from project root so dev-tools can fetch it
       // (Vite only auto-serves public/ at root URLs; the manifest lives at project root)
       server.middlewares.use((req, res, next) => {
         if (req.url === '/' + MANIFEST_FILENAME) {
@@ -112,54 +110,6 @@ export function mediaVersionsPlugin(): Plugin {
         }
         next();
       });
-    },
-
-    resolveId(id: string) {
-      if (id === VIRTUAL_MODULE_ID) {
-        return RESOLVED_VIRTUAL_ID;
-      }
-      return null;
-    },
-
-    load(id: string) {
-      if (id === RESOLVED_VIRTUAL_ID) {
-        return `
-          let versions = ${JSON.stringify(currentVersions)};
-          let mediaTypes = ${JSON.stringify(currentMediaTypes)};
-          let captions = ${JSON.stringify(currentCaptions)};
-          const listeners = [];
-
-          export function getVersions() {
-            return versions;
-          }
-
-          export function getMediaTypes() {
-            return mediaTypes;
-          }
-
-          export function getCaptions() {
-            return captions;
-          }
-
-          export function onVersionsUpdate(cb) {
-            listeners.push(cb);
-            return () => {
-              const idx = listeners.indexOf(cb);
-              if (idx >= 0) listeners.splice(idx, 1);
-            };
-          }
-
-          if (import.meta.hot) {
-            import.meta.hot.on('media-versions-update', (data) => {
-              versions = data.versions;
-              mediaTypes = data.mediaTypes;
-              captions = data.captions || {};
-              listeners.forEach(cb => cb(versions, mediaTypes, captions));
-            });
-          }
-        `;
-      }
-      return null;
     },
   };
 }
