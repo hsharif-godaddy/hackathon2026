@@ -111,6 +111,25 @@ describe('runWithMcpSession', () => {
     expect(real.headers['Mcp-Session-Id']).toBe('sess-1')
   })
 
+  it('forwards app id as a header on every request when provided', async () => {
+    fetchSpy.mockResolvedValueOnce(makeInitResponse('sess-app'))
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 202 }))
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    await runWithMcpSession({ ...baseOptions, appId: 'app-1' }, (client) =>
+      client.sendRaw({ jsonrpc: '2.0', method: 'tools/list', id: 2 }),
+    )
+
+    expect(fetchCall(fetchSpy, 0).headers['X-Airo-App-Id']).toBe('app-1')
+    expect(fetchCall(fetchSpy, 1).headers['X-Airo-App-Id']).toBe('app-1')
+    expect(fetchCall(fetchSpy, 2).headers['X-Airo-App-Id']).toBe('app-1')
+  })
+
   it('captures Set-Cookie from initialize and forwards as Cookie on later requests', async () => {
     fetchSpy.mockResolvedValueOnce(
       makeInitResponse('sess-cookie', 'AWSALB=abc; Path=/; Max-Age=3600'),

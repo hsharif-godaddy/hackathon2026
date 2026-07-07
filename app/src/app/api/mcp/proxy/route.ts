@@ -43,7 +43,7 @@ export const dynamic = 'force-dynamic'
 interface McpProxyBody {
   serverId?: unknown
   request?: unknown
-  /** Optional app id supplied by the browser for audit logs only. */
+  /** Optional app id supplied by the browser for audit logs and upstream request context. */
   appId?: unknown
 }
 
@@ -205,6 +205,7 @@ export const POST = withCustomerAuth(
           initializeCapabilities,
           customerId: user.customerId,
           accessToken,
+          ...(appId ? { appId } : {}),
         },
         (client) => client.sendRaw(parsed.request),
       )

@@ -56,6 +56,8 @@ export interface McpClientOptions {
   customerId: string
   /** OAuth bearer token. */
   accessToken: string
+  /** App/site id associated with this request. Forwarded as request context only. */
+  appId?: string
 }
 
 /**
@@ -69,6 +71,7 @@ export class McpClient {
   private readonly initializeCapabilities: Record<string, unknown>
   private readonly customerId: string
   private readonly accessToken: string
+  private readonly appId: string | undefined
   private sessionId: string | null = null
   private sessionCookies: string | null = null
   private requestId = 0
@@ -80,6 +83,7 @@ export class McpClient {
     this.initializeCapabilities = options.initializeCapabilities ?? {}
     this.customerId = options.customerId
     this.accessToken = options.accessToken
+    this.appId = options.appId
   }
 
   private nextRequestId(): number {
@@ -93,6 +97,7 @@ export class McpClient {
       'MCP-Protocol-Version': this.protocolVersion,
       Authorization: `Bearer ${this.accessToken}`,
     }
+    if (this.appId) headers['X-Airo-App-Id'] = this.appId
     if (this.sessionId) headers['Mcp-Session-Id'] = this.sessionId
     if (this.sessionCookies) headers['Cookie'] = this.sessionCookies
     return headers

@@ -254,7 +254,7 @@ describe('POST /api/mcp/proxy', () => {
     expect(res.status).toBe(400)
   })
 
-  it('forwards tools/list with discovery scope, attaches Bearer + session headers', async () => {
+  it('forwards tools/list with discovery scope, attaches Bearer + app/session headers', async () => {
     queueHandshakeResponses(fetchSpy)
     fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
@@ -266,6 +266,7 @@ describe('POST /api/mcp/proxy', () => {
     const res = await POST(
       makeRequest({
         serverId: 'commerce',
+        appId: 'app-1',
         request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
       }),
     )
@@ -287,14 +288,21 @@ describe('POST /api/mcp/proxy', () => {
     const initHeaders = initCall[1].headers as Record<string, string>
     expect(initHeaders['Authorization']).toBe('Bearer oauth-token')
     expect(initHeaders['MCP-Protocol-Version']).toBe('2024-11-05')
+    expect(initHeaders['X-Airo-App-Id']).toBe('app-1')
     const initBody = JSON.parse(initCall[1].body as string)
     expect(initBody.method).toBe('initialize')
     expect(initBody.params.capabilities).toEqual({})
     expect(mockCheckSwitchboardFlag).not.toHaveBeenCalled()
 
+    const initializedCall = fetchSpy.mock.calls[1]! as [string, RequestInit]
+    const initializedHeaders = initializedCall[1].headers as Record<string, string>
+    expect(initializedHeaders['X-Airo-App-Id']).toBe('app-1')
+    expect(JSON.parse(initializedCall[1].body as string).method).toBe('notifications/initialized')
+
     const realCall = fetchSpy.mock.calls[2]! as [string, RequestInit]
     const realHeaders = realCall[1].headers as Record<string, string>
     expect(realHeaders['Mcp-Session-Id']).toBe('sess-abc123')
+    expect(realHeaders['X-Airo-App-Id']).toBe('app-1')
     expect(JSON.parse(realCall[1].body as string).method).toBe('tools/list')
   })
 
