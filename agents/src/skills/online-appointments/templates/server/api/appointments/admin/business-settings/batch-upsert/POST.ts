@@ -7,11 +7,11 @@ import { eq } from "drizzle-orm";
 const ArraySchema = z.array(
   z.object({
     key: z.string().min(1).max(255),
-    value: z.string(),
+    value: z.string().max(10000),
   }),
-);
+).max(50);
 
-const ObjectSchema = z.record(z.string().min(1).max(255), z.string());
+const ObjectSchema = z.record(z.string().min(1).max(255), z.string().max(10000));
 
 const BatchUpsertSchema = z.object({
   settings: z.union([ArraySchema, ObjectSchema]),

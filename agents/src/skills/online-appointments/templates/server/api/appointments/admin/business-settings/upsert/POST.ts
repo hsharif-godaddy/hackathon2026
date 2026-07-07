@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 const UpsertSettingSchema = z.object({
   key: z.string().min(1).max(255),
-  value: z.string(),
+  value: z.string().max(10000),
 });
 
 export default async function handler(req: Request, res: Response) {

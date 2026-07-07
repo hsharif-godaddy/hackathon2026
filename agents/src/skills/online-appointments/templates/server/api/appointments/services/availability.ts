@@ -1,4 +1,4 @@
-import { addMinutes, addDays, isBefore, isAfter, isEqual } from "date-fns";
+import { addMinutes, addDays, isBefore, isAfter, isEqual, getDay } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 import { and, eq, gte, lte, isNull, ne } from "drizzle-orm";
 import { db } from "../../../db/client.js";
@@ -19,14 +19,6 @@ import {
   type BusinessHoursBlock,
 } from "./recurrence";
 import { isFeatureEnabled } from "../../../../lib/features";
-
-const DEFAULT_BUSINESS_HOURS: BusinessHoursBlock[] = [
-  { day: 1, startTime: "09:00", endTime: "17:00" },
-  { day: 2, startTime: "09:00", endTime: "17:00" },
-  { day: 3, startTime: "09:00", endTime: "17:00" },
-  { day: 4, startTime: "09:00", endTime: "17:00" },
-  { day: 5, startTime: "09:00", endTime: "17:00" },
-];
 
 export interface TimeSlot {
   start_time: string;
@@ -88,7 +80,7 @@ async function getStaffBusinessHours(staffId: string): Promise<BusinessHoursBloc
     )
     .limit(1);
 
-  if (!setting?.value) return DEFAULT_BUSINESS_HOURS;
+  if (!setting?.value) return await getBusinessLevelHours();
 
   try {
     const availability = JSON.parse(setting.value) as Record<
@@ -107,9 +99,13 @@ async function getStaffBusinessHours(staffId: string): Promise<BusinessHoursBloc
         blocks.push({ day, startTime: block.startTime, endTime: block.endTime });
       }
     }
-    return blocks.length > 0 ? blocks : DEFAULT_BUSINESS_HOURS;
-  } catch {
-    return DEFAULT_BUSINESS_HOURS;
+    return blocks.length > 0 ? blocks : await getBusinessLevelHours();
+  } catch (error) {
+    console.error("availability.staff_hours.parse_failed", {
+      staffId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return await getBusinessLevelHours();
   }
 }
 
@@ -146,11 +142,17 @@ async function getBusinessLevelHours(): Promise<BusinessHoursBlock[]> {
         }
       }
       return blocks;
-    } catch {
-      // fall through to default
+    } catch (error) {
+      console.error("availability.business_hours.parse_failed", {
+        message: "Failed to parse business_hours JSON from DB — using default Mon-Fri 9:00-17:00.",
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
+  } else {
+    console.error("availability.business_hours.missing", {
+      message: "No business_hours setting found in DB — using default Mon-Fri 9:00-17:00. Run seedBusinessSettings to fix.",
+    });
   }
-
   const blocks: BusinessHoursBlock[] = [];
   for (let day = 1; day <= 5; day++) {
     blocks.push({ day, startTime: "09:00", endTime: "17:00" });
@@ -386,22 +388,38 @@ async function generateCandidateSlots(
       timezone,
     );
 
-    // If staff feature is ON and staff exist, intersect with staff availability
+    // If staff feature is ON and staff exist, filter by staff availability ranges
     if (isFeatureEnabled("admin.staff") && staffIds.length > 0) {
-      const staffSlotSet: Set<number> = new Set();
+      const staffRanges: Array<{ day: number; startMinutes: number; endMinutes: number }> = [];
       for (const staffId of staffIds) {
         const staffHours = await getStaffBusinessHours(staffId);
-        if (staffHours.length > 0) {
-          const slots = generateSlotsFromBusinessHours(staffHours, rangeStart, interval, timezone);
-          for (const s of slots) {
-            staffSlotSet.add(s.getTime());
+        for (const block of staffHours) {
+          const [sh, sm] = block.startTime.split(":").map(Number) as [number, number];
+          const [eh, em] = block.endTime.split(":").map(Number) as [number, number];
+          const startMin: number = sh * 60 + sm;
+          const endMin: number = eh * 60 + em;
+          if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) {
+            console.error("availability.staff_range.malformed", {
+              staffId,
+              startTime: block.startTime,
+              endTime: block.endTime,
+            });
+            continue;
           }
+          staffRanges.push({ day: block.day, startMinutes: startMin, endMinutes: endMin });
         }
       }
-      // If staff have availability settings, intersect; otherwise just use business hours
-      if (staffSlotSet.size > 0) {
+      if (staffRanges.length > 0) {
         return businessSlots
-          .filter((s) => staffSlotSet.has(s.getTime()))
+          .filter((slotStart) => {
+            const slotTZ: TZDate = new TZDate(slotStart, timezone);
+            const dow: number = getDay(slotTZ);
+            const slotMinute: number = slotTZ.getHours() * 60 + slotTZ.getMinutes();
+            const slotEndMinute: number = slotMinute + interval;
+            return staffRanges.some(
+              (r) => r.day === dow && slotMinute >= r.startMinutes && slotEndMinute <= r.endMinutes,
+            );
+          })
           .sort((a, b) => a.getTime() - b.getTime());
       }
     }

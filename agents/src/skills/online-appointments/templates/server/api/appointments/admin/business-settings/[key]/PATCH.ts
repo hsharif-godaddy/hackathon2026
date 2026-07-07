@@ -5,7 +5,7 @@ import { businessSetting } from "../../../../../db/schema.js";
 import { eq } from "drizzle-orm";
 
 const UpdateSettingSchema = z.object({
-  value: z.string(),
+  value: z.string().max(10000),
 });
 
 export default async function handler(req: Request, res: Response) {

@@ -16,8 +16,8 @@ import {
 const UpdateBookingSchema = z.object({
   start_time: z.string().datetime().optional(),
   end_time: z.string().datetime().optional(),
-  status: z.string().optional(),
-  quantity: z.number().int().min(1).optional(),
+  status: z.string().max(50).optional(),
+  quantity: z.number().int().min(1).max(50).optional(),
 });
 
 export default async function handler(req: Request, res: Response) {

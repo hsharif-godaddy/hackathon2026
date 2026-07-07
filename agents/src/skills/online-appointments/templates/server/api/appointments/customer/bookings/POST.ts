@@ -5,17 +5,17 @@ import { createBooking, BookingError } from "../../services/booking-creation";
 const C2CreateBookingSchema = z.object({
   service_id: z.string().uuid(),
   availability_time: z.string().datetime(),
-  quantity: z.number().int().min(1).default(1),
-  staff_ids: z.array(z.string().uuid()).optional(),
+  quantity: z.number().int().min(1).max(50).default(1),
+  staff_ids: z.array(z.string().uuid()).max(10).optional(),
   client: z.object({
-    first_name: z.string().min(1),
-    last_name: z.string().min(1),
-    email: z.string().email(),
-    phone_number: z.string().optional(),
-    notes: z.string().optional(),
+    first_name: z.string().min(1).max(100),
+    last_name: z.string().min(1).max(100),
+    email: z.string().email().max(255),
+    phone_number: z.string().max(30).optional(),
+    notes: z.string().max(2000).optional(),
   }),
-  answers: z.array(z.object({ question_id: z.string().uuid(), body: z.string() })).optional(),
-  ext_contact_id: z.string().optional(),
+  answers: z.array(z.object({ question_id: z.string().uuid(), body: z.string().max(5000) })).max(50).optional(),
+  ext_contact_id: z.string().max(36).optional(),
 });
 
 export default async function handler(req: Request, res: Response) {

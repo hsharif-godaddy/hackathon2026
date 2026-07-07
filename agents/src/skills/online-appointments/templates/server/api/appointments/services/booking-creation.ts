@@ -1,4 +1,4 @@
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { db } from "../../../db/client.js";
 import {
   booking,
@@ -172,7 +172,7 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
       : isNull(bookedInstance.staffId);
 
     const existingInstance = await tx
-      .select({ id: bookedInstance.id, remainingCapacity: bookedInstance.remainingCapacity })
+      .select({ id: bookedInstance.id })
       .from(bookedInstance)
       .where(
         and(
@@ -187,13 +187,23 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
     const inst = existingInstance[0];
     if (inst) {
       instanceId = inst.id;
-      await tx
+      const [updateResult] = await tx
         .update(bookedInstance)
         .set({
-          remainingCapacity: inst.remainingCapacity - input.quantity,
+          remainingCapacity: sql`remaining_capacity - ${input.quantity}`,
+          lockVersion: sql`lock_version + 1`,
           updatedAt: now,
         })
-        .where(eq(bookedInstance.id, instanceId));
+        .where(
+          and(
+            eq(bookedInstance.id, instanceId),
+            sql`remaining_capacity >= ${input.quantity}`,
+          ),
+        );
+      const affectedRows: number = (updateResult as { affectedRows?: number })?.affectedRows ?? 0;
+      if (affectedRows === 0) {
+        throw new BookingError("This time slot is no longer available", 409);
+      }
     } else {
       instanceId = generateId();
       await tx.insert(bookedInstance).values({
@@ -205,6 +215,7 @@ export async function createBooking(input: CreateBookingInput): Promise<BookingR
         endTimeDisplay: endTime,
         maxCapacity: svc.capacity ?? 1,
         remainingCapacity: (svc.capacity ?? 1) - input.quantity,
+        lockVersion: 1,
         createdAt: now,
         updatedAt: now,
       });
@@ -347,12 +358,14 @@ async function findOrCreateClient(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   input: ClientInput,
 ): Promise<{ id: string }> {
+  const normalizedEmail: string = input.email.toLowerCase().trim();
+
   const existingContacts = await tx
     .select({ contactableId: contactDetail.contactableId })
     .from(contactDetail)
     .where(
       and(
-        eq(contactDetail.email, input.email),
+        eq(contactDetail.email, normalizedEmail),
         eq(contactDetail.contactableType, "Client"),
         isNull(contactDetail.deletedAt),
       ),
@@ -379,7 +392,7 @@ async function findOrCreateClient(
     id: generateId(),
     contactableId: clientId,
     contactableType: "Client",
-    email: input.email,
+    email: normalizedEmail,
     phoneNumber: input.phone_number ?? null,
     createdAt: now,
     updatedAt: now,
