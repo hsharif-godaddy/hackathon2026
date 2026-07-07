@@ -94,7 +94,6 @@ async function buildDevelopSystemPrompt(): Promise<string> {
   }
 
   promptBuilder
-    .file(paths.getAgentFile('develop', 'handoff.md'))
     .file(paths.getAgentFile('develop', 'backend.md'))
     .file(paths.getAgentFile('develop', 'frontend.md'))
     .file(paths.getAgentFile('develop', 'seo.md'))

@@ -90,7 +90,7 @@ marketing-campaigns__campaignPlanPropose({
 
 **Rules for this step:**
 - The ONLY tool call allowed is `marketing-campaigns__campaignPlanPropose`
-- Do NOT call `media`, `handoff`, `socialPostCreate`, `marketing-campaigns__campaignPlanCreate`, or any other tool
+- Do NOT call `media`, `socialPostCreate`, `marketing-campaigns__campaignPlanCreate`, `str_replace_based_edit_tool`, or any other tool
 - Do NOT write plan details as chat text — they go into the tool call
 - If the user requests changes, call `marketing-campaigns__campaignPlanPropose` again (it stops the agent each time)
 - The ONLY way to exit PLAN is the user clicking "Approve — generate the content"

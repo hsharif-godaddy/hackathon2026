@@ -355,7 +355,6 @@ async function buildDevelopSystemPrompt(
   }
 
   promptBuilder
-    .file(resolveFragment('handoff.md', paths.getAgentFile('develop', 'handoff.md')))
     .file(resolveFragment('backend.md', paths.getAgentFile('develop', 'backend.md')))
     .file(resolveFragment('frontend.md', paths.getAgentFile('develop', 'frontend.md')))
     .file(resolveFragment('seo.md', paths.getAgentFile('develop', 'seo.md')))
@@ -517,7 +516,22 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     // callable turnscript.* API so the model orchestrates discovery + edits in ONE turn
     // instead of per-call round-trips.
     turnscript: turnscriptAITool,
+
+    seoAnalysis: allAILibTools.seoAnalysis,
+    brandIdentity: allAILibTools.brandBook,
   }
+
+  const socialTools = skills.isEnabled('social')
+    ? {
+        socialRead: allAILibTools.socialRead,
+        socialPostCreate: allAILibTools.socialPostCreate,
+        socialPostPublish: allAILibTools.socialPostPublish,
+        socialPostEdit: allAILibTools.socialPostEdit,
+        socialPostDelete: allAILibTools.socialPostDelete,
+      }
+    : {}
+
+  const tools = { ...baseTools, ...socialTools }
 
   return {
     id: 'develop',
@@ -526,10 +540,10 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
       buildDevelopSystemPrompt(appPath, modelName, { contextMetadata: ctx.contextMetadata }),
     model,
     modelName,
-    tools: baseTools,
+    tools,
     activeTools: async (ctx: ResolverContext): Promise<string[]> => {
       const allow = new Set(
-        developActiveToolNames(Object.keys(baseTools), {
+        developActiveToolNames(Object.keys(tools), {
           promptOptimization: profileFlag('develop.promptOptimization', true),
           suggestedResponse: profileFlag('develop.suggestedResponse', false),
           developSubAgents: developSubAgentsEnabled(),
@@ -558,15 +572,8 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     afterToolExecution,
     logger: createAgentTelemetryLogger('develop'),
 
-    // Handoff configuration
-    handoffs: [
-      {
-        agentName: 'marketing',
-        description: skills.isEnabled('social')
-          ? 'SEO optimization, marketing strategy, marketing campaigns, promotions, and social media (Facebook, Instagram publishing, connecting social accounts, creating social posts)'
-          : 'SEO optimization, marketing strategy, and marketing campaigns for websites',
-      },
-    ],
+    // develop is terminal: it owns the full build (including marketing) and hands off to no agent.
+    handoffs: [],
 
     maxSteps: 100,
     temperature: 0.3,
@@ -574,7 +581,11 @@ export async function createDevelopAgent(options?: { appPath?: string }): Promis
     timeout: { stepMs: 600_000 },
 
     // Union across profiles — entries are inert when their tool isn't active.
-    stopAfterTools: ['askQuestion'],
+    // `seoAnalysis` halts the turn after the SEO report widget renders so the
+    // agent waits for the user to click Fix SEO issues before editing (parity
+    // with the removed marketing agent — it's a global tool, so the skill
+    // stop-after set does not cover it).
+    stopAfterTools: ['askQuestion', 'seoAnalysis'],
     stopWhen: [shouldStopAfterSuggestMode],
 
     // Enable prompt caching for cost savings and performance
@@ -613,17 +624,21 @@ export async function createDevelopAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent(options)
 
-  // Add handoff tool if sessionId is provided
+  // Inject the handoff tool only when develop actually has a target. develop is
+  // terminal today (handoffs: []), so this stays off — no dead tool that routes
+  // nowhere — while staying correct if a real handoff target is ever restored.
   if (options?.sessionId) {
     const validTargets = (developConfig.handoffs || []).map(h => h.agentName)
-    developConfig.tools = {
-      ...developConfig.tools,
-      handoff: createAgentHandoffTool({
-        sourceAgentId: 'develop',
-        validTargets,
-        stateManager,
-        sessionId: options.sessionId
-      })
+    if (validTargets.length > 0) {
+      developConfig.tools = {
+        ...developConfig.tools,
+        handoff: createAgentHandoffTool({
+          sourceAgentId: 'develop',
+          validTargets,
+          stateManager,
+          sessionId: options.sessionId
+        })
+      }
     }
   }
 

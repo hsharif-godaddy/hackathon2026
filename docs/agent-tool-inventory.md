@@ -35,7 +35,6 @@ graph TB
 
     AgentFactory --> DevelopAgent[Develop Agent]
     AgentFactory --> InitialAgent[Initial Agent]
-    AgentFactory --> MarketingAgent[Marketing Agent]
     AgentFactory --> DeepBuildAgent[Deep Build Agent]
 
     Tools --> CoreTools[Core Development Tools]

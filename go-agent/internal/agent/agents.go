@@ -16,7 +16,6 @@ func DevelopAgent() run.AgentConfig {
 			Fragments: []string{
 				"develop/claude-behavior.md",
 				"develop/font-theme.md",
-				"develop/handoff.md",
 				"develop/backend.md",
 				"develop/secrets.md",
 				"shared/communication.md",

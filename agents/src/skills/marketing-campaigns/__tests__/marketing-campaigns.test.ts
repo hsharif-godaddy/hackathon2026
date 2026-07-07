@@ -378,11 +378,29 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(summary).toMatch(/pending action/i) // surfaced by the Launch button
   })
 
-  it('GENERATE creates social posts BEFORE the build handoff (social tool lives on marketing)', () => {
+  it('GENERATE creates social posts BEFORE the build, builds directly, and never hands off or names an agent', () => {
     const generate = readSection('templates/sections/04-generate.md')
+    const skill = readSection('skill.md')
+    // The model reads tool descriptions and execute() return messages too, so a
+    // "builder"/handoff reference in the tool source leaks just like one in the prompt.
+    const tools = readSection('tools/index.ts')
     expect(generate).toMatch(/Social posts.*do this FIRST/is)
-    expect(generate).toMatch(/do this LAST/i) // build handoff is last
-    expect(generate).toMatch(/NEVER hand off to build before the social posts exist/i)
+    expect(generate).toMatch(/do this LAST/i)
+    expect(generate).toMatch(/NEVER build before the social posts exist/i)
+    // "build"/"building" verbs are allowed — the \bbuilder\b boundary catches only the agent noun.
+    const agentRefs: RegExp = /hand[- ]?off|DevelopAgent|marketing agent|\bbuilder\b/i
+    const surfaces: Record<string, string> = {
+      'skill.md': skill,
+      'tools/index.ts': tools,
+      '01-clarify.md': readSection('templates/sections/01-clarify.md'),
+      '02-plan.md': readSection('templates/sections/02-plan.md'),
+      '03-verify.md': readSection('templates/sections/03-verify.md'),
+      '04-generate.md': generate,
+      '05-summary.md': readSection('templates/sections/05-summary.md'),
+    }
+    for (const [name, content] of Object.entries(surfaces)) {
+      expect(content, `${name} leaks an agent/handoff reference`).not.toMatch(agentRefs)
+    }
   })
 
   it('persists the business signal via campaignPlanPropose, never via appPlan', () => {
@@ -445,11 +463,11 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(skill).toMatch(/pending customer action/i)
   })
 
-  it('marketing-campaigns is pinned to the marketing agent (skill relies on marketing-only tools)', () => {
+  it('marketing-campaigns is available to the develop agent', () => {
     const skill = readSection('skill.md')
-    // allowedAgents keeps the skill off DevelopAgent's menu so it is never half-loaded
-    // without socialPostCreate; campaign requests route to marketing via develop/handoff.md.
-    expect(skill).toMatch(/allowedAgents:\s*\[marketing\]/)
+    // develop must be in allowedAgents or the skill-loader gate hides it.
+    // The marketing agent was removed — develop owns marketing end-to-end.
+    expect(skill).toMatch(/allowedAgents:\s*\[\s*develop\s*\]/)
   })
 
   it('all five phase sections exist', () => {

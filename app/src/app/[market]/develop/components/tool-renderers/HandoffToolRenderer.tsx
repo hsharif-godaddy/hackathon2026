@@ -22,8 +22,7 @@ function getAgentDisplayName(agentId: string, t: (key: string) => string): strin
     'develop': t('builder_tools_handoff_display_develop'),
     'database': t('builder_tools_handoff_display_database'),
     'color-scheme': t('builder_tools_handoff_display_color'),
-    'colorScheme': t('builder_tools_handoff_display_color'),
-    'marketing': t('builder_tools_handoff_display_marketing')
+    'colorScheme': t('builder_tools_handoff_display_color')
   }
   return nameMap[agentId] || agentId
 }
@@ -81,7 +80,7 @@ function parseStreamingHandoff(input: string): { planTitle: string | null; wordC
  *   - running:   "Building a plan: {title}... 245 words"
  *   - completed: "Plan: {title}" (clickable)
  *
- * Routing mode (no planTitle — task routing like develop↔marketing):
+ * Routing mode (no planTitle — task routing between agents, e.g. design→develop):
  *   - running:   "Now talking with {Agent}" + spinner
  *   - completed: "Talked with {Agent}" (clickable)
  */

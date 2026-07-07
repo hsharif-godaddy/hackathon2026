@@ -8,31 +8,31 @@ import {
   makeCtrlPlaneClient,
 } from '../../../__tests__/scenario-test-helpers.js';
 import {
-  MARKETING_AGENT_DISPLAY_NAME,
-  MARKETING_HANDOFF,
+  DEVELOP_AGENT_DISPLAY_NAME,
+  NO_MARKETING_HANDOFF,
 } from '../../../types.js';
 
 const gocode = makeGocodeClient();
 const ctrlPlane = makeCtrlPlaneClient();
 
 describe('social-posts scenarios', () => {
-  it('social-create-posts targets the marketing agent + the social-posts skill', () => {
+  it('social-create-posts stays on develop + loads the social-posts skill', () => {
     const s = socialCreatePostsScenario(gocode, ctrlPlane);
     expect(s.name).toBe('social-create-posts');
     expect(s.suite).toBe('social-posts');
-    expect(s.expectedAgent).toBe(MARKETING_AGENT_DISPLAY_NAME);
+    expect(s.expectedAgent).toBe(DEVELOP_AGENT_DISPLAY_NAME);
     expect(s.expectedSkills).toContain('social-posts');
     expect(s.trials).toBe(5);
     expect(s.expectedTools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ tool: 'skill', called: true }),
         expect.objectContaining({ tool: 'socialPostCreate', called: true }),
-        MARKETING_HANDOFF,
+        NO_MARKETING_HANDOFF,
       ]),
     );
   });
 
-  it('social-infer-not-interrogate asserts post creation + the marketing handoff', () => {
+  it('social-infer-not-interrogate asserts post creation + NO marketing handoff', () => {
     const s = socialInferNotInterrogateScenario(gocode, ctrlPlane);
     expect(s.name).toBe('social-infer-not-interrogate');
     expect(s.staticFirstMessage).toBe(
@@ -41,7 +41,7 @@ describe('social-posts scenarios', () => {
     expect(s.expectedTools).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ tool: 'socialPostCreate', called: true }),
-        MARKETING_HANDOFF,
+        NO_MARKETING_HANDOFF,
       ]),
     );
   });

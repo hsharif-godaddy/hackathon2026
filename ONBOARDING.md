@@ -143,7 +143,7 @@ Build order is dependency-aware via `turbo.json`.
 
 | Concept                | What it means in this codebase                                                                                                            |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent                  | AI persona that generates code. `InitialAgent` scaffolds, `DevelopAgent` iterates, `MarketingAgent` handles SEO. See `agents/src/agents/` |
+| Agent                  | AI persona that generates code. `InitialAgent` scaffolds, `DevelopAgent` iterates (and runs marketing/SEO/social work via skills). See `agents/src/agents/` |
 | Skill                  | Dynamic tool set activated per conversation. 16 skills (commerce, database, social, etc.) in `agents/src/skills/`                         |
 | BFF                    | Backend-for-frontend. `app/src/app/api/` routes handle auth, paywall, data transform -- not a simple proxy                                |
 | Gasket                 | GoDaddy's plugin framework wrapping Next.js. Handles HTTPS proxy, auth, i18n, switchboard. Config in `app/gasket.ts`                      |
@@ -152,7 +152,7 @@ Build order is dependency-aware via `turbo.json`.
 | Dual-product pattern   | AAB (full-stack with UI) vs PaaS (headless API). Check for `options.token && options.repoUrl` to distinguish                              |
 | `processedContext`     | Runtime context passed to agents. Rebuilt on each handoff -- do not store persistent state here                                           |
 | `conversation.context` | Persistent context surviving agent handoffs within a prompt                                                                               |
-| Handoff                | One agent delegating to another mid-prompt. `DevelopAgent` -> `MarketingAgent` for SEO work                                               |
+| Handoff                | One agent delegating to another mid-prompt. e.g. `InitialAgent` -> `DevelopAgent` after scaffolding                                        |
 | `llmMetadataContext`   | AsyncLocalStorage carrying per-call metadata (grant info) through the LLM call chain                                                      |
 | Site vs App            | An app is the agent workspace. A site is the published deployment. One app can have multiple sites                                        |
 | `dev-supervisor`       | Go binary that runs as PID1 in production containers. Manages process lifecycle, proxies HTTP, validates JWTs                             |

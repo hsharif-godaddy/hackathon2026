@@ -1,24 +1,24 @@
 import { createSkillEval } from '../../skill-eval/create-skill-eval.js';
 import {
-  MARKETING_AGENT_DISPLAY_NAME,
-  MARKETING_HANDOFF,
+  DEVELOP_AGENT_DISPLAY_NAME,
+  NO_MARKETING_HANDOFF,
 } from '../../types.js';
 import type { IGocodeClient } from '../../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient } from '../../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../../types.js';
 
 /**
- * BASELINE (pre-deprecation): a terse "create Facebook posts for my coffee shop"
- * request is routed to the standalone marketing agent (handoff to 'marketing'),
- * which infers sensible post details rather than over-interrogating, creates via
- * socialPostCreate, and does not over-claim the posts are live. GREEN against the
- * marketing agent on main today.
+ * Develop-owned behavior (post-deprecation): a terse "create Facebook posts for
+ * my coffee shop" request is handled directly on develop — NO handoff to a
+ * standalone marketing agent — which infers sensible post details rather than
+ * over-interrogating, creates via socialPostCreate, and does not over-claim the
+ * posts are live. Develop-world counterpart of the RUBICON-543 baseline.
  *
  * Not subsumed by: social-create-posts (explicit create-via-tool path); this
  * isolates infer-vs-interrogate on an under-specified prompt.
  *
  * Construct validity:
- * - False positive: guarded by the marketing handoff + socialPostCreate; the
+ * - False positive: guarded by NO marketing handoff + socialPostCreate; the
  *   infer-not-interrogate intent is an advisory skill-outcome instruction.
  * - False negative: the registry only includes this scenario when
  *   ENABLE_SOCIAL=true (the AAB agent gates the social tools on that flag).
@@ -34,13 +34,13 @@ export function socialInferNotInterrogateScenario(
       skill: 'social-posts',
       suite: 'social-posts',
       userIntent: 'Create some Facebook posts for my coffee shop',
-      expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
+      expectedAgent: DEVELOP_AGENT_DISPLAY_NAME,
       trials: 5,
       goals: [
         {
           description:
-            'The request is routed to the standalone marketing agent (handoff to marketing), which creates the posts',
-          assertion: 'positive',
+            'The develop agent creates the posts directly, without handing off to a standalone marketing agent',
+          assertion: 'negative',
         },
         {
           description:
@@ -81,7 +81,7 @@ export function socialInferNotInterrogateScenario(
         },
       ],
       expectedTools: [
-        MARKETING_HANDOFF,
+        NO_MARKETING_HANDOFF,
         { tool: 'socialPostCreate', called: true },
       ],
     },

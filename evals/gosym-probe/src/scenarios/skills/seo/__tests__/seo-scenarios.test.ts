@@ -75,8 +75,12 @@ describe('seo suite scenarios', () => {
       expect(scenario.suite).toBe('seo');
     });
 
-    it('has 4 goals', () => {
+    it('has 4 goals (including a negative no-handoff assertion)', () => {
       expect(scenario.goals).toHaveLength(4);
+      const negativeGoals = scenario.goals.filter(
+        (g) => g.assertion === 'negative',
+      );
+      expect(negativeGoals).toHaveLength(1);
     });
 
     it('includes all required evaluators', () => {
@@ -86,9 +90,16 @@ describe('seo suite scenarios', () => {
       }
     });
 
-    it('expects seoAnalysis tool call', () => {
+    it('expects seoAnalysis called and handoff NOT called (develop runs it directly)', () => {
       expect(scenario.expectedTools).toContainEqual(
         expect.objectContaining({ tool: 'seoAnalysis', called: true }),
+      );
+      expect(scenario.expectedTools).toContainEqual(
+        expect.objectContaining({
+          tool: 'handoff',
+          called: false,
+          args: { targetAgent: 'marketing' },
+        }),
       );
     });
 

@@ -18,13 +18,13 @@ function names(): string[] {
 describe('registry marketing scenarios', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('always includes the four marketing-campaigns scenarios', () => {
+  it('always includes the two marketing-campaigns scenarios', () => {
     vi.stubEnv('ENABLE_SOCIAL', '');
     const n = names();
     expect(n).toContain('marketing-campaign-clarify-first');
     expect(n).toContain('marketing-campaign-no-channel-prompt');
-    expect(n).toContain('marketing-campaign-vague-intent-customers');
-    expect(n).toContain('marketing-campaign-vague-intent-grow');
+    expect(n).not.toContain('marketing-campaign-vague-intent-customers');
+    expect(n).not.toContain('marketing-campaign-vague-intent-grow');
   });
 
   it('omits social scenarios when ENABLE_SOCIAL is not "true"', () => {

@@ -130,6 +130,9 @@ function materializeSocialDraft(
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// `templates/pages/` holds the LIVE scaffold this tool copies into the workspace —
+// keep it. (Long-form phase notes live in `templates/sections/` and are human docs,
+// never loaded at runtime; don't conflate the two directories.)
 const LANDING_PAGE_TEMPLATE_PATH = path.resolve(__dirname, '../templates/pages/campaign-landing.tsx')
 
 // Customer-workspace destination -> agent-side template source.
@@ -222,7 +225,7 @@ async function upsertManifestEntry(
 }
 
 // Inject the single permanent /lp/:slug route into routes.tsx if not present.
-// The route + its component are permanent and manifest-driven — the builder
+// The route + its component are permanent and manifest-driven — the model
 // never edits routes for landing pages. Returns a status so the caller can
 // distinguish a genuine wiring failure (routes unreadable / no catch-all) from
 // a benign no-op (route already present).
@@ -300,7 +303,7 @@ async function scaffoldLandingPage(appId: string, landingPagePath: string, start
       status: 'draft',
     }, filesWritten)
 
-    // 4. Wire the permanent /lp/:slug route (tool-driven, not builder-driven).
+    // 4. Wire the permanent /lp/:slug route (tool-driven, not model-driven).
     routeStatus = await ensureLandingPageRoute(workspace.files, filesWritten)
   } catch (err) {
     logger.error('campaign-scaffold.write_failed', { appId, error: err instanceof Error ? err.message : String(err) })
@@ -432,16 +435,16 @@ CRITICAL RULES:
 
 export const campaignScaffoldPage: SkillToolDefinition = {
   name: 'campaignScaffoldPage',
-  description: `Scaffold the landing page template with countdown timer and date-gating. Call this AFTER social posts and email/ad copy are created, BEFORE the handoff to the builder.
+  description: `Scaffold the landing page template with countdown timer and date-gating. Call this AFTER social posts and email/ad copy are created, BEFORE you build the landing page content.
 
 This tool writes a landing page file to the workspace with:
 - A countdown timer to the sale end date
 - Three states: coming soon (before start), active sale (with countdown), and sale ended (after end)
-- Placeholder content for the builder to fill in
+- Placeholder content to fill in
 
-The landing page MUST exist before the build handoff so the builder can EDIT it (not recreate from scratch).
+The landing page MUST exist before you build its content so you EDIT it (not recreate from scratch).
 
-CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and email/ad, before the handoff.`,
+CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and email/ad, before building the landing page.`,
   parameters: z.object({
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
@@ -468,7 +471,7 @@ CRITICAL TIMING: Call this tool in GENERATE Step 3, after socialPostCreate and e
       // to). The page will 404 until the route is wired manually.
       message = `Landing page created at src/pages/lp/${slug}.tsx with stable ID ${result.pageId}, but the /lp/:slug route could NOT be wired into src/routes.tsx — it needs to be added manually or the page will 404.`
     } else if (result.success) {
-      message = `Landing page scaffolded at src/pages/lp/${slug}.tsx with stable ID ${result.pageId}. The /lp/${slug} route is permanent and manifest-driven — the builder EDITS the page's creative content but does NOT touch routes.tsx.`
+      message = `Landing page scaffolded at src/pages/lp/${slug}.tsx with stable ID ${result.pageId}. The /lp/${slug} route is permanent and manifest-driven — EDIT the page's creative content at src/pages/lp/${slug}.tsx but do NOT touch routes.tsx.`
     } else {
       message = 'Failed to scaffold landing page — check logs.'
     }
@@ -492,7 +495,7 @@ DO NOT call this tool:
 - Before the user approves the plan
 - Before content generation is complete
 
-CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build handoff has completed.`,
+CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build has completed.`,
   parameters: z.object({
     name: z.string().describe('Campaign name'),
     offer: z.string().describe('The campaign offer or goal — keep to 5 words or fewer (e.g. "Increase revenue by 2x")'),
@@ -721,7 +724,7 @@ This tool persists the campaign record together with its actual generated assets
  * (RUBICON-501, blog half).
  *
  * Runs in SUMMARY, AFTER campaignPlanCreate (the campaign row must exist — marketing_utm
- * references it) and AFTER the build handoff created the blog markdown. For each blog post it
+ * references it) and AFTER the build created the blog markdown. For each blog post it
  * mints a marketing_utm row and rewrites the bare `/lp/<slug>` conversion CTA in the markdown
  * to the UTM-decorated RELATIVE link (relative so it survives a later domain change). Only the
  * conversion CTA is touched; incidental in-blog/nav links are left bare (see
@@ -732,7 +735,7 @@ This tool persists the campaign record together with its actual generated assets
  */
 export const campaignApplyBlogUtm: SkillToolDefinition = {
   name: 'campaignApplyBlogUtm',
-  description: `Decorate the campaign landing-page CTA inside the generated blog posts with UTM tracking. Call this in SUMMARY, AFTER campaignPlanCreate and AFTER the blog posts were created in the build handoff. For each blog post it records UTM attribution and rewrites the bare /lp/<slug> CTA in the markdown to the tracked link; incidental links are left untouched. Pass the campaign's landing slug and the slugs of the blog posts that were created.`,
+  description: `Decorate the campaign landing-page CTA inside the generated blog posts with UTM tracking. Call this in SUMMARY, AFTER campaignPlanCreate and AFTER the blog posts were created in the build. For each blog post it records UTM attribution and rewrites the bare /lp/<slug> CTA in the markdown to the tracked link; incidental links are left untouched. Pass the campaign's landing slug and the slugs of the blog posts that were created.`,
   parameters: z.object({
     landingPageSlug: z.string().describe('The canonical campaign slug (plan.landingPageSlug) — the /lp/<slug> the CTAs point to.'),
     blogPosts: jsonArray('blogPosts', z.array(z.object({

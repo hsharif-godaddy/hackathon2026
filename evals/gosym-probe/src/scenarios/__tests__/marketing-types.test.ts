@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  MARKETING_HANDOFF,
-  MARKETING_AGENT_DISPLAY_NAME,
+  NO_MARKETING_HANDOFF,
   type Claims,
   type ToolCallAssertion,
   type Scenario,
@@ -24,13 +23,10 @@ describe('marketing scenario typing', () => {
   });
 });
 
-describe('MARKETING_HANDOFF (baseline)', () => {
-  it('asserts the handoff tool IS called targeting marketing', () => {
-    expect(MARKETING_HANDOFF.tool).toBe('handoff');
-    expect(MARKETING_HANDOFF.called).toBe(true);
-    expect(MARKETING_HANDOFF.args).toEqual({ targetAgent: 'marketing' });
-  });
-  it('exposes the marketing agent display name', () => {
-    expect(MARKETING_AGENT_DISPLAY_NAME).toBe('Airo Marketer');
+describe('NO_MARKETING_HANDOFF (develop-owned)', () => {
+  it('asserts the handoff tool is NOT called targeting marketing', () => {
+    expect(NO_MARKETING_HANDOFF.tool).toBe('handoff');
+    expect(NO_MARKETING_HANDOFF.called).toBe(false);
+    expect(NO_MARKETING_HANDOFF.args).toEqual({ targetAgent: 'marketing' });
   });
 });

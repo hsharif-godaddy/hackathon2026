@@ -241,6 +241,7 @@ export class JWTAuthMiddleware {
           agentProfile: tokenClaims.agentProfile as string | undefined,
           asmDualWriteEnabled: (tokenClaims.asmDualWriteEnabled as boolean) ?? false,
           googleBusinessProfileSyncEnabled: (tokenClaims.googleBusinessProfileSyncEnabled as boolean) ?? false,
+          marketingCampaignsEnabled: (tokenClaims.marketingCampaignsEnabled as boolean) ?? false,
           aiVisibilityEnabled: (tokenClaims.aiVisibilityEnabled as boolean) ?? false,
           exp: now + 3600,
           iat: now

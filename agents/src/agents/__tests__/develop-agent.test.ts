@@ -3,10 +3,11 @@ import { logger } from '../../logging/index.js';
 import type { PromptBuilder } from '@airo/ai-lib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockGetAgentModelWithName, mockPromptBuilders, mockIsTurnscriptEnabled } = vi.hoisted(() => ({
+const { mockGetAgentModelWithName, mockPromptBuilders, mockIsTurnscriptEnabled, mockSocialEnabled } = vi.hoisted(() => ({
   mockGetAgentModelWithName: vi.fn(),
   mockPromptBuilders: [] as any[],
   mockIsTurnscriptEnabled: vi.fn(() => false),
+  mockSocialEnabled: vi.fn<() => boolean>(() => false),
 }));
 
 vi.mock('../turnscript-context.js', () => ({
@@ -16,6 +17,20 @@ vi.mock('../turnscript-context.js', () => ({
 vi.mock('../../utils/model-selection.js', () => ({
   getAgentModelWithName: mockGetAgentModelWithName
 }));
+
+// Override only skills.isEnabled('social') so the social-tool gating is controllable;
+// preserve every other features.js export.
+vi.mock('../../services/features.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/features.js')>();
+  return {
+    ...actual,
+    skills: {
+      ...actual.skills,
+      isEnabled: (skillId: string): boolean =>
+        skillId === 'social' ? mockSocialEnabled() : actual.skills.isEnabled(skillId),
+    },
+  };
+});
 
 vi.mock('../../tools/ai-lib-tools/index.js', () => {
   const tool = { execute: vi.fn() };
@@ -68,6 +83,7 @@ describe('develop-agent', function developAgentTests() {
     });
     mockIsTurnscriptEnabled.mockReturnValue(false);
     __resetTurnscriptConversationState();
+    mockSocialEnabled.mockReturnValue(false);
   });
 
   describe('#createDevelopAgent', function createTests() {
@@ -100,13 +116,12 @@ describe('develop-agent', function developAgentTests() {
         expect(config.providerOptions).toBeUndefined();
       });
 
-    it('should configure handoff to marketing agent',
+    it('does not hand off to the marketing agent (develop owns marketing work)',
       async function handoffs() {
         const config = await createDevelopAgent();
 
         expect(config.handoffs).toBeInstanceOf(Array);
-        expect(config.handoffs).toHaveLength(1);
-        expect(config.handoffs[0].agentName).toBe('marketing');
+        expect(config.handoffs).toHaveLength(0);
       });
 
     it('should include core development tools',
@@ -213,6 +228,77 @@ describe('develop-agent', function developAgentTests() {
 
         expect(mockPromptBuilders[0].files.some((path: string) => path.endsWith('consent-requirements.md'))).toBe(true);
       });
+
+    describe('marketing tool parity', function marketingTools() {
+      it('wires the always-on marketing tools (seoAnalysis, brandIdentity)',
+        async function alwaysOn() {
+          const config = await createDevelopAgent();
+
+          expect(config.tools).toHaveProperty('seoAnalysis');
+          expect(config.tools).toHaveProperty('brandIdentity');
+        });
+
+      it('wires the full social tool set into the tools map when social is enabled',
+        async function socialPresent() {
+          mockSocialEnabled.mockReturnValue(true);
+          const config = await createDevelopAgent();
+
+          expect(config.tools).toHaveProperty('socialRead');
+          expect(config.tools).toHaveProperty('socialPostCreate');
+          expect(config.tools).toHaveProperty('socialPostPublish');
+          expect(config.tools).toHaveProperty('socialPostEdit');
+          expect(config.tools).toHaveProperty('socialPostDelete');
+        });
+
+      it('omits the social tools from the tools map when social is disabled',
+        async function socialAbsent() {
+          mockSocialEnabled.mockReturnValue(false);
+          const config = await createDevelopAgent();
+
+          expect(config.tools).not.toHaveProperty('socialRead');
+          expect(config.tools).not.toHaveProperty('socialPostCreate');
+          expect(config.tools).not.toHaveProperty('socialPostPublish');
+          expect(config.tools).not.toHaveProperty('socialPostEdit');
+          expect(config.tools).not.toHaveProperty('socialPostDelete');
+        });
+
+      it('excludes the social tools from activeTools when social is disabled',
+        async function socialOff() {
+          mockSocialEnabled.mockReturnValue(false);
+          const config = await createDevelopAgent();
+          const active: string[] = typeof config.activeTools === 'function'
+            ? await config.activeTools({})
+            : [];
+
+          expect(active).not.toContain('socialRead');
+          expect(active).not.toContain('socialPostCreate');
+          expect(active).not.toContain('socialPostPublish');
+          expect(active).toContain('seoAnalysis');
+          expect(active).toContain('brandIdentity');
+        });
+
+      it('includes the social tools in activeTools when social is enabled',
+        async function socialOn() {
+          mockSocialEnabled.mockReturnValue(true);
+          const config = await createDevelopAgent();
+          const active: string[] = typeof config.activeTools === 'function'
+            ? await config.activeTools({})
+            : [];
+
+          expect(active).toContain('socialRead');
+          expect(active).toContain('socialPostCreate');
+          expect(active).toContain('socialPostPublish');
+          expect(active).toContain('socialPostEdit');
+          expect(active).toContain('socialPostDelete');
+        });
+
+      it('does not wire the dead global campaignCreate key',
+        async function noCampaignCreate() {
+          const config = await createDevelopAgent();
+
+          expect(config.tools).not.toHaveProperty('campaignCreate');
+        });
+    });
   });
 
   // Turnscript visibility is gated by the activeTools resolver, which reads

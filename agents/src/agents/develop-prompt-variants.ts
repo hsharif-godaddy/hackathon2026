@@ -44,7 +44,6 @@ export type EvalPromptVariant = {
 export const REPLACEABLE_FRAGMENTS: readonly string[] = [
   'core.md',
   'communication.md',
-  'handoff.md',
   'backend.md',
   'frontend.md',
   'seo.md',

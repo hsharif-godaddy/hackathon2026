@@ -14,7 +14,6 @@ import {
 } from '@airo/ai-lib'
 import {
   createDevelopAgent,
-  createMarketingAgent,
   createInitialAgent,
   discoverNamedInitialVariants
 } from '../index.js'
@@ -52,7 +51,6 @@ export async function createUnifiedAgentFactory(options?: {
 
   const developConfig = await createDevelopAgent()
 
-  const marketingConfig = await createMarketingAgent()
   const deepBuildConfig = await createDeepBuildAgent()
 
   const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
@@ -137,22 +135,8 @@ export async function createUnifiedAgentFactory(options?: {
     ...skillStopAfterTools,
   ]
 
-  const marketingHandoffTool = createAgentHandoffTool({
-    sourceAgentId: 'marketing',
-    validTargets: (marketingConfig.handoffs || []).map(h => h.agentName),
-    stateManager
-  })
-
-  marketingConfig.tools = {
-    ...(marketingConfig.tools || {}),
-    handoff: marketingHandoffTool
-  }
-  // Stop execution after handoff tool is called
-  marketingConfig.stopAfterTools = ['handoff', 'seoAnalysis', ...skillStopAfterTools, 'suggestedResponse', 'askQuestion']
-
   const contextPipeline = new AgentContextPipeline()
   developConfig.contextPipeline = contextPipeline
-  marketingConfig.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
 
   for (const config of Object.values(modeInitialConfigs)) {
@@ -170,7 +154,6 @@ export async function createUnifiedAgentFactory(options?: {
     'initial-v3': initialV3Config,
     ...namedVariantInitialConfigs,
     develop: developConfig,
-    marketing: marketingConfig,
     'deep-build': deepBuildConfig,
     ...modeInitialConfigs,
   }

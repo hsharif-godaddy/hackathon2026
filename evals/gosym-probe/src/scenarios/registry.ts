@@ -77,8 +77,6 @@ import {
 import {
   campaignClarifyFirstScenario,
   campaignNoChannelPromptScenario,
-  campaignVagueIntentCustomersScenario,
-  campaignVagueIntentGrowScenario,
 } from './skills/marketing-campaigns/index.js';
 import {
   socialCreatePostsScenario,
@@ -186,8 +184,6 @@ export function createAllScenarios(
     socialProofTriggeringScenario(gocode, ctrlPlane),
     campaignClarifyFirstScenario(gocode, ctrlPlane),
     campaignNoChannelPromptScenario(gocode, ctrlPlane),
-    campaignVagueIntentCustomersScenario(gocode, ctrlPlane),
-    campaignVagueIntentGrowScenario(gocode, ctrlPlane),
     ...socialScenarios,
     addGoogleAnalyticsScenario(gocode, ctrlPlane),
     noManualRootlayoutEditScenario(gocode, ctrlPlane),

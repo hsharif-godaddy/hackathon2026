@@ -21,15 +21,6 @@ export type StabilityLevel = 'low' | 'medium' | 'high';
  */
 export const DEVELOP_AGENT_DISPLAY_NAME = 'AI Developer';
 
-/**
- * The marketing sub-agent's DISPLAY name, as it appears on toolCall.agentId
- * (the agent config's `name`, surfaced via agent.getName() → step_start
- * agentName → toolCall.agentId — NOT the slug 'marketing'). Used as
- * expectedAgent on baseline scenarios that assert the current behavior
- * (marketing handled by the standalone marketing agent), before its deprecation.
- */
-export const MARKETING_AGENT_DISPLAY_NAME = 'Airo Marketer';
-
 export const DEFAULT_STABILITY_LEVEL: StabilityLevel = 'low';
 
 export const STABILITY_TRIALS: Record<StabilityLevel, number> = {
@@ -76,16 +67,17 @@ export interface ToolCallAssertion {
 }
 
 /**
- * Baseline (pre-deprecation) assertion: a marketing/social request IS handed
- * off to the standalone marketing agent. `called: true` + the `targetAgent`
- * arg captures the CURRENT routing as a baseline (GREEN today); the suite flips
- * to a no-handoff assertion once marketing migrates onto the develop agent.
- * Exported so every marketing/social baseline scenario asserts the same
+ * Develop-owned (post-deprecation) assertion: a marketing/social request MUST
+ * NOT be handed off to a standalone marketing agent — develop handles marketing
+ * (SEO, social, campaigns) directly. `called: false` + the `targetAgent` arg
+ * pins the assertion to the *marketing* handoff, so a benign
+ * InitialAgent→develop scaffold handoff (a different targetAgent) still
+ * satisfies it. Exported so every marketing/social scenario asserts the same
  * invariant from one definition.
  */
-export const MARKETING_HANDOFF: ToolCallAssertion = {
+export const NO_MARKETING_HANDOFF: ToolCallAssertion = {
   tool: 'handoff',
-  called: true,
+  called: false,
   args: { targetAgent: 'marketing' },
 };
 

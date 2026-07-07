@@ -154,8 +154,7 @@ When a message arrives, the agent is selected by priority:
 | Agent          | Purpose                           | Handoff targets |
 | -------------- | --------------------------------- | --------------- |
 | InitialAgent   | First-time app scaffolding        | develop         |
-| DevelopAgent   | Feature development, code changes | marketing       |
-| MarketingAgent | SEO/marketing content             | develop         |
+| DevelopAgent   | Feature development, code changes | —               |
 | DeepBuildAgent | Orchestrated interview→plan→build | (sub-agents)    |
 
 Factory: `agents/src/agents/ai-lib-agents/index.ts` (`createUnifiedAgentFactory()`).
@@ -177,7 +176,7 @@ flowchart TD
     PublishResult --> StopCheck{Stop condition met?}
 
     StopCheck -->|"stopAfterTools<br/>(handoff, suggestedResponse,<br/>requestSecrets)"| Done
-    StopCheck -->|"maxSteps reached<br/>(100 develop, 50 marketing,<br/>20 design, 10 initial)"| Done
+    StopCheck -->|"maxSteps reached<br/>(100 develop,<br/>20 design, 10 initial)"| Done
     StopCheck -->|"Duplicate response<br/>detected"| Done
     StopCheck -->|No| Send
 
@@ -186,8 +185,7 @@ flowchart TD
 
 **Stop-after tools** pause execution for user confirmation:
 
-- `develop`: stops after `handoff`, `suggestedResponse`, `requestSecrets`
-- `marketing`: stops after `handoff`
+- `develop`: stops after `askQuestion`, `seoAnalysis` (SEO audit waits for Fix SEO issues), `suggestedResponse`, `requestSecrets` (`handoff` is in the composed set but inert — develop has no handoff targets)
 
 Only triggers when the tool succeeds (has a matching `tool-result`, not `tool-error`).
 

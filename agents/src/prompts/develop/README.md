@@ -29,14 +29,7 @@ The complete prompt is assembled from these files in order:
 - Terminal Command Tool features
 - Server Management Tools
 
-### 3. `handoff.md` - Agent Handoff Rules (Always Available)
-
-- Handoff procedures for always-available agents (Color Scheme, Marketing)
-- Recognition patterns for handoff triggers
-- Post-handoff behavior
-- Handoff loop prevention
-
-### 4. `approach.md` - Development Methodology
+### 3. `approach.md` - Development Methodology
 
 - Planning and analysis approach
 - Implementation strategies
@@ -44,41 +37,41 @@ The complete prompt is assembled from these files in order:
 - User-centric development principles
 - Supported project types
 
-### 5. `decision-matrix.md` - Decision Logic
+### 4. `decision-matrix.md` - Decision Logic
 
 - Tool usage decision trees
 - When to use specific tools vs handoffs
 - Context priority hierarchy
 - Conflict resolution rules
 
-### 6. `planning.md` - Task Planning and Management
+### 5. `planning.md` - Task Planning and Management
 
 - Todo List Tool usage and best practices
 - When and how to use systematic task tracking
 - Planning workflows and organization strategies
 - Progress tracking and project management principles
 
-### 7. `visual-context.md` - Visual Context Awareness
+### 6. `visual-context.md` - Visual Context Awareness
 
 - Visual context capabilities
 - Effective usage patterns
 - Element targeting strategies
 - Best practices for contextual development
 
-### 8. `../shared/communication.md` - Communication Style _(shared)_
+### 7. `../shared/communication.md` - Communication Style _(shared)_
 
 - Interaction guidelines
 - Communication principles
 - Response formatting expectations
 
-### 9. `design.md` - Design & Styling Guidelines
+### 8. `design.md` - Design & Styling Guidelines
 
 - Design approach and principles
 - Color system usage (semantic vs arbitrary)
 - Image handling procedures
 - Responsive design requirements
 
-### 10. `../shared/security.md` - Security & Privacy Guidelines _(shared)_
+### 9. `../shared/security.md` - Security & Privacy Guidelines _(shared)_
 
 - Information protection policies
 - Scope limitations
@@ -94,7 +87,6 @@ promptBuilder
   .file(join(developDir, 'core.md'))
   .file(join(sharedDir, 'communication.md')) // Shared section
   .file(join(sharedDir, 'filesystem.md')) // Shared section
-  .file(join(developDir, 'handoff.md')) // Agent handoff rules (always available)
   .file(join(developDir, 'backend.md'));
 
 // Conditionally load commerce handoffs if commerce agent is enabled

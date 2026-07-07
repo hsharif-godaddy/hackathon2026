@@ -92,6 +92,14 @@ describe('develop-agent profile flag gating (resolver-driven)', () => {
       expect(config.stopAfterTools).toContain('askQuestion')
     })
 
+    it('lists seoAnalysis in stopAfterTools so the SEO audit halts for review (parity with the removed marketing agent)', async () => {
+      // seoAnalysis is a global ai-lib tool (not a skill__ tool), so the skill
+      // stop-after set does not cover it; develop must declare it directly or the
+      // agent can auto-proceed into SEO fixes before the user clicks Fix SEO issues.
+      const config = await createDevelopAgent()
+      expect(config.stopAfterTools).toContain('seoAnalysis')
+    })
+
     it('keeps both askQuestion and suggestedResponse in the tools map (union)', async () => {
       // The tools map is the union across profiles; per-turn visibility is
       // controlled by activeTools, not by removing entries from the map.

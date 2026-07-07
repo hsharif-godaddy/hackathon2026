@@ -1,23 +1,25 @@
 # GENERATE Phase
 
-**Execute content creation in this order. No deviation.** The first two steps run on the marketing agent (which has the social tool); Third step should only be run AFTER 1 and 2, the build handoff is LAST. (The business signal — vertical / salesType / location — is persisted primarily by `campaignPlanPropose` in PLAN; skill.md's GENERATE runs a backstop `brandIdentity` set for the rare case the plan params were dropped.)
+**Execute content creation in this order. No deviation.** The build is LAST and only runs AFTER steps 1–3. (The business signal — vertical / salesType / location — is persisted primarily by `campaignPlanPropose` in PLAN; skill.md's GENERATE runs a backstop `brandIdentity` set for the rare case the plan params were dropped.)
 
-1. **Social posts** (`socialPostCreate`) — FIRST content step.
+1. **Social posts** (`socialPostCreate`) — FIRST content step. **Only when social is in the plan** (i.e. the `socialPostCreate` tool is available to you). If social is disabled (tool absent), skip this step and start at step 2.
 2. **Email + ad copy** — inline, in the same response.
-3. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before the build handoff.
-4. **Handoff to DevelopAgent** to EDIT the landing page + create blog — LAST. This handoff builds CODE FILES only; social posts, email, and ad copy are the marketing agent's responsibility and MUST already be created (steps 1–2) before you hand off — do not defer any of them past this point. NEVER hand off to build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
+3. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before you build its content.
+4. **Build the landing page + blog** (edit the scaffolded page, create the blog files) — LAST. This step creates CODE FILES only; social posts (if any), email, and ad copy MUST already be created (steps 1–2) — do not defer any of them past this point. When social is in the plan, NEVER build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
 
 (The canonical slug was sanitized and frozen in the `campaignPlanPropose` response — use `plan.landingPageSlug` for all references. All CTAs across channels MUST point to `/lp/[canonicalSlug]`, never a bare top-level route. Do NOT invent a different slug — reuse the exact value from the approved plan.)
 
 **CTA link text — in blog/landing markdown, use natural anchor text, NEVER the raw path.** Write the link as `[a human call-to-action phrase](/lp/[canonicalSlug])` — e.g. `[shop the new collection](/lp/summer-launch)` or `[see the full guide](/lp/summer-launch)`. NEVER use the bare `/lp/[slug]` path as the visible link text (e.g. `[/lp/summer-launch](/lp/summer-launch)`), and never drop a bare `/lp/...` URL into prose — a reader must see a natural phrase, not an internal path. (The href is rewritten to a UTM-tracked link automatically; only the anchor text is yours to get right.)
 
-**Local signals are derived.** If the business sells in person — derive this from the stored/known `salesType` (`in_store` / `service` / `hybrid` → in-person; `online` → online), the vertical (`restaurant` / `service` / `health` → in-person; `saas` / `blog` → online), plus a physical address / opening hours on the existing site — the landing-page handoff should tell DevelopAgent to surface address, hours, directions, and a "visit us in person" angle, pulled from the existing site. Omit local signals for online-only businesses.
+**Local signals are derived.** If the business sells in person — derive this from the stored/known `salesType` (`in_store` / `service` / `hybrid` → in-person; `online` → online), the vertical (`restaurant` / `service` / `health` → in-person; `saas` / `blog` → online), plus a physical address / opening hours on the existing site — the landing page should surface address, hours, directions, and a "visit us in person" angle, pulled from the existing site. Omit local signals for online-only businesses.
 
 ---
 
-## Step 1 (DO THIS FIRST): Create the social posts — `socialPostCreate`
+## Step 1 (DO THIS FIRST, when social is in the plan): Create the social posts — `socialPostCreate`
 
-You are currently on the marketing agent, which HAS the `socialPostCreate` tool. Call it NOW, before any handoff. This renders the publishable social widgets. Writing social copy as inline text, or deferring them as "draft concepts / ready to create", is a FAILURE — the build agent you hand off to next does NOT have this tool, so if you skip it here the social posts will never be created.
+**Only if the `socialPostCreate` tool is available to you.** If it isn't, the social capability is disabled for this site — social was excluded from the plan, so skip this step and go to Step 2.
+
+When social IS in the plan, call `socialPostCreate` NOW, before building the landing page. This renders the publishable social widgets. Writing social copy as inline text, or deferring them as "draft concepts / ready to create", is a FAILURE — the social posts must be rendered via the tool here.
 
 ```javascript
 socialPostCreate({
@@ -79,27 +81,26 @@ In the SAME message after calling `socialPostCreate`, write email and ad copy as
 
 **Only do this AFTER steps 1–2 (social posts + email/ad) are done.** Call `marketing-campaigns__campaignScaffoldPage` with the campaign name, start date, end date, and landing page path from the approved plan.
 
-This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. It ALSO registers the page in `src/content/data/landingPages.json` (status: draft) and adds the permanent `/lp/[campaign-slug]` route automatically — the page is gated (returns 404) until the campaign is published, so it will NOT leak if the site is published while the campaign is still a draft. The landing page MUST exist before the handoff in Step 4. Do NOT skip this step.
+This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. The landing page MUST exist before you build its content in Step 4. Do NOT skip this step.
 
 ---
 
-## Step 4 (DO THIS LAST): Handoff to DevelopAgent — edit the landing page + create blog
+## Step 4 (DO THIS LAST): Build the landing page + create blog
 
-**Only do this AFTER step 3 (campaignScaffoldPage) has completed.** Call `handoff({ agent: 'develop' })` with ONE complete brief. Do NOT split into multiple handoffs.
+**Only do this AFTER step 3 (campaignScaffoldPage) has completed.** Build everything below directly with your file tools (`str_replace_based_edit_tool`, `readFile`, `grepSearch`, `media`) in one focused pass.
 
-**IMPORTANT CONTEXT:** The landing page already exists at `src/pages/lp/[campaign-slug].tsx` — it was written by `campaignScaffoldPage` in Step 3. The file has a working countdown timer, a "sale ended" state, and placeholder content for the builder to replace. The builder's job is to EDIT this file — replace the placeholder section with creative campaign content while keeping the countdown timer and ended state intact.
+**IMPORTANT CONTEXT:** The landing page already exists at `src/pages/lp/[campaign-slug].tsx` — it was written by `campaignScaffoldPage` in Step 3. The file has a working countdown timer, a "sale ended" state, and placeholder content. Your job is to EDIT this file — replace the placeholder section with creative campaign content while keeping the countdown timer and ended state intact.
 
-**CRITICAL RULES FOR THE HANDOFF BRIEF:**
-- The brief MUST be a single block of text — not fragmented sections the agent picks from
-- The landing page ALREADY EXISTS with a countdown timer — tell the builder to EDIT it (replace placeholder content), NOT create a new file from scratch
+**CRITICAL BUILD RULES:**
+- The landing page ALREADY EXISTS with a countdown timer — EDIT it (replace placeholder content), do NOT create a new file from scratch
 - The blog MUST be discoverable — set up a blog index/listing page + route if one doesn't exist, and link it from the nav. Never leave a post as an orphaned page reachable only by direct URL.
-- NEVER tell DevelopAgent to create a summary/planning markdown file
-- NEVER tell DevelopAgent to put social posts, emails, or ads into a file (those were already created in Step 1–2)
+- NEVER create a summary/planning markdown file
+- NEVER put social posts, emails, or ads into a file (those were already created in Step 1–2)
 
-**The complete handoff brief:**
+**What to build:**
 
 ```
-Build the following for our [campaign type] campaign.
+For our [campaign type] campaign:
 
 === LANDING PAGE (EDIT — file already exists at src/pages/lp/[campaign-slug].tsx) ===
 
@@ -161,7 +162,7 @@ Brand voice: [voice]
 === WHAT NOT TO CREATE ===
 - Do NOT create any file in a marketing/ directory
 - Do NOT create summary/planning documents
-- Do NOT put social posts, email copy, or ad copy into any file (already created before this handoff)
+- Do NOT put social posts, email copy, or ad copy into any file (already created in Steps 1–2)
 - Do NOT recreate src/pages/lp/[campaign-slug].tsx from scratch — EDIT it (replace the placeholder content)
 - Do NOT edit src/routes.tsx — the /lp/:slug landing-page route is permanent and registered by the scaffold tool.
 - Files to EDIT: src/pages/lp/[campaign-slug].tsx
@@ -170,18 +171,18 @@ Brand voice: [voice]
 
 **Post-build verification:**
 
-After the handoff returns, verify the countdown is intact:
+After building, verify BOTH the countdown AND the route registration:
 
 **Check 1 — Countdown intact:**
 1. Use `grepSearch` or `readFile` on `src/pages/lp/[campaign-slug].tsx` to confirm it contains `useCountdown`.
-2. **If missing** (builder overwrote the file): re-handoff with a SHORT correction brief:
-   "The landing page at src/pages/lp/[campaign-slug].tsx is missing the countdown timer. Edit the file: add `import { useState, useEffect } from 'react';` and the useCountdown hook driven by the `endDate` prop (the component receives `{ startDate?: string; endDate?: string }` as props — do NOT introduce a hardcoded SALE_END constant), and add a countdown bar above the main content. When the countdown reaches zero, show 'This Sale Has Ended' instead of the page content."
+2. **If missing** (you overwrote the scaffolded file): fix it directly — add `import { useState, useEffect } from 'react';` and the useCountdown hook, define `const SALE_END = '[endDate]T23:59:59Z';`, and add a countdown bar above the main content. When the countdown reaches zero, show "This Sale Has Ended" instead of the page content.
 
-**Manifest sanity check:**
-3. Confirm `src/content/data/landingPages.json` contains an entry whose slug is `[campaign-slug]` (written by the scaffold step). If absent, the scaffold step failed — note it and proceed; this is NOT a builder task.
+**Check 2 — Route registered:**
+3. Use `grepSearch` or `readFile` on `src/routes.tsx` to confirm it contains `/lp/[campaign-slug]`.
+4. **If missing:** fix it directly — edit `src/routes.tsx`: add a lazy import `const CampaignPage = lazy(() => import('./pages/lp/[campaign-slug].tsx'))` and a route entry `{ path: '/lp/[campaign-slug]', element: <CampaignPage /> }`. Without this route the page 404s.
 
 **Retry rules:**
-4. **Maximum 1 retry** for the countdown check (Check 1). If the correction also fails, continue to SUMMARY anyway — do not loop.
-5. **If the countdown check passes:** proceed to SUMMARY.
+5. **Maximum 1 correction pass** (for either or both failures). If the fix also fails, continue to SUMMARY anyway — do not loop.
+6. **If both checks pass:** proceed to SUMMARY.
 
-**Wait for the handoff to complete and verification to pass, then proceed to SUMMARY.**
+**Once the build is complete and verification passes, proceed to SUMMARY.**

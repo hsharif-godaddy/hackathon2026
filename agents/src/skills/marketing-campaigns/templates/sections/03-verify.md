@@ -22,7 +22,7 @@ If no social connections exist AND social posts are in the plan, this is a **CUS
 directoryListing({ path: 'src/content/data/blog' })
 ```
 
-This is something the AGENT sets up automatically — it is NOT a customer action. If the blog system doesn't exist yet, the GENERATE handoff brief SETS IT UP (blog listing page + route) and then creates the posts (see `04-generate.md`). Never ask the customer to set up a blog — just do it.
+This is something the AGENT sets up automatically — it is NOT a customer action. If the blog system doesn't exist yet, the GENERATE build step SETS IT UP (blog listing page + route) and then creates the posts (see `04-generate.md`). Never ask the customer to set up a blog — just do it.
 
 ## Step 3: Proceed to GENERATE
 

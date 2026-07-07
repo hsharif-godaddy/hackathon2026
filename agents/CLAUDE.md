@@ -45,8 +45,7 @@ When a user sends a message (`src/server/sse/routes.ts` `POST /:appId/:conversat
 | Agent                 | Purpose                           | Handoff targets |
 | --------------------- | --------------------------------- | --------------- |
 | **InitialAgent**      | First-time app scaffolding        | develop         |
-| **DevelopAgent**      | Feature development, code changes | marketing       |
-| **MarketingAgent**    | SEO/marketing content             | develop         |
+| **DevelopAgent**      | Feature development, code changes | —               |
 | **DeepBuildAgent**    | Orchestrated interview→plan→build | (sub-agents)    |
 | **PagePromptAgent**   | Page-level prompt generation      | —               |
 | **SiteAnalyzerAgent** | Site analysis                     | —               |

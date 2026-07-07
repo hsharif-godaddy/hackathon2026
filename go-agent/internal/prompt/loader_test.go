@@ -23,9 +23,6 @@ func testFS() fstest.MapFS {
 		"develop/commerce.md": &fstest.MapFile{
 			Data: []byte("Commerce handoff rules."),
 		},
-		"develop/handoff.md": &fstest.MapFile{
-			Data: []byte("Agent handoff protocol."),
-		},
 		"template-descriptions/v8.md": &fstest.MapFile{
 			Data: []byte("V8 template: modern React app."),
 		},
@@ -209,7 +206,6 @@ func TestCompose_FullDevelopPrompt(t *testing.T) {
 		BasePrompt: "develop/core.md",
 		Fragments: []string{
 			"shared/communication.md",
-			"develop/handoff.md",
 			"shared/security.md",
 		},
 		Conditionals: []ConditionalFragment{
@@ -231,7 +227,6 @@ func TestCompose_FullDevelopPrompt(t *testing.T) {
 	// Verify all sections are present.
 	assert.Contains(t, result, "You are a development agent.")
 	assert.Contains(t, result, "Be clear, confident, and warm.")
-	assert.Contains(t, result, "Agent handoff protocol.")
 	assert.Contains(t, result, "Never expose secrets.")
 	assert.Contains(t, result, "Commerce handoff rules.")
 	assert.Contains(t, result, "V8 template: modern React app.")
@@ -240,15 +235,13 @@ func TestCompose_FullDevelopPrompt(t *testing.T) {
 	// Verify ordering: base → fragments → conditionals → template → skills.
 	baseIdx := strings.Index(result, "You are a development agent.")
 	commIdx := strings.Index(result, "Be clear, confident, and warm.")
-	handoffIdx := strings.Index(result, "Agent handoff protocol.")
 	securityIdx := strings.Index(result, "Never expose secrets.")
 	commerceIdx := strings.Index(result, "Commerce handoff rules.")
 	templateIdx := strings.Index(result, "V8 template: modern React app.")
 	skillsIdx := strings.Index(result, "Available Skills")
 
 	assert.Greater(t, commIdx, baseIdx, "communication after base")
-	assert.Greater(t, handoffIdx, commIdx, "handoff after communication")
-	assert.Greater(t, securityIdx, handoffIdx, "security after handoff")
+	assert.Greater(t, securityIdx, commIdx, "security after communication")
 	assert.Greater(t, commerceIdx, securityIdx, "commerce after security")
 	assert.Greater(t, templateIdx, commerceIdx, "template after commerce")
 	assert.Greater(t, skillsIdx, templateIdx, "skills after template")

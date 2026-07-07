@@ -4,7 +4,7 @@ The v8 template is server-rendered. Every public page must set head tags, struct
 
 ## SEO check (audit)
 
-When the user asks to **check** or **audit** SEO, **hand off to marketing** to run **`seoAnalysis`** (strategy + technical report widget).
+When the user asks to **check** or **audit** SEO, call **`seoAnalysis`** directly (you have the tool) to produce the strategy + technical report widget.
 
 After the widget appears, **stop** — wait for **Fix SEO issues** or an explicit fix request.
 

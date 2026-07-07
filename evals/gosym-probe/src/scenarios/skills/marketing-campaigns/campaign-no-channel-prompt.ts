@@ -1,25 +1,26 @@
 import { createSkillEval } from '../../skill-eval/create-skill-eval.js';
 import {
-  MARKETING_AGENT_DISPLAY_NAME,
-  MARKETING_HANDOFF,
+  DEVELOP_AGENT_DISPLAY_NAME,
+  NO_MARKETING_HANDOFF,
 } from '../../types.js';
 import type { IGocodeClient } from '../../../clients/gocode-client.js';
 import type { AABCtrlPlaneClient } from '../../../clients/aab-ctrl-plane-client.js';
 import type { Scenario } from '../../types.js';
 
 /**
- * BASELINE (pre-deprecation): a promote-my-business request naming no channel is
- * routed to the standalone marketing agent (handoff to 'marketing'), which asks
- * which channel(s) to use before proposing a multi-channel plan via
- * campaignPlanPropose. GREEN against the marketing agent on main today.
+ * Develop-owned behavior (post-deprecation): a promotion-style request without
+ * explicit "campaign" language ("help me promote my business and run a holiday
+ * promotion") still routes to the marketing-campaigns skill on develop and runs
+ * the full CLARIFY → PLAN flow. Complements clarify-first by covering a different
+ * realistic prompt phrasing.
  *
- * Not subsumed by: clarify-first (CLARIFY-before-PLAN on a specified intent);
- * this isolates CHANNEL elicitation on an unspecified-channel intent.
+ * Note: the marketing-campaigns skill (rule 12) NEVER asks the user to choose
+ * channels upfront — the agent proposes the channel mix in the plan card. This
+ * scenario does NOT assert channel prompting; it asserts the routing and plan tool.
  *
- * Construct validity:
- * - False positive: guarded by the marketing handoff + campaignPlanPropose.
- * - False negative: same multi-turn-reachability caveat as clarify-first.
- * - Missing coverage: channel-mix quality is advisory, not pinned to a set.
+ * Not subsumed by: clarify-first (same flow, different prompt style — "promote my
+ * business" vs "create a campaign"). This isolates whether promotion-phrased
+ * requests route correctly without explicit campaign language.
  */
 export function campaignNoChannelPromptScenario(
   gocode: IGocodeClient,
@@ -32,17 +33,17 @@ export function campaignNoChannelPromptScenario(
       suite: 'marketing-campaigns',
       userIntent: 'Help me promote my business and run a holiday promotion',
       contextClaims: { marketingCampaignsEnabled: true },
-      expectedAgent: MARKETING_AGENT_DISPLAY_NAME,
+      expectedAgent: DEVELOP_AGENT_DISPLAY_NAME,
       trials: 5,
       goals: [
         {
           description:
-            'The request is routed to the standalone marketing agent (handoff to marketing), which handles the promotion',
-          assertion: 'positive',
+            'The develop agent handles the promotion request directly, without handing off to a standalone marketing agent',
+          assertion: 'negative',
         },
         {
           description:
-            'The agent asks which channel(s) to use before proposing the campaign',
+            'The marketing-campaigns skill is loaded and the agent proposes a campaign plan via the campaignPlanPropose tool',
           assertion: 'positive',
         },
       ],
@@ -50,16 +51,8 @@ export function campaignNoChannelPromptScenario(
         {
           id: 'loads-marketing-campaigns',
           instruction:
-            'The marketing-campaigns skill must be loaded to handle the '
-            + 'campaign request.',
-          priority: 'required',
-        },
-        {
-          id: 'prompts-for-channel',
-          instruction:
-            'When the user names no channel, the agent must ask which '
-            + 'channel(s) to run the promotion on (e.g. email, social, ads) '
-            + 'before proposing or creating the campaign.',
+            'The marketing-campaigns skill must be loaded to handle this '
+            + 'promotion request.',
           priority: 'required',
         },
         {
@@ -69,18 +62,10 @@ export function campaignNoChannelPromptScenario(
             + 'campaignPlanPropose tool, not as free-text prose.',
           priority: 'required',
         },
-        {
-          id: 'recommends-channel-mix',
-          instruction:
-            'The proposed plan should recommend a multi-channel mix and explain '
-            + 'the rationale for each channel rather than only listing channels.',
-          priority: 'advisory',
-        },
       ],
       expectedTools: [
-        MARKETING_HANDOFF,
+        NO_MARKETING_HANDOFF,
         { tool: 'skill', called: true },
-        { tool: 'askQuestion', called: true },
         { tool: 'marketing-campaigns__campaignPlanPropose', called: true },
       ],
     },

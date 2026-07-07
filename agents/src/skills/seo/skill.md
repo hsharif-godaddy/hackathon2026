@@ -6,13 +6,16 @@ whenToUse: >-
   Triggers include SEO, search rankings, meta tags, page titles,
   descriptions, structured data, JSON-LD, schema.org, react-helmet,
   Helmet, Open Graph, og:title, canonical URL, sitemap, robots.txt,
-  search visibility, Google indexing, SEO audit, head tags, new page route,
+  search visibility, Google indexing, head tags, new page route,
   IndexNow, Bing, Yandex, Yahoo, Naver, sitemap submission, Bing Webmaster Tools.
   Also load when adding a new page/route to ensure head tags and seo-routes.ts registration.
+  For a one-shot SEO check/audit ("check my SEO", "SEO audit", post-publish SEO chip),
+  do NOT load this skill — call the seoAnalysis tool directly and stop after the report widget;
+  load this skill only for optimization/implementation work.
   NOT for Google Analytics or tracking scripts — use google-analytics skill.
 intents:
   - SEO/search rankings/meta tags/structured data/JSON-LD/sitemap
-  - optimize SEO/improve search/SEO audit/head tags/Open Graph
+  - optimize SEO/improve search/head tags/Open Graph
 ---
 
 # SEO Analysis & Optimization
@@ -34,10 +37,7 @@ Expert SEO strategy and implementation. Context-aware recommendations tailored t
 
 ### Step 1: Check or Audit
 
-When the user asks to run an SEO check, audit, or analysis:
-
-- **Marketing agent:** call global `seoAnalysis` once (strategy + technical audit in one report widget). Do not load this skill first unless you need implementation patterns.
-- **Develop agent:** for a new check, hand off to marketing for `seoAnalysis`. After handoff back for fixes, load this skill; use `seo__audit` only to re-run the technical scan.
+When the user asks to run an SEO check, audit, or analysis, call global `seoAnalysis` directly (you have the tool) — it returns the strategy + technical audit in one report widget. Don't load this skill first for a check. Load this skill (and use `seo__audit` to re-run the technical scan) only for implementation/fixes.
 
 ```javascript
 await seoAnalysis({

@@ -31,7 +31,7 @@ export const seoAuditTool: SkillToolDefinition = {
 
 Returns a user-visible report widget. Checks source files (Helmet tags, seo-routes registration) to reflect the latest code — always runs against source, never fetches the live site.
 
-For a full SEO check (strategy + audit widget), use global **seoAnalysis** on marketing. Use this tool only to re-run the technical audit without refreshing strategy.
+For a full SEO check (strategy + audit widget), use the global **seoAnalysis** tool. Use this tool only to re-run the technical audit without refreshing strategy.
 
 STOP after this tool: do NOT edit files in the same turn. The UI shows a "Fix SEO issues" button — wait until the user clicks it or explicitly asks you to fix. Do not implement optimizations until then.`,
 

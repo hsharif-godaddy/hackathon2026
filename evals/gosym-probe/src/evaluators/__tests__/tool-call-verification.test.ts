@@ -7,7 +7,7 @@ import type {
   Turn,
   ToolCall,
 } from '../../runner/transcript.js';
-import type { Scenario } from '../../scenarios/types.js';
+import type { Scenario, ToolCallAssertion } from '../../scenarios/types.js';
 import type { Persona } from '../../personas/types.js';
 
 const mockPersona: Persona = {
@@ -180,6 +180,130 @@ describe('ToolCallVerificationEvaluator', () => {
 
   it('is named tool-call-verification', () => {
     expect(evaluator.name).toBe('tool-call-verification');
+  });
+
+  describe('args subset match', () => {
+    it('rejects a non-primitive arg value at the type level (compile-lock)', () => {
+      // argsMatch compares with strict `===`, which only handles primitives. The
+      // AssertionArgValue narrowing makes an object/array-valued arg a COMPILE error,
+      // so a forbidden-tool guard can never silently pass vacuously against a
+      // structured arg. If this @ts-expect-error stops erroring, the type widened.
+      const assertion: ToolCallAssertion = {
+        tool: 'handoff',
+        called: false,
+        // @ts-expect-error non-primitive arg values are not allowed
+        args: { channels: ['social'] },
+      };
+      expect(assertion.args).toBeDefined();
+    });
+
+    it('forbidden handoff to marketing PASSES when handoff targets a different agent', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', { input: { targetAgent: 'develop' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+      expect(result.score).toBe(1.0);
+    });
+
+    it('forbidden handoff to marketing FAILS when handoff targets marketing', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('handoff', { input: { targetAgent: 'marketing' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('fail');
+      expect(result.score).toBe(0);
+      expect(result.reason).toContain('marketing');
+    });
+
+    it('required tool with args PASSES only when a call matches every arg', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('socialPostCreate', { input: { platform: 'instagram' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'socialPostCreate', called: true, args: { platform: 'instagram' } },
+          ],
+        }),
+      );
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('args match requires the tool NAME to match too', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('media', { input: { targetAgent: 'marketing' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      // a non-handoff tool with the same arg does NOT trip the handoff assertion
+      expect(result.verdict).toBe('pass');
+    });
+
+    it('forbidden+args is satisfied when the called tool has no/non-object input', async () => {
+      const turns = [
+        makeTurn('assistant', [makeToolCall('handoff')]), // no input recorded
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'handoff', called: false, args: { targetAgent: 'marketing' } },
+          ],
+        }),
+      );
+      // null/undefined input can't match the arg subset → assertion stays satisfied
+      expect(result.verdict).toBe('pass');
+      expect(result.score).toBe(1.0);
+    });
+
+    it('required+args FAILS when the tool is called but with non-matching args', async () => {
+      const turns = [
+        makeTurn('assistant', [
+          makeToolCall('socialPostCreate', { input: { platform: 'facebook' } }),
+        ]),
+      ];
+      const result = await evaluator.evaluate(
+        makeTranscript({ turns }),
+        makeScenario({
+          expectedTools: [
+            { tool: 'socialPostCreate', called: true, args: { platform: 'instagram' } },
+          ],
+        }),
+      );
+      // called, but args don't match → treated as "not called with those args"
+      expect(result.verdict).toBe('fail');
+      expect(result.score).toBe(0);
+    });
   });
 
   describe('match: prefix', () => {
