@@ -47,6 +47,13 @@ import {
   emailOrderConfirmationScenario,
 } from './skills/email/index.js';
 import { inboxSkillEvalScenario } from './skill-eval/inbox.js';
+import {
+  setupChatWidgetScenario,
+  setupContactFormScenario,
+  whereAreMessagesScenario,
+  viewFormSubmissionsScenario,
+  noMultiStepSetupScenario,
+} from './skills/inbox/index.js';
 import { skillNonSelectionScenario } from './skill-eval/skill-non-selection.js';
 import { wrongSkillRoutingScenario } from './skill-eval/wrong-skill-routing.js';
 import {

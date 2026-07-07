@@ -172,3 +172,235 @@ cases:
     expectedSkill: inbox
     tags: [positive]
     rationale: Per-form notification email routing is handled by inbox set_form_email
+
+  # --- Positive: remove/uninstall phrases ---
+
+  - id: remove-chat-widget
+    prompt: 'Remove the chat widget from my site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Removing inbox widget uses remove_widget tool
+
+  - id: disable-chat
+    prompt: 'Disable the chat feature'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Disabling chat means removing the inbox widget
+
+  - id: remove-contact-form
+    prompt: 'Remove the contact form from my site'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Removing a managed contact form uses remove_form tool
+
+  - id: delete-support-form
+    prompt: 'Delete the support form I set up earlier'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Deleting an existing inbox contact form
+
+  - id: uninstall-chat-bubble
+    prompt: 'Uninstall the chat bubble'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Uninstalling the chat bubble means removing the inbox widget
+
+  # --- Positive: widget customization phrases ---
+
+  - id: change-chat-color
+    prompt: 'Change the chat widget color to blue'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Widget color updates use update_widget_config
+
+  - id: move-chat-position
+    prompt: 'Move the chat widget to the bottom left'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Widget position uses update_widget_config
+
+  - id: change-chat-avatar
+    prompt: 'Change the chat widget avatar to my logo'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Widget avatar uses update_widget_config with avatarUrl
+
+  - id: chat-greeting-text
+    prompt: 'Change the chat bubble text to say Hello!'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Chat label text uses update_widget_config with labelText
+
+  # --- Positive: navigational / where-are-my-messages phrases ---
+
+  - id: where-contact-form-input
+    prompt: 'Where can I access contact form input?'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Navigational question about viewing form submissions — inbox provides the answer
+
+  - id: where-are-messages
+    prompt: 'Where are my messages?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: User asking where to find received messages — inbox tab in builder
+
+  - id: view-form-submissions
+    prompt: 'How do I view form submissions?'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Viewing contact form submissions is an inbox navigational query
+
+  - id: find-inbox
+    prompt: 'Where do I find my inbox?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Direct navigational question about inbox location
+
+  - id: where-messages-go
+    prompt: 'Where do customer messages go?'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Asking about message destination — inbox should explain the flow
+
+  - id: check-inbox-messages
+    prompt: 'How can I check messages from visitors?'
+    expectedSkill: inbox
+    tags: [positive, hard]
+    rationale: Checking visitor messages is a core inbox informational query
+
+  - id: read-chat-messages
+    prompt: 'Where can I read chat messages from customers?'
+    expectedSkill: inbox
+    tags: [positive]
+    rationale: Reading customer chat messages happens in the inbox tab
+
+  # --- Negative: should NOT load inbox skill ---
+
+  - id: ai-chatbot-custom
+    prompt: 'Build me an AI chatbot that can answer questions about my products using GPT'
+    expectedSkill: ai-agent
+    tags: [negative]
+    rationale: Custom AI chatbot with specific provider (GPT) is ai-agent, not inbox
+
+  - id: ai-assistant-api-key
+    prompt: 'I want a chat assistant powered by my own OpenAI API key'
+    expectedSkill: ai-agent
+    tags: [negative]
+    rationale: Own API key signals custom AI solution — ai-agent territory
+
+  - id: email-newsletter
+    prompt: 'Set up an email newsletter for my customers'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Email newsletter is not inbox — inbox handles chat/contact messaging only
+
+  - id: send-email-campaign
+    prompt: 'I want to send promotional emails to my subscribers'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Email marketing campaigns are unrelated to inbox chat/contact
+
+  - id: sms-notifications
+    prompt: 'Send SMS notifications to customers when their order ships'
+    expectedSkill: null
+    tags: [negative]
+    rationale: SMS notifications are a different communication channel — not inbox
+
+  - id: comments-section
+    prompt: 'Add a comments section to my blog posts'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Blog comments are a different feature — not chat widget or contact form
+
+  - id: reviews-widget
+    prompt: 'Add a customer reviews widget to my product page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Reviews widget is commerce/social proof, not messaging/inbox
+
+  - id: booking-form
+    prompt: 'Add a booking form so customers can schedule appointments'
+    expectedSkill: online-appointments
+    tags: [negative]
+    rationale: Appointment booking is online-appointments skill, not inbox contact form
+
+  - id: payment-form
+    prompt: 'Add a payment form to collect payments from customers'
+    expectedSkill: payment
+    tags: [negative]
+    rationale: Payment collection is payment skill, not inbox contact form
+
+  - id: add-search-bar
+    prompt: 'Add a search bar so users can search my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Site search is a different feature — not messaging
+
+  - id: social-media-links
+    prompt: 'Add social media links to my footer'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Social media links are layout/content, not messaging/inbox
+
+  - id: whatsapp-integration
+    prompt: 'Add a WhatsApp button so customers can message me on WhatsApp'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: WhatsApp is an external messaging platform — inbox only covers the built-in Airo Inbox widget
+
+  - id: email-confirmation
+    prompt: 'Send a confirmation email when someone places an order'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Transactional emails tied to orders are commerce/email, not inbox
+
+  - id: feedback-survey
+    prompt: 'Create a customer satisfaction survey'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Surveys are data-collection forms unrelated to inbox messaging
+
+  # --- Negative: harder cases (tricky near-misses) ---
+
+  - id: ai-chat-with-tools
+    prompt: 'Add a chat feature that can look up order status for my customers'
+    expectedSkill: ai-agent
+    tags: [negative, hard]
+    rationale: Chat with tool use (order lookup) requires ai-agent — inbox is for human-to-human messaging
+
+  - id: automated-responses
+    prompt: 'I want the chat to automatically respond with answers from my FAQ'
+    expectedSkill: ai-agent
+    tags: [negative, hard]
+    rationale: Automated FAQ responses imply AI-powered chat — ai-agent, not inbox (human-to-human)
+
+  - id: subscription-form
+    prompt: 'Add a form where visitors can subscribe to updates'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Subscription/signup forms are email marketing, not contact forms that route to inbox
+
+  - id: login-form
+    prompt: 'Add a login form for my users'
+    expectedSkill: authentication
+    tags: [negative]
+    rationale: Login form is authentication, not inbox contact form
+
+  - id: rss-feed
+    prompt: 'Where can I see my RSS feed?'
+    expectedSkill: rss
+    tags: [negative, hard]
+    rationale: RSS viewing question routes to rss skill — navigational but not inbox-related
+
+  - id: check-analytics
+    prompt: 'Where can I see my site analytics?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Analytics navigation is unrelated to inbox — tests that "where can I see X" only triggers inbox for messages/submissions
+
+  - id: view-order-history
+    prompt: 'Where can I view customer order history?'
+    expectedSkill: null
+    tags: [negative, hard]
+    rationale: Order history is commerce, not inbox — tests that "where can I view X" is not a blanket inbox trigger

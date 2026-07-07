@@ -4,11 +4,13 @@ description: Install the Airo Inbox chat widget or a contact form that connects 
 whenToUse: >-
   DEFAULT for any chat, messaging, chatbot, or contact form request. Covers chat widgets,
   live chat, customer messaging, support chat, contact forms, inquiry forms, and message forms.
+  Also covers questions about where to find messages, form submissions, or inbox conversations.
   Only route to ai-agent if the user explicitly needs a custom AI-powered solution with their
   own API key or tool-calling capabilities.
 intents:
   - chat widget/live chat/customer messaging/support chat/chatbot/chat feature/messaging/contact widget/chat bubble/inbox/chat avatar/widget avatar/widget logo
   - contact form/contact us/inquiry form/message form/feedback form/get in touch form
+  - where are my messages/view messages/read messages/inbox messages/form submissions/access inbox/view inbox/check inbox/where do messages go/where can I see/find my messages
   - notification email/change notification email/update notification email/inbox email/email notifications settings/check notification email/staff settings
   - remove chat widget/delete chat/uninstall chat/disable chat widget/remove inbox widget
   - remove contact form/delete contact form/uninstall form/remove form
@@ -20,15 +22,19 @@ Installs a chat widget or contact form on the site. Both connect to the Inbox ba
 
 ## Messaging & Notifications
 
-**The Inbox UI is available in the builder.** Users can view conversations, filter by status (unresolved, waiting on customer, resolved), read message threads, and reply — all from the Inbox tab in the builder. It's correct to say messages "land in your Inbox" or that the user can "view and reply in your Inbox."
+**The Inbox tab is inside this builder** — the same interface the user is chatting with you in right now. It is NOT on godaddy.com, NOT a separate website, and NOT something the user needs to navigate to externally. When a user asks where to find their messages, tell them to click the Inbox tab in the top header of the right pane in this builder. Never invent a URL or direct them to an external site.
+
+Users can view conversations, filter by status (unresolved, waiting on customer, resolved), read message threads, and reply — all from the Inbox tab in the top header of the right pane.
 
 **How notifications work:**
-- **Chat widget:** When a visitor sends a message, they must enter their name and email before the message is created. The site owner receives an **email notification** and can view/reply in the Inbox UI.
-- **Contact form:** When a visitor submits the form, the site owner receives an **email notification** and the submission appears in the Inbox UI. No confirmation email is sent to the submitter — they just see the form's success state.
-- The owner can reply from the Inbox UI or **reply directly to the notification email**.
+- **Chat widget:** When a visitor sends a message, they must enter their name and email before the message is created. The site owner receives an **email notification** and can view/reply from the Inbox tab in this builder.
+- **Contact form:** When a visitor submits the form, the site owner receives an **email notification** and the submission appears in the Inbox tab in this builder. No confirmation email is sent to the submitter — they just see the form's success state.
+- The owner can reply from the Inbox tab or **reply directly to the notification email**.
 - The customer receives the owner's response via email AND in the chat widget (if the message was sent via the widget).
 
-**Correct framing when explaining to the user:** "You'll get an email notification when someone reaches out, and you can view and reply to messages in your Inbox."
+**Correct framing when explaining to the user:** "You'll get an email notification when someone reaches out. You can view and reply to all messages from the Inbox tab right here in your builder — just click it in the top header of the right pane."
+
+**Never do:** Direct users to godaddy.com, any external URL, or any site outside this builder to find their inbox/messages. The Inbox lives in this tool.
 
 **Email skill prohibition:**
 - The backend handles all email sending automatically. **Never** load, invoke, or mention the Email skill for anything related to inbox, contact forms, or chat widget submissions.
@@ -56,59 +62,22 @@ Installs a chat widget or contact form on the site. Both connect to the Inbox ba
 
 ---
 
-## Discover Account (required for both paths)
-
-Before setting up either a chat widget or a contact form, ensure an Airo Inbox account is configured:
-
-```typescript
-inbox__discover_account({});
-```
-
-Outcomes:
-- **`alreadyConfigured: true`** — account is already linked, proceed to the relevant path below.
-- **`accountCreated: true`** — a new account was provisioned automatically, proceed to the relevant path below.
-- **`noAccounts: true`** — user has no Airo Inbox accounts and no entitlements available. Inform them they need an Airo Inbox subscription.
-- **`error`** — display the error to the user.
-
-No user interaction is needed at this step — the tool resolves the account automatically.
-
-After this succeeds, follow **one** of the two paths:
-- Chat widget → [Chat Widget Setup](#chat-widget-setup)
-- Contact form → [Contact Form Setup](#contact-form-setup)
-
----
-
 ## Chat Widget Setup
 
-### Step 1: Install Templates
-
-**First-time install:**
+Call `setup_chat_widget`. The tool handles account provisioning, template installation, embeddable creation, and config writing deterministically in a single call:
 
 ```typescript
-skill({ action: 'install', skill: 'inbox' });
+inbox__setup_chat_widget({ color: '#90ee90' });
 ```
 
-**Re-installing** (e.g., after a template update): pass `overwrite: true`, otherwise the skill loader skips existing files:
+**Outcomes:**
+- **`phase: "complete"`** — widget is installed and configured. Mount `<InboxChatWidget />` in `src/App.tsx` (see below).
+- **`phase: "no-entitlement"`** — user has no Inbox subscription. Inform them they need one.
+- **`phase: "error"`** — if `recoverable: true`, retry. Otherwise relay the error.
 
-```typescript
-skill({ action: 'install', skill: 'inbox', overwrite: true });
-```
+### After "complete": Mount the Widget
 
-Installs:
-- `src/components/InboxChatWidget.tsx` — side-effect component that mounts the CDN script
-- A tool-managed widget config file (do not edit manually)
-
-### Step 2: Wire Up the Widget
-
-```typescript
-inbox__setup_widget({ color: '#90ee90' });
-```
-
-Configures the backend and widget settings. Idempotent — re-running is safe. Color is optional (defaults to the account's existing color).
-
-### Step 3: Mount the Widget at the App Root
-
-After `setup_widget` succeeds, edit `src/App.tsx` (or the top-level layout) and render `<InboxChatWidget />` once, outside any route switch:
+Edit `src/App.tsx` (or the top-level layout) and render `<InboxChatWidget />` once, outside any route switch:
 
 ```tsx
 import InboxChatWidget from './components/InboxChatWidget';
@@ -131,7 +100,7 @@ The component is side-effect only (renders `null`). It reads the tool-managed wi
 
 ### Updating Widget Configuration
 
-To change widget settings after initial setup, call the tool:
+To change widget settings after initial setup:
 
 ```typescript
 inbox__update_widget_config({ color: '#1e40af', position: 'bottom-right', labelText: 'Ask us a question!' });
@@ -143,16 +112,16 @@ The tool syncs settings to the backend. Omit a field to leave it unchanged.
 
 ## Contact Form Setup
 
-### Step 1: Setup Form
+Call `setup_contact_form`. The tool handles account provisioning, email channel creation, route installation, and config writing deterministically in a single call:
 
 ```typescript
-inbox__setup_form({ name: "contact-us" });
+inbox__setup_contact_form({ name: "contact-us" });
 ```
 
-**Parameters:**
-- `name` (required) — unique slug for this form. Lowercase alphanumeric with hyphens (e.g. `"contact-us"`, `"support-request"`).
-
-Installs the server route, writes the form config, and registers the route. Automatically ensures an email channel exists for the brand. Requires `discover_account` to have run first. Returns the submission URL on success.
+**Outcomes:**
+- **`phase: "complete"`** — form is installed. Build a form component that POSTs to the returned `postUrl`.
+- **`phase: "no-entitlement"`** — user has no Inbox subscription. Inform them they need one.
+- **`phase: "error"`** — if `recoverable: true`, retry. Otherwise relay the error.
 
 ### Custom Notification Email
 
@@ -170,15 +139,15 @@ inbox__set_form_email({ formName: "support" });
 
 ### Multiple Forms
 
-Call `setup_form` multiple times with different names to create multiple contact forms. All forms share the same email channel (brand + category) but can have different notification emails. Each form is accessible at `/api/contact/{name}`.
+Call `setup_contact_form` multiple times with different names. All forms share the same email channel but can have different notification emails:
 
 ```typescript
-inbox__setup_form({ name: "contact-us" });
-inbox__setup_form({ name: "support" });
+inbox__setup_contact_form({ name: "contact-us" });
+inbox__setup_contact_form({ name: "support" });
 inbox__set_form_email({ formName: "support", email: "support@business.com" });
 ```
 
-Calling `setup_form` with the same name again updates that form's config (idempotent).
+Calling with the same name again updates that form's config (idempotent).
 
 ### Step 2: Generate the Form UI
 
@@ -270,8 +239,7 @@ Removes the named form from the config. If it was the last form, also removes th
 
 - **Manually editing widget config files.** Always use `update_widget_config` to change settings — it keeps the backend in sync.
 - **Modifying existing page content when adding the widget.** Adding the widget is additive — mount `<InboxChatWidget />` at the app root and call the setup/config tools. Do NOT rewrite or restructure the existing page/layout.
-- **Re-installing without `overwrite: true`.** The skill loader skips existing files by default.
-- **Skipping `discover_account`.** Always call `discover_account` before `setup_widget` or `setup_form` — it ensures the account is configured.
+- **Using the granular tools for fresh setup.** Prefer `setup_chat_widget` or `setup_contact_form` — they handle account provisioning automatically. The granular tools (`discover_account`, `setup_widget`, `setup_form`) are for targeted re-runs only.
 - **Mounting inside `<Routes>`.** The widget must be at the app root so the script loads on every page.
 - **Removing the cookie consent check.** The Airo Inbox script sets third-party cookies and must not load until the visitor opts in.
 - **Writing widget visual settings to memory.** Don't — the backend is the source of truth. The only things we store are the pointer IDs.

@@ -27,7 +27,6 @@ vi.mock('../../../../server/agent-runtime.js', () => ({
   getActionService: (...args: unknown[]) => mockGetActionService(...args),
 }));
 
-
 const mockListAccounts = vi.fn();
 const mockActivateAccount = vi.fn();
 const mockListEmbeddables = vi.fn();
@@ -37,7 +36,6 @@ const mockListCategories = vi.fn();
 const mockCreateCategory = vi.fn();
 const mockGetStaff = vi.fn();
 const mockUpdateStaff = vi.fn();
-const mockUpdateBrand = vi.fn();
 vi.mock('../../../../services/inbox-client.js', () => ({
   listAccounts: (...args: unknown[]) => mockListAccounts(...args),
   activateAccount: (...args: unknown[]) => mockActivateAccount(...args),
@@ -49,32 +47,40 @@ vi.mock('../../../../services/inbox-client.js', () => ({
   createCategory: (...args: unknown[]) => mockCreateCategory(...args),
   getStaff: (...args: unknown[]) => mockGetStaff(...args),
   updateStaff: (...args: unknown[]) => mockUpdateStaff(...args),
-  updateBrand: (...args: unknown[]) => mockUpdateBrand(...args),
 }));
 
-const mockAccess = vi.fn();
+// fs/promises is still used for reading agent-local templates and writing to dist/
 const mockWriteFile = vi.fn();
 const mockReadFile = vi.fn();
 const mockMkdir = vi.fn();
 const mockUnlink = vi.fn();
-vi.mock('fs/promises', () => ({
-  access: (...args: unknown[]) => mockAccess(...args),
+vi.mock('node:fs/promises', () => ({
   writeFile: (...args: unknown[]) => mockWriteFile(...args),
   readFile: (...args: unknown[]) => mockReadFile(...args),
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   unlink: (...args: unknown[]) => mockUnlink(...args),
 }));
 
-const mockReadWidgetConfig = vi.fn();
-const mockWriteWidgetConfig = vi.fn();
-vi.mock('../widget-config.js', () => ({
-  readWidgetConfig: (...args: unknown[]) => mockReadWidgetConfig(...args),
-  writeWidgetConfig: (...args: unknown[]) => mockWriteWidgetConfig(...args),
-}));
+// Workspace API mock
+const mockWsWrite = vi.fn();
+const mockWsDelete = vi.fn();
+const mockWsStat = vi.fn();
+const mockWsReadText = vi.fn();
+const mockWorkspaceFiles = {
+  write: (...args: unknown[]) => mockWsWrite(...args),
+  delete: (...args: unknown[]) => mockWsDelete(...args),
+  stat: (...args: unknown[]) => mockWsStat(...args),
+  readText: (...args: unknown[]) => mockWsReadText(...args),
+};
 
 const mockCreateForWorkspace = vi.fn();
 vi.mock('../../../../workspace/index.js', () => ({
   createForWorkspace: (...args: unknown[]) => mockCreateForWorkspace(...args),
+}));
+
+const mockIsDevSupervisorNotFound = vi.fn();
+vi.mock('../../../../services/DevSupervisorClient.js', () => ({
+  isDevSupervisorNotFound: (...args: unknown[]) => mockIsDevSupervisorNotFound(...args),
 }));
 
 const mockRegenerateEntryApiRegistrations = vi.fn();
@@ -96,28 +102,32 @@ vi.mock('../../../../services/MediaManifestService.js', () => ({
   },
 }));
 
-const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, removeWidgetTool, setupFormTool, setFormEmailTool, removeFormTool, listFormsTool, getStaffSettingsTool, updateStaffSettingsTool } =
+const { discoverAccountTool, setupWidgetTool, updateWidgetConfigTool, removeWidgetTool, setupFormTool, setFormEmailTool, removeFormTool, listFormsTool, getStaffSettingsTool, updateStaffSettingsTool, setupChatWidgetWorkflowTool, setupContactFormWorkflowTool } =
   await import('../index.js');
-
-import { createStubWorkspaceFiles } from '../../../../workspace/__tests__/test-workspace-files.js';
 
 // --- Test helpers ---
 
 const context = { metadata: { appId: 'app-123' }, socketId: 'socket-1' };
 const mockClient = {} as any;
 
+function setupWorkspace(): void {
+  mockCreateForWorkspace.mockReturnValue({ files: mockWorkspaceFiles });
+}
+
+function setupWorkspaceNull(): void {
+  mockCreateForWorkspace.mockReturnValue(null);
+}
+
 describe('inbox skill tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetActionService.mockReturnValue(mockClient);
     mockFindById.mockResolvedValue({ path: '/tmp/airo-app-builder/app-123/preview', name: 'My App' });
-    mockAccess.mockResolvedValue(undefined);
     mockReadFile.mockResolvedValue('// template content');
-    mockReadWidgetConfig.mockResolvedValue({
-      _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
-    });
-    mockWriteWidgetConfig.mockResolvedValue(undefined);
-    mockCreateForWorkspace.mockReturnValue(null);
+    mockWsWrite.mockResolvedValue({ bytesWritten: 100 });
+    mockWsDelete.mockResolvedValue(undefined);
+    mockIsDevSupervisorNotFound.mockReturnValue(false);
+    setupWorkspace();
   });
 
   // --------------------------------------------------------------------------
@@ -150,14 +160,11 @@ describe('inbox skill tools', () => {
 
       expect(result.alreadyConfigured).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      // Should not call listAccounts when both are cached
       expect(mockListAccounts).not.toHaveBeenCalled();
-      // Should sync logo to staff avatar
       expect(mockSyncAppLogoToInboxAvatar).toHaveBeenCalledWith(mockClient, 'app-123', 'a1b2c3d4-0000-4000-8000-000000000001');
     });
 
     it('backfills accountId from linkedToThisApp when only brand exists in memory', async () => {
-      // Legacy state: brandId exists but accountId is missing
       mockMemoryGet.mockImplementation(function (_appId: string, key: string) {
         if (key === 'integrations.inbox.accountId') {
           return Promise.resolve({ exists: false });
@@ -179,11 +186,9 @@ describe('inbox skill tools', () => {
 
       const result = await discoverAccountTool.execute({}, context);
 
-      // Should discover via linkedToThisApp rather than auto-creating
       expect(result.alreadyConfigured).toBe(true);
       expect(result.accountId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
       expect(mockActivateAccount).not.toHaveBeenCalled();
-      // Should backfill accountId to memory
       expect(mockMemorySet).toHaveBeenCalledWith(
         'app-123',
         'integrations.inbox.accountId',
@@ -395,6 +400,10 @@ describe('inbox skill tools', () => {
         success: true,
         data: { id: 10 },
       });
+      // workspace stat: files exist by default
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/components/InboxChatWidget.tsx', kind: 'file' }, { path: 'src/lib/inboxChat.config.json', kind: 'file' }] });
+      // workspace view for config read
+      mockWsReadText.mockResolvedValue(JSON.stringify({ _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } } }));
     });
 
     it('returns error when appId is missing', async () => {
@@ -417,7 +426,14 @@ describe('inbox skill tools', () => {
     });
 
     it('auto-installs template when InboxChatWidget.tsx is missing', async () => {
-      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      // stat returns no entries for widget path
+      mockWsStat.mockImplementation(({ paths }: { paths: string[] }) => {
+        const entries = paths.map((p: string) => {
+          if (p === 'src/components/InboxChatWidget.tsx') return { path: p, error: 'not_found' };
+          return { path: p, kind: 'file' };
+        });
+        return Promise.resolve({ entries });
+      });
 
       await setupWidgetTool.execute({}, context);
 
@@ -429,10 +445,13 @@ describe('inbox skill tools', () => {
         expect.stringContaining('chat-templates/lib/inboxChat.config.json'),
         'utf-8',
       );
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/components/InboxChatWidget.tsx' }),
+      );
     });
 
     it('returns error when template auto-install fails', async () => {
-      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/components/InboxChatWidget.tsx', error: 'not_found' }] });
       mockReadFile.mockRejectedValue(new Error('disk full'));
 
       const result = await setupWidgetTool.execute({}, context);
@@ -441,11 +460,13 @@ describe('inbox skill tools', () => {
     });
 
     it('does not install template when widget already exists', async () => {
-      mockAccess.mockResolvedValue(undefined);
-
       await setupWidgetTool.execute({}, context);
 
-      expect(mockWriteFile).not.toHaveBeenCalled();
+      // readFile is only called for agent-local template reads if files are missing
+      expect(mockReadFile).not.toHaveBeenCalledWith(
+        expect.stringContaining('chat-templates'),
+        'utf-8',
+      );
     });
 
     it('reuses cached embeddable from memory', async () => {
@@ -530,15 +551,15 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('server error');
     });
 
-    it('returns brandId and writes config file', async () => {
+    it('returns brandId and writes config file via workspace API', async () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
-      expect(result.configWritten).toContain('inboxChat.config.json');
-      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('inboxChat.config.json'),
+      expect(result.configWritten).toBe('src/lib/inboxChat.config.json');
+      expect(mockWsWrite).toHaveBeenCalledWith(
         expect.objectContaining({
-          _support: expect.objectContaining({ account: 'a1b2c3d4-0000-4000-8000-000000000001' }),
+          path: 'src/lib/inboxChat.config.json',
+          content: expect.stringContaining('"account": "a1b2c3d4-0000-4000-8000-000000000001"'),
         }),
       );
     });
@@ -547,12 +568,10 @@ describe('inbox skill tools', () => {
       const result = await setupWidgetTool.execute({ color: '#aabbcc' }, context);
 
       expect(result.NEXT_STEP).toContain('InboxChatWidget');
-      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(mockWsWrite).toHaveBeenCalledWith(
         expect.objectContaining({
-          _support: expect.objectContaining({
-            ui: { widget: { icon: 'webChat', color: '#aabbcc', position: 'bottom-right' } },
-          }),
+          path: 'src/lib/inboxChat.config.json',
+          content: expect.stringContaining('"color": "#aabbcc"'),
         }),
       );
     });
@@ -563,6 +582,14 @@ describe('inbox skill tools', () => {
       const result = await setupWidgetTool.execute({}, context);
 
       expect(result.error).toContain('ClientActionService not available');
+    });
+
+    it('returns error when workspace is unavailable', async () => {
+      setupWorkspaceNull();
+
+      const result = await setupWidgetTool.execute({}, context);
+
+      expect(result.error).toContain('Workspace not available');
     });
   });
 
@@ -582,6 +609,7 @@ describe('inbox skill tools', () => {
         return Promise.resolve({ exists: false });
       });
       mockUpdateEmbeddable.mockResolvedValue({ success: true, data: { id: 42 } });
+      mockWsReadText.mockResolvedValue(JSON.stringify({ _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } } }));
     });
 
     it('returns error when appId is missing', async () => {
@@ -634,10 +662,6 @@ describe('inbox skill tools', () => {
     });
 
     it('patches embeddable with labelText and writes label to config', async () => {
-      mockReadWidgetConfig.mockResolvedValue({
-        _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
-      });
-
       await updateWidgetConfigTool.execute({ labelText: 'Chat with us!' }, context);
 
       expect(mockUpdateEmbeddable).toHaveBeenCalledWith(
@@ -647,33 +671,31 @@ describe('inbox skill tools', () => {
         42,
         { shoutbox_label: 'Chat with us!' },
       );
-      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('inboxChat.config.json'),
+      expect(mockWsWrite).toHaveBeenCalledWith(
         expect.objectContaining({
-          _support: expect.objectContaining({
-            account: 'a1b2c3d4-0000-4000-8000-000000000001',
-            ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right', label: { text: 'Chat with us!' } } },
-          }),
+          path: 'src/lib/inboxChat.config.json',
+          content: expect.stringContaining('"text": "Chat with us!"'),
         }),
       );
     });
 
     it('writes config file with account restored after successful backend sync', async () => {
-      mockReadWidgetConfig.mockResolvedValue({
-        _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } },
-      });
-
       await updateWidgetConfigTool.execute({ color: '#ff0000', position: 'bottom-left' }, context);
 
-      expect(mockWriteWidgetConfig).toHaveBeenCalledWith(
-        expect.stringContaining('inboxChat.config.json'),
+      expect(mockWsWrite).toHaveBeenCalledWith(
         expect.objectContaining({
-          _support: expect.objectContaining({
-            account: 'a1b2c3d4-0000-4000-8000-000000000001',
-            ui: { widget: { icon: 'webChat', color: '#ff0000', position: 'bottom-left' } },
-          }),
+          path: 'src/lib/inboxChat.config.json',
+          content: expect.stringContaining('"account": "a1b2c3d4-0000-4000-8000-000000000001"'),
         }),
       );
+    });
+
+    it('does not write config file when only avatarUrl is provided', async () => {
+      mockUpdateInboxAvatar.mockResolvedValue({ success: true, data: undefined });
+
+      await updateWidgetConfigTool.execute({ avatarUrl: 'https://cdn.example.com/logo.png' }, context);
+
+      expect(mockWsWrite).not.toHaveBeenCalled();
     });
 
     it('does not write config file when backend sync fails', async () => {
@@ -681,7 +703,7 @@ describe('inbox skill tools', () => {
 
       await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
 
-      expect(mockWriteWidgetConfig).not.toHaveBeenCalled();
+      expect(mockWsWrite).not.toHaveBeenCalled();
     });
 
     it('returns error when updateEmbeddable fails', async () => {
@@ -690,6 +712,30 @@ describe('inbox skill tools', () => {
       const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
 
       expect(result.error).toContain('rate limited');
+    });
+
+    it('falls back to default config when existing widget config is corrupt', async () => {
+      mockWsReadText.mockResolvedValue('{ not valid json');
+
+      const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
+
+      expect(result.error).toBeUndefined();
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/inboxChat.config.json',
+          content: expect.stringContaining('"color": "#aabbcc"'),
+        }),
+      );
+    });
+
+    it('returns structured error when widget config read fails with a non-not-found error', async () => {
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('EIO: disk read error'), { code: 'EIO' }));
+      mockIsDevSupervisorNotFound.mockReturnValue(false);
+
+      const result = await updateWidgetConfigTool.execute({ color: '#aabbcc' }, context);
+
+      expect(result.error).toContain('Failed to read widget config');
+      expect(mockWsWrite).not.toHaveBeenCalled();
     });
 
     it('returns error when client is unavailable', async () => {
@@ -797,6 +843,16 @@ describe('inbox skill tools', () => {
       });
     }
 
+    beforeEach(() => {
+      // Default: route file exists in workspace
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/server/api/contact/[formName]/POST.ts', kind: 'file' }] });
+      // Default: no existing config
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('not_found'), { code: 'not_found' }));
+      mockIsDevSupervisorNotFound.mockImplementation((err: unknown) => err instanceof Error && (err as any).code === 'not_found');
+      mockMkdir.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+    });
+
     it('has correct tool definition', () => {
       expect(setupFormTool.name).toBe('setup_form');
       expect(setupFormTool.execute).toBeTypeOf('function');
@@ -830,14 +886,10 @@ describe('inbox skill tools', () => {
         }
         return Promise.resolve({ exists: false });
       });
-      mockFindById.mockReturnValue({ path: '/app' });
       mockListCategories.mockResolvedValue({
         success: true,
         data: [{ id: 42, name: 'Support', channel_type: 1, status: 'enabled' }],
       });
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       const result = await setupFormTool.execute(formInput, context);
 
@@ -852,15 +904,11 @@ describe('inbox skill tools', () => {
         }
         return Promise.resolve({ exists: false });
       });
-      mockFindById.mockReturnValue({ path: '/app' });
       mockListCategories.mockResolvedValue({ success: true, data: [] });
       mockCreateCategory.mockResolvedValue({
         success: true,
         data: { id: 99, name: 'Contact Form', channel_type: 1 },
       });
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       const result = await setupFormTool.execute(formInput, context);
 
@@ -878,7 +926,6 @@ describe('inbox skill tools', () => {
         }
         return Promise.resolve({ exists: false });
       });
-      mockFindById.mockReturnValue({ path: '/app' });
       mockListCategories.mockResolvedValue({ success: false, error: 'network error' });
 
       const result = await setupFormTool.execute(formInput, context);
@@ -893,7 +940,6 @@ describe('inbox skill tools', () => {
         }
         return Promise.resolve({ exists: false });
       });
-      mockFindById.mockReturnValue({ path: '/app' });
       mockGetActionService.mockReturnValue(null);
 
       const result = await setupFormTool.execute(formInput, context);
@@ -903,10 +949,8 @@ describe('inbox skill tools', () => {
 
     it('installs route template when file is missing', async () => {
       setupMemoryMocks();
-      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/server/api/contact/[formName]/POST.ts', error: 'not_found' }] });
       mockReadFile.mockResolvedValue('// route template content');
-      mockMkdir.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
 
       const result = await setupFormTool.execute(formInput, context);
 
@@ -915,60 +959,55 @@ describe('inbox skill tools', () => {
         expect.stringContaining('contact-templates/server/api/contact/[formName]/POST.ts'),
         'utf-8',
       );
-      expect(mockMkdir).toHaveBeenCalled();
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/server/api/contact/[formName]/POST.ts' }),
+      );
     });
 
     it('skips route install when file exists', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
 
       const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
-      // readFile is called for existing config, but not for template install
       expect(mockReadFile).not.toHaveBeenCalledWith(
         expect.stringContaining('contact-templates'),
         'utf-8',
       );
     });
 
-    it('writes config with form entry in forms map', async () => {
+    it('writes config with form entry via workspace API', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       await setupFormTool.execute(formInput, context);
 
       const expectedConfig = { forms: { 'contact-us': { brandId: 'brand-123', categoryId: 42 } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('does not include overrideEmail in config (use set_form_email instead)', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       await setupFormTool.execute({ name: 'support' }, context);
 
       const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('merges new form into existing config without clobbering', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
       const existingConfig = { forms: { 'existing-form': { brandId: 'brand-123', categoryId: 10 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       await setupFormTool.execute({ name: 'new-form' }, context);
 
@@ -978,33 +1017,32 @@ describe('inbox skill tools', () => {
           'new-form': { brandId: 'brand-123', categoryId: 42 },
         },
       };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('overwrites existing form entry when same name is used (idempotent)', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
       const existingConfig = { forms: { 'contact-us': { brandId: 'old-brand', categoryId: 99 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       await setupFormTool.execute(formInput, context);
 
       const expectedConfig = { forms: { 'contact-us': { brandId: 'brand-123', categoryId: 42 } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('returns formName and postUrl on success', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       const result = await setupFormTool.execute(formInput, context);
 
@@ -1015,7 +1053,7 @@ describe('inbox skill tools', () => {
 
     it('returns error when route template copy fails', async () => {
       setupMemoryMocks();
-      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/server/api/contact/[formName]/POST.ts', error: 'not_found' }] });
       mockReadFile.mockRejectedValue(new Error('disk full'));
 
       const result = await setupFormTool.execute(formInput, context);
@@ -1023,27 +1061,46 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('Failed to install contact form route');
     });
 
+    it('returns structured error when existing config is corrupt', async () => {
+      setupMemoryMocks();
+      mockWsReadText.mockResolvedValue('{ not valid json');
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.success).toBeUndefined();
+      expect(result.error).toContain('corrupted');
+      expect(mockWsWrite).not.toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/lib/contact-form.config.json' }),
+      );
+    });
+
+    it('propagates a non-not-found config read error as a structured error', async () => {
+      setupMemoryMocks();
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('EIO: disk read error'), { code: 'EIO' }));
+      mockIsDevSupervisorNotFound.mockReturnValue(false);
+
+      const result = await setupFormTool.execute(formInput, context);
+
+      expect(result.success).toBeUndefined();
+      expect(result.error).toContain('EIO');
+      expect(mockWsWrite).not.toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/lib/contact-form.config.json' }),
+      );
+    });
+
     it('reports routeRegistration.registered=true when entry.ts is rewritten', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, reason: 'rewritten', routeCount: 1 });
 
       const result = await setupFormTool.execute(formInput, context);
 
       expect(result.success).toBe(true);
       expect(result.routeRegistration).toEqual({ registered: true });
-      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(expect.objectContaining({ view: expect.any(Function) }));
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(mockWorkspaceFiles);
     });
 
     it('reports routeRegistration.registered=false when markers are missing', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: false, reason: 'markers-missing', routeCount: 1 });
 
       const result = await setupFormTool.execute(formInput, context);
@@ -1052,26 +1109,17 @@ describe('inbox skill tools', () => {
       expect(result.routeRegistration).toEqual({ registered: false, reason: 'markers-missing' });
     });
 
-    it('reports routeRegistration.registered=false when workspace is unavailable', async () => {
+    it('returns error when workspace is unavailable', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue(null);
+      setupWorkspaceNull();
 
       const result = await setupFormTool.execute(formInput, context);
 
-      expect(result.success).toBe(true);
-      expect(result.routeRegistration).toEqual({ registered: false, reason: 'no-workspace' });
-      expect(mockRegenerateEntryApiRegistrations).not.toHaveBeenCalled();
+      expect(result.error).toContain('Workspace not available');
     });
 
     it('reports routeRegistration.registered=false when regeneration throws', async () => {
       setupMemoryMocks();
-      mockAccess.mockResolvedValue(undefined);
-      mockWriteFile.mockResolvedValue(undefined);
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
       mockRegenerateEntryApiRegistrations.mockRejectedValue(new Error('workspace connection lost'));
 
       const result = await setupFormTool.execute(formInput, context);
@@ -1086,41 +1134,48 @@ describe('inbox skill tools', () => {
   // --------------------------------------------------------------------------
 
   describe('set_form_email', () => {
+    beforeEach(() => {
+      mockMkdir.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+    });
+
     it('sets overrideEmail on an existing form', async () => {
       const existingConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
-      mockWriteFile.mockResolvedValue(undefined);
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await setFormEmailTool.execute({ formName: 'support', email: 'support@test.com' }, context);
 
       expect(result.success).toBe(true);
       expect(result.email).toBe('support@test.com');
       const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'support@test.com' } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('removes overrideEmail when email is omitted', async () => {
       const existingConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42, overrideEmail: 'old@test.com' } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
-      mockWriteFile.mockResolvedValue(undefined);
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await setFormEmailTool.execute({ formName: 'support' }, context);
 
       expect(result.success).toBe(true);
       expect(result.email).toBeNull();
       const expectedConfig = { forms: { support: { brandId: 'brand-123', categoryId: 42 } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('returns error when form does not exist', async () => {
       const existingConfig = { forms: { other: { brandId: 'brand-123', categoryId: 42 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await setFormEmailTool.execute({ formName: 'support', email: 'x@test.com' }, context);
 
@@ -1128,7 +1183,8 @@ describe('inbox skill tools', () => {
     });
 
     it('returns error when config file is missing (no forms set up)', async () => {
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('not_found'), { code: 'not_found' }));
+      mockIsDevSupervisorNotFound.mockReturnValue(true);
 
       const result = await setFormEmailTool.execute({ formName: 'support', email: 'x@test.com' }, context);
 
@@ -1295,7 +1351,6 @@ describe('inbox skill tools', () => {
 
   describe('remove_widget', () => {
     beforeEach(() => {
-      mockUnlink.mockResolvedValue(undefined);
       mockMemoryDelete.mockResolvedValue({ success: true });
     });
 
@@ -1309,22 +1364,18 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('App ID required');
     });
 
-    it('returns error when app path cannot be resolved', async () => {
-      mockFindById.mockResolvedValue(null);
+    it('returns error when workspace is unavailable', async () => {
+      setupWorkspaceNull();
       const result = await removeWidgetTool.execute({}, context);
-      expect(result.error).toContain('Could not resolve app path');
+      expect(result.error).toContain('Workspace not available');
     });
 
-    it('deletes widget component and config file', async () => {
+    it('deletes widget component and config file via workspace API', async () => {
       const result = await removeWidgetTool.execute({}, context);
 
       expect(result.success).toBe(true);
-      expect(mockUnlink).toHaveBeenCalledWith(
-        expect.stringContaining('src/components/InboxChatWidget.tsx'),
-      );
-      expect(mockUnlink).toHaveBeenCalledWith(
-        expect.stringContaining('src/lib/inboxChat.config.json'),
-      );
+      expect(mockWsDelete).toHaveBeenCalledWith({ path: 'src/components/InboxChatWidget.tsx' });
+      expect(mockWsDelete).toHaveBeenCalledWith({ path: 'src/lib/inboxChat.config.json' });
       expect(result.deleted).toHaveLength(2);
     });
 
@@ -1334,8 +1385,10 @@ describe('inbox skill tools', () => {
       expect(mockMemoryDelete).toHaveBeenCalledWith('app-123', 'integrations.inbox.embeddableId');
     });
 
-    it('succeeds even if files do not exist (ENOENT)', async () => {
-      mockUnlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    it('succeeds even if files do not exist (not found)', async () => {
+      const notFoundErr = Object.assign(new Error('not_found'), { code: 'not_found' });
+      mockWsDelete.mockRejectedValue(notFoundErr);
+      mockIsDevSupervisorNotFound.mockReturnValue(true);
 
       const result = await removeWidgetTool.execute({}, context);
 
@@ -1343,18 +1396,20 @@ describe('inbox skill tools', () => {
       expect(result.deleted).toHaveLength(0);
     });
 
-    it('returns error on non-ENOENT unlink failure for widget', async () => {
-      mockUnlink.mockRejectedValueOnce(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+    it('returns error on non-not-found delete failure for widget', async () => {
+      mockWsDelete.mockRejectedValueOnce(new Error('EACCES'));
+      mockIsDevSupervisorNotFound.mockReturnValue(false);
 
       const result = await removeWidgetTool.execute({}, context);
 
       expect(result.error).toContain('Failed to delete widget component');
     });
 
-    it('returns error on non-ENOENT unlink failure for config', async () => {
-      mockUnlink
+    it('returns error on non-not-found delete failure for config', async () => {
+      mockWsDelete
         .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(Object.assign(new Error('EACCES'), { code: 'EACCES' }));
+        .mockRejectedValueOnce(new Error('EACCES'));
+      mockIsDevSupervisorNotFound.mockImplementation((err: unknown) => false);
 
       const result = await removeWidgetTool.execute({}, context);
 
@@ -1386,11 +1441,10 @@ describe('inbox skill tools', () => {
 
   describe('remove_form', () => {
     beforeEach(() => {
-      mockUnlink.mockResolvedValue(undefined);
       mockWriteFile.mockResolvedValue(undefined);
       mockMkdir.mockResolvedValue(undefined);
+      mockUnlink.mockResolvedValue(undefined);
       mockMemoryDelete.mockResolvedValue({ success: true });
-      mockCreateForWorkspace.mockReturnValue(null);
     });
 
     it('has correct tool definition', () => {
@@ -1409,8 +1463,14 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('Could not resolve app path');
     });
 
+    it('returns error when workspace is unavailable', async () => {
+      setupWorkspaceNull();
+      const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
+      expect(result.error).toContain('Workspace not available');
+    });
+
     it('returns error when form does not exist in config', async () => {
-      mockReadFile.mockResolvedValue(JSON.stringify({ forms: { other: { brandId: 'b', categoryId: 1 } } }));
+      mockWsReadText.mockResolvedValue(JSON.stringify({ forms: { other: { brandId: 'b', categoryId: 1 } } }));
 
       const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
 
@@ -1424,64 +1484,58 @@ describe('inbox skill tools', () => {
           'support': { brandId: 'brand-1', categoryId: 1 },
         },
       };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
 
       expect(result.success).toBe(true);
       expect(result.remainingForms).toBe(1);
       const expectedConfig = { forms: { support: { brandId: 'brand-1', categoryId: 1 } } };
-      expect(mockWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining('contact-form.config.json'),
-        JSON.stringify(expectedConfig, null, 2) + '\n',
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'src/lib/contact-form.config.json',
+          content: JSON.stringify(expectedConfig, null, 2) + '\n',
+        }),
       );
     });
 
     it('deletes config and route files when last form is removed', async () => {
       const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
 
       expect(result.success).toBe(true);
       expect(result.remainingForms).toBe(0);
-      expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('contact-form.config.json'));
-      expect(mockUnlink).toHaveBeenCalledWith(expect.stringContaining('POST.ts'));
+      expect(mockWsDelete).toHaveBeenCalledWith({ path: 'src/lib/contact-form.config.json' });
+      expect(mockWsDelete).toHaveBeenCalledWith({ path: 'src/server/api/contact/[formName]/POST.ts' });
     });
 
     it('clears category memory when last form is removed', async () => {
       const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       await removeFormTool.execute({ formName: 'contact-us' }, context);
 
       expect(mockMemoryDelete).toHaveBeenCalledWith('app-123', 'integrations.inbox.contactFormCategoryId');
     });
 
-    it('regenerates entry registrations when last form is removed and workspace available', async () => {
+    it('regenerates entry registrations when last form is removed', async () => {
       const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
-      mockCreateForWorkspace.mockReturnValue({ files: createStubWorkspaceFiles() });
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
       mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, routeCount: 0 });
 
       await removeFormTool.execute({ formName: 'contact-us' }, context);
 
-      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(expect.objectContaining({ view: expect.any(Function) }));
+      expect(mockRegenerateEntryApiRegistrations).toHaveBeenCalledWith(mockWorkspaceFiles);
     });
 
-    it('does not regenerate entry when workspace is unavailable', async () => {
+    it('handles not-found gracefully when deleting files for last form', async () => {
       const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
-      mockCreateForWorkspace.mockReturnValue(null);
-
-      await removeFormTool.execute({ formName: 'contact-us' }, context);
-
-      expect(mockRegenerateEntryApiRegistrations).not.toHaveBeenCalled();
-    });
-
-    it('handles ENOENT gracefully when deleting files for last form', async () => {
-      const existingConfig = { forms: { 'contact-us': { brandId: 'brand-1', categoryId: 1 } } };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
+      const notFoundErr = Object.assign(new Error('not_found'), { code: 'not_found' });
+      mockWsDelete.mockRejectedValue(notFoundErr);
+      mockIsDevSupervisorNotFound.mockReturnValue(true);
       mockUnlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
       const result = await removeFormTool.execute({ formName: 'contact-us' }, context);
@@ -1517,14 +1571,15 @@ describe('inbox skill tools', () => {
       expect(result.error).toContain('App ID required');
     });
 
-    it('returns error when app path cannot be resolved', async () => {
-      mockFindById.mockResolvedValue(null);
+    it('returns error when workspace is unavailable', async () => {
+      setupWorkspaceNull();
       const result = await listFormsTool.execute({}, context);
-      expect(result.error).toContain('Could not resolve app path');
+      expect(result.error).toContain('Workspace not available');
     });
 
     it('returns empty forms array when config file does not exist', async () => {
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('not_found'), { code: 'not_found' }));
+      mockIsDevSupervisorNotFound.mockReturnValue(true);
 
       const result = await listFormsTool.execute({}, context);
 
@@ -1538,7 +1593,7 @@ describe('inbox skill tools', () => {
           'support': { brandId: 'brand-1', categoryId: 1, overrideEmail: 'help@test.com' },
         },
       };
-      mockReadFile.mockResolvedValue(JSON.stringify(existingConfig));
+      mockWsReadText.mockResolvedValue(JSON.stringify(existingConfig));
 
       const result = await listFormsTool.execute({}, context);
 
@@ -1549,7 +1604,7 @@ describe('inbox skill tools', () => {
     });
 
     it('returns empty array when config has no forms', async () => {
-      mockReadFile.mockResolvedValue(JSON.stringify({ forms: {} }));
+      mockWsReadText.mockResolvedValue(JSON.stringify({ forms: {} }));
 
       const result = await listFormsTool.execute({}, context);
 
@@ -1612,6 +1667,264 @@ describe('inbox skill tools', () => {
         );
         expect(state).toBeNull();
       });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // setup_chat_widget (workflow tool)
+  // --------------------------------------------------------------------------
+
+  describe('setup_chat_widget', () => {
+    beforeEach(() => {
+      setupWorkspace();
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/components/InboxChatWidget.tsx', kind: 'file' }, { path: 'src/lib/inboxChat.config.json', kind: 'file' }] });
+      mockWsReadText.mockResolvedValue(JSON.stringify({ _support: { account: '', ui: { widget: { icon: 'webChat', color: '', position: 'bottom-right' } } } }));
+      mockListEmbeddables.mockResolvedValue({ success: true, data: [{ id: 10 }] });
+      mockUpdateEmbeddable.mockResolvedValue({ success: true, data: { id: 10 } });
+    });
+
+    it('returns error phase when appId is missing', async () => {
+      const result = await setupChatWidgetWorkflowTool.execute({}, { metadata: {} });
+      expect(result.phase).toBe('error');
+      expect(result.success).toBe(false);
+    });
+
+    it('returns no-entitlement phase when no accounts available', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: { accounts: [], unlinkedEntitlements: [] },
+      });
+
+      const result = await setupChatWidgetWorkflowTool.execute({}, context);
+
+      expect(result.phase).toBe('no-entitlement');
+      expect(result.success).toBe(false);
+    });
+
+    it('completes full workflow when account exists in memory', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'a1b2c3d4-0000-4000-8000-000000000001' });
+        if (key === 'integrations.inbox.embeddableId') return Promise.resolve({ exists: false });
+        return Promise.resolve({ exists: false });
+      });
+
+      const result = await setupChatWidgetWorkflowTool.execute({}, context);
+
+      expect(result.phase).toBe('complete');
+      expect(result.success).toBe(true);
+      expect((result as any).brandId).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+      expect((result as any).embeddableId).toBe(10);
+      expect((result as any).NEXT_STEP).toContain('InboxChatWidget');
+    });
+
+    it('auto-provisions account and completes when entitlement exists', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.embeddableId') return Promise.resolve({ exists: false });
+        return Promise.resolve({ exists: false });
+      });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: {
+          accounts: [],
+          unlinkedEntitlements: [{ entitlementId: 'ent-1' }],
+        },
+      });
+      mockActivateAccount.mockResolvedValue({
+        success: true,
+        data: { accountUrl: 'https://account-url', brandUrl: 'brand-new-123' },
+      });
+
+      const result = await setupChatWidgetWorkflowTool.execute({ color: '#ff0000' }, context);
+
+      expect(result.phase).toBe('complete');
+      expect(result.success).toBe(true);
+      expect((result as any).brandId).toBe('brand-new-123');
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/lib/inboxChat.config.json', content: expect.stringContaining('"color": "#ff0000"') }),
+      );
+    });
+
+    it('returns error phase when workspace is unavailable', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'brand-123' });
+        return Promise.resolve({ exists: false });
+      });
+      setupWorkspaceNull();
+
+      const result = await setupChatWidgetWorkflowTool.execute({}, context);
+
+      expect(result.phase).toBe('error');
+      expect((result as any).recoverable).toBe(true);
+    });
+
+    it('auto-installs templates when widget file is missing', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'brand-123' });
+        if (key === 'integrations.inbox.embeddableId') return Promise.resolve({ exists: false });
+        return Promise.resolve({ exists: false });
+      });
+      mockWsStat.mockImplementation(({ paths }: { paths: string[] }) => {
+        const entries = paths.map((p: string) => {
+          if (p === 'src/components/InboxChatWidget.tsx') return { path: p, error: 'not_found' };
+          return { path: p, kind: 'file' };
+        });
+        return Promise.resolve({ entries });
+      });
+
+      const result = await setupChatWidgetWorkflowTool.execute({}, context);
+
+      expect(result.phase).toBe('complete');
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/components/InboxChatWidget.tsx' }),
+      );
+    });
+
+    it('computeState returns phase-based state on complete', () => {
+      const state = setupChatWidgetWorkflowTool.computeState!(
+        { color: '#aabbcc' },
+        { phase: 'complete', success: true, brandId: 'brand-1', embeddableId: 42, configWritten: 'x', NEXT_STEP: 'y' },
+      );
+      expect(state).toMatchObject({ phase: 'complete', accountId: 'brand-1', embeddableId: 42, color: '#aabbcc' });
+    });
+
+    it('computeState returns null on error', () => {
+      const state = setupChatWidgetWorkflowTool.computeState!(
+        {},
+        { phase: 'error', success: false, error: 'oops', recoverable: true },
+      );
+      expect(state).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // setup_contact_form (workflow tool)
+  // --------------------------------------------------------------------------
+
+  describe('setup_contact_form', () => {
+    beforeEach(() => {
+      setupWorkspace();
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/server/api/contact/[formName]/POST.ts', kind: 'file' }] });
+      mockWsReadText.mockRejectedValue(Object.assign(new Error('not_found'), { code: 'not_found' }));
+      mockIsDevSupervisorNotFound.mockImplementation((err: unknown) => err instanceof Error && (err as any).code === 'not_found');
+      mockMkdir.mockResolvedValue(undefined);
+      mockWriteFile.mockResolvedValue(undefined);
+      mockRegenerateEntryApiRegistrations.mockResolvedValue({ changed: true, routeCount: 1 });
+    });
+
+    it('returns error phase when appId is missing', async () => {
+      const result = await setupContactFormWorkflowTool.execute({ name: 'contact-us' }, { metadata: {} });
+      expect(result.phase).toBe('error');
+      expect(result.success).toBe(false);
+    });
+
+    it('returns no-entitlement phase when no accounts available', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: { accounts: [], unlinkedEntitlements: [] },
+      });
+
+      const result = await setupContactFormWorkflowTool.execute({ name: 'contact-us' }, context);
+
+      expect(result.phase).toBe('no-entitlement');
+      expect(result.success).toBe(false);
+    });
+
+    it('completes full workflow with existing account', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'brand-123' });
+        if (key === 'integrations.inbox.contactFormCategoryId') return Promise.resolve({ exists: true, value: 42 });
+        return Promise.resolve({ exists: false });
+      });
+
+      const result = await setupContactFormWorkflowTool.execute({ name: 'contact-us' }, context);
+
+      expect(result.phase).toBe('complete');
+      expect(result.success).toBe(true);
+      expect((result as any).formName).toBe('contact-us');
+      expect((result as any).postUrl).toBe('/api/contact/contact-us');
+      expect((result as any).routeRegistration.registered).toBe(true);
+    });
+
+    it('auto-provisions account and creates email channel', async () => {
+      mockMemoryGet.mockResolvedValue({ exists: false });
+      mockListAccounts.mockResolvedValue({
+        success: true,
+        data: {
+          accounts: [],
+          unlinkedEntitlements: [{ entitlementId: 'ent-1' }],
+        },
+      });
+      mockActivateAccount.mockResolvedValue({
+        success: true,
+        data: { accountUrl: 'https://new-account', brandUrl: 'brand-new' },
+      });
+      mockListCategories.mockResolvedValue({ success: true, data: [] });
+      mockCreateCategory.mockResolvedValue({
+        success: true,
+        data: { id: 99, name: 'Contact Form', channel_type: 1 },
+      });
+
+      const result = await setupContactFormWorkflowTool.execute({ name: 'support' }, context);
+
+      expect(result.phase).toBe('complete');
+      expect(result.success).toBe(true);
+      expect((result as any).formName).toBe('support');
+      expect(mockCreateCategory).toHaveBeenCalled();
+    });
+
+    it('returns error phase when workspace is unavailable', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'brand-123' });
+        if (key === 'integrations.inbox.contactFormCategoryId') return Promise.resolve({ exists: true, value: 42 });
+        return Promise.resolve({ exists: false });
+      });
+      setupWorkspaceNull();
+
+      const result = await setupContactFormWorkflowTool.execute({ name: 'contact-us' }, context);
+
+      expect(result.phase).toBe('error');
+      expect((result as any).recoverable).toBe(true);
+    });
+
+    it('installs route template when file is missing', async () => {
+      mockMemoryGet.mockImplementation((_appId: string, key: string) => {
+        if (key === 'integrations.inbox.accountId') return Promise.resolve({ exists: true, value: 'https://account-url' });
+        if (key === 'integrations.inbox.brandId') return Promise.resolve({ exists: true, value: 'brand-123' });
+        if (key === 'integrations.inbox.contactFormCategoryId') return Promise.resolve({ exists: true, value: 42 });
+        return Promise.resolve({ exists: false });
+      });
+      mockWsStat.mockResolvedValue({ entries: [{ path: 'src/server/api/contact/[formName]/POST.ts', error: 'not_found' }] });
+      mockReadFile.mockResolvedValue('// route template');
+
+      const result = await setupContactFormWorkflowTool.execute({ name: 'contact-us' }, context);
+
+      expect(result.phase).toBe('complete');
+      expect(mockWsWrite).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'src/server/api/contact/[formName]/POST.ts' }),
+      );
+    });
+
+    it('computeState returns phase-based state on complete', () => {
+      const state = setupContactFormWorkflowTool.computeState!(
+        { name: 'support' },
+        { phase: 'complete', success: true, formName: 'support', postUrl: '/api/contact/support', configWritten: 'x', routeInstalled: 'y', routeRegistration: { registered: true }, nextSteps: [] },
+      );
+      expect(state).toMatchObject({ phase: 'complete', forms: { support: { postUrl: '/api/contact/support' } } });
+    });
+
+    it('computeState returns null on error', () => {
+      const state = setupContactFormWorkflowTool.computeState!(
+        { name: 'x' },
+        { phase: 'error', success: false, error: 'oops', recoverable: true },
+      );
+      expect(state).toBeNull();
     });
   });
 });

@@ -35,10 +35,11 @@ export function inboxSkillEvalScenario(
       ],
       skillInstructions: [
         {
-          id: 'calls-discover-account',
+          id: 'uses-workflow-tool',
           instruction:
-            'The agent must call inbox__discover_account before calling '
-            + 'inbox__setup_form or inbox__setup_widget.',
+            'The agent must call inbox__setup_contact_form (the single-call '
+            + 'workflow tool) rather than the multi-step sequence of '
+            + 'inbox__discover_account followed by inbox__setup_form.',
           priority: 'required',
         },
         {
@@ -52,9 +53,8 @@ export function inboxSkillEvalScenario(
           id: 'correct-notification-framing',
           instruction:
             'When explaining how notifications work, the agent should say '
-            + 'the owner will receive an email notification, not that '
-            + 'submissions "land in your Inbox" or reference any inbox '
-            + 'dashboard/view/interface.',
+            + 'the owner will receive an email notification and can view '
+            + 'messages from the Inbox tab in the builder.',
           priority: 'advisory',
         },
       ],
