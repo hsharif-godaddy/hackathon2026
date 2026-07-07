@@ -13,6 +13,7 @@ import { Canvas } from '@airo-ux/pattern-library/surfaces/canvas'
 import Button from '@ux/button'
 import Growl from '@ux/growl'
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry'
 import AutomationsPanel from '@/app/[market]/develop/components/automations/AutomationsPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
@@ -45,7 +46,7 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import { agentFetch } from '@/lib/agent-fetch'
 import { logger } from '@/lib/request-context'
-import { useCommanderCanvasTabsEnabled } from '@/stores/useCommanderStore'
+import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { useServerPollingStore } from '@/stores/useServerPollingStore'
 import type { BusUnsupportedFeature } from '@/utils/eventBus'
@@ -325,6 +326,13 @@ export default function PreviewPane({
 
   const previewViewMode = useDevelopPageStore((state) => state.previewViewMode)
   const viewMode = useDevelopPageStore((state) => state.viewMode)
+  const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
+  const isDomainOverlayActive = isCanvasTabsEnabled
+    ? activeCanvasId === CanvasId.Domain
+    : viewMode === ViewMode.DOMAIN
+  const isInboxOverlayActive = isCanvasTabsEnabled
+    ? activeCanvasId === CanvasId.Inbox
+    : viewMode === ViewMode.INBOX
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
@@ -432,8 +440,8 @@ export default function PreviewPane({
   const hasMountedInboxRef = useRef(false)
   const hasMountedMarketingRef = useRef(false)
   if (viewMode === ViewMode.BRAND) hasMountedBrandRef.current = true
-  if (viewMode === ViewMode.DOMAIN) hasMountedDomainRef.current = true
-  if (viewMode === ViewMode.INBOX) hasMountedInboxRef.current = true
+  if (isDomainOverlayActive) hasMountedDomainRef.current = true
+  if (isInboxOverlayActive) hasMountedInboxRef.current = true
   if (viewMode === ViewMode.MARKETING) hasMountedMarketingRef.current = true
 
   // State preservation for iframe navigation and scroll position
@@ -1598,11 +1606,11 @@ export default function PreviewPane({
                 {/* Domain canvas overlay (canvas-tabs flag only). */}
                 {isCanvasTabsEnabled && isTopLevelDomainEnabled && hasMountedDomainRef.current && (
                   <div
-                    aria-hidden={viewMode !== ViewMode.DOMAIN}
-                    inert={viewMode !== ViewMode.DOMAIN || undefined}
+                    aria-hidden={!isDomainOverlayActive}
+                    inert={!isDomainOverlayActive || undefined}
                     className={clsx(
                       'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
-                      viewMode === ViewMode.DOMAIN
+                      isDomainOverlayActive
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}
@@ -1617,11 +1625,11 @@ export default function PreviewPane({
 
                 {isCanvasTabsEnabled && isInboxEnabled && hasMountedInboxRef.current && (
                   <div
-                    aria-hidden={viewMode !== ViewMode.INBOX}
-                    inert={viewMode !== ViewMode.INBOX || undefined}
+                    aria-hidden={!isInboxOverlayActive}
+                    inert={!isInboxOverlayActive || undefined}
                     className={clsx(
                       'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
-                      viewMode === ViewMode.INBOX
+                      isInboxOverlayActive
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}

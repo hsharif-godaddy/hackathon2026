@@ -49,6 +49,11 @@ export function useCanvasSync(): void {
       lastAppliedRef.current = activeCanvasId
       develop.setActiveSettingsSection(activation.settingsSection)
       if (!commander.isCanvasSettingsOpen) commander.openCanvasSettings()
+      // Settings canvases are driven by activeCanvasId, not viewMode — clear any
+      // lingering overlay view (e.g. DOMAIN) so PreviewPane hides it underneath.
+      if (!PREVIEW_CANVAS_VIEW_MODES.has(develop.viewMode)) {
+        develop.handleViewModeChange(ViewMode.PREVIEW, develop.hasUnsavedChanges)
+      }
     } else if (activation.viewMode) {
       const isPreviewCanvas = activation.viewMode === ViewMode.PREVIEW
       const alreadyInPreviewSubMode = PREVIEW_CANVAS_VIEW_MODES.has(develop.viewMode)

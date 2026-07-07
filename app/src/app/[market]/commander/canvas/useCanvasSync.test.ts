@@ -102,6 +102,20 @@ describe('useCanvasSync', () => {
     expect(openCanvasSettings).toHaveBeenCalled()
   })
 
+  it('clears overlay viewMode when a settings canvas activates', () => {
+    const { rerender } = renderHook(() => useCanvasSync())
+    act(() => {
+      useDevelopPageStore.setState({ viewMode: ViewMode.DOMAIN } as ReturnType<
+        typeof useDevelopPageStore.getState
+      >)
+      useCommanderStore.setState({ activeCanvasId: CanvasId.SettingsSecurity })
+    })
+    rerender()
+    expect(handleViewModeChange).toHaveBeenCalledWith(ViewMode.PREVIEW, false)
+    expect(setActiveSettingsSection).toHaveBeenCalled()
+    expect(openCanvasSettings).toHaveBeenCalled()
+  })
+
   it('resets activeCanvasId to PINNED when the active canvas is flag-gated-off', () => {
     // Media requires appbuilder-media-library (off in this test). Persisted/active
     // Media should be force-reset to PINNED so useCanvasSync never drives the
