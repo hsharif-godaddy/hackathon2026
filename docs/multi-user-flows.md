@@ -2,8 +2,7 @@
 
 Request-level sequences, FGA HTTP shapes, tuple propagation, and per-role user journeys for AAB
 multi-user. For the architecture and component reference see
-[multi-user-architecture.md](./multi-user-architecture.md); for product/MVP decisions see
-[multi-user-rbac-planning.md](./multi-user-rbac-planning.md).
+[multi-user-architecture.md](./multi-user-architecture.md).
 
 > **Relation names:** this doc uses the shipped FGA relations (`airo_app_build`, `airo_app_publish`,
 > `airo_app_manage_secrets`, `airo_app_manage_domains`, `airo_app_download`, `admin`, `owner`). Older

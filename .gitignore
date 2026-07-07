@@ -94,6 +94,12 @@ proxy-logs/
 .superpowers/
 .omo/
 
+# AI-generated plan/spec output (superpowers etc.) — do not commit new ones (AIROBUILD-3489).
+# Already-tracked, code-referenced design docs stay tracked; gitignore never untracks committed files.
+docs/superpowers/
+docs/plans/
+docs/paas/plans/
+
 # Git worktrees
 .worktrees/
 .claude/worktrees/

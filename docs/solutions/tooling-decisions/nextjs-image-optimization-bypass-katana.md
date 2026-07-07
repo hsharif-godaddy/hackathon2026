@@ -94,4 +94,3 @@ A static webpack import from `app/src/assets/` is an alternative, but the team r
 - `app/src/app/[market]/develop/components/preview/brand-book/sections.tsx` — runtime-URL + `unoptimized` precedent.
 - PR #4153 (original change), PR #4303 / commit 57333a775 (revert of the static-import migration back to public path).
 - `docs/solutions/developer-experience/gasket-nextjs-local-testing-constraints-2026-03-31.md` — other Gasket/Next.js conventions that behave differently in local vs deployed environments.
-- `docs/solutions/build-errors/docker-cds-postinstall-missing-script-2026-05-12.md` — another case where the Docker build context (not local dev) was the failure surface.

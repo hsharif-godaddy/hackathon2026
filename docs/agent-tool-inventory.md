@@ -1992,7 +1992,6 @@ graph TB
 
 ## References
 
-- [Architecture Documentation](./ARCHITECTURE_DOCUMENTATION.md)
 - [UI to Agents Authentication](./docs/ui-agents-authentication-architecture.md)
 - [Deployment Adapter System](./app/DEPLOYMENT-ADAPTER-SYSTEM.md)
 - [Getting Started Guide](./GETTING_STARTED.md)

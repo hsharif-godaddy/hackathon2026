@@ -4,10 +4,8 @@
 > **Flag:** `aab-multi-user` (Switchboard) — off ⇒ feature fully inert.
 > **Scope:** `airo-app-builder` (BFF/UI) + `mhp-core/backends/airo-go` (mgmt-airo control plane).
 
-This is the single authoritative reference for how multi-user works **today**. For product
-scope/role decisions see [multi-user-rbac-planning.md](./multi-user-rbac-planning.md); for the
-request-level sequences see [multi-user-flows.md](./multi-user-flows.md); for unresolved items see
-[multi-user-open-questions.md](./multi-user-open-questions.md).
+This is the single authoritative reference for how multi-user works **today**. For the
+request-level sequences see [multi-user-flows.md](./multi-user-flows.md).
 
 ---
 

@@ -42,12 +42,6 @@ https://pcp.int.gdcorp.tools/projects/8606/accounts
 
 ---
 
-### Architecture overview
-
-[Architecture](../ARCHITECTURE_DOCUMENTATION.md)
-
----
-
 ### CICD workflows
 
 | Workflow            |                                    Description                                     |                                            Triggers |

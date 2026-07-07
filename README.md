@@ -71,20 +71,9 @@ pnpm run dev
 - Pre-configured patterns for common use cases
 - Open source library integration
 
-## 📁 Documentation Structure
+## 📁 Documentation
 
-### Thought Exercises (Exploratory)
-
-> These documents explore potential future capabilities. They are not committed designs.
-
-- [Platform Architecture](./docs/thought-exercise/platform-architecture.md) - Platform microservices concepts
-- [Architecture Diagrams](./docs/thought-exercise/architecture-diagrams.md) - Architecture diagrams
-- [Tech Stack](./docs/thought-exercise/tech-stack.md) - Tech stack philosophy
-- [Development Features](./docs/thought-exercise/development-features.md) - Standardized tech stack
-- [Agent Features](./docs/thought-exercise/agent-features.md) - Specialized AI agent suite
-- [AI Features](./docs/thought-exercise/ai-features.md) - Managed AI capabilities
-- [Hosting Features](./docs/thought-exercise/hosting-features.md) - Enterprise hosting features
-- [Security Features](./docs/thought-exercise/security-features.md) - AI security analyst
+See [docs/README.md](./docs/README.md) for the full documentation index.
 
 ## 🎯 Target Use Cases
 

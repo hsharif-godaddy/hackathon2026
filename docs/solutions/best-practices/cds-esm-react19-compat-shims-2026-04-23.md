@@ -226,7 +226,6 @@ window.__CDS_IMPORT_MAP_SETUP__  // true (CDS infra warm)
 
 ## Related
 
-- `docs/solutions/build-errors/docker-cds-postinstall-missing-script-2026-05-12.md` -- Docker build fix: moved CDS generation from postinstall to prebuild (PR #3672)
 - `docs/solutions/best-practices/nextjs16-vendored-react-canary-breaks-cds-upp.md` -- broader Next.js 16 / React 19 CDS incompatibility
 - `docs/solutions/best-practices/upp-component-architecture-subtypes-2026-04-14.md` -- CDS subType routing
 - `docs/solutions/design-patterns/react-portal-content-escapes-ancestor-css-and-attrs.md` -- why wrapper CSS/ARIA can't hide a portaled @ux/modal; generalizes the focus-trap constraint behind Section 3 and the failed loading approaches
