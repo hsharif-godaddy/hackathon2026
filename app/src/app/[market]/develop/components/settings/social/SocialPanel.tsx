@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import Box from '@ux/box'
 import ShareIcon from '@ux/icon/forward'
 
@@ -11,6 +12,7 @@ import { useSocialPanelActions } from '@/hooks/social/panel/useSocialPanelAction
 import { useSocialPanelData } from '@/hooks/social/panel/useSocialPanelData'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logger } from '@/lib/request-context'
 import { PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import { PlatformConnectionsList } from './PlatformConnectionsList'
 import { SocialPanelLoadingSkeleton } from './SocialPanelLoadingSkeleton'
@@ -25,6 +27,17 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
   const data = useSocialPanelData(siteId)
   const actions = useSocialPanelActions({ siteId, siteLinks: data.siteLinks })
 
+  useEffect(
+    function logSocialPanelLoadFailure() {
+      if (!data.error) {
+        return
+      }
+
+      logger.warn('settings.social-panel.load.failed', { siteId, error: data.error })
+    },
+    [data.error, siteId],
+  )
+
   if (data.isLoading) {
     return <SocialPanelLoadingSkeleton />
   }
@@ -34,7 +47,11 @@ function SocialPlatformsSection({ siteId }: SocialPanelProps) {
       <EmptyStateCard
         icon={<ShareIcon width={48} height={48} />}
         title={t('builder_settings_socialpanel_empty_title')}
-        description={data.error}
+        description={t(
+          'builder_settings_socialpanel_load_error_description',
+          undefined,
+          'Try loading this section again.',
+        )}
         ctaLabel={t('builder_common_retry')}
         onCtaClick={actions.refreshConnections}
       />
