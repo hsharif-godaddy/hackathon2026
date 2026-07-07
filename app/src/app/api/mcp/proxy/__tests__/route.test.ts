@@ -26,11 +26,13 @@ const {
   mockExchangeToken,
   mockResetTokenCache,
   mockResetServerRegistry,
+  mockCheckSwitchboardFlag,
 } = vi.hoisted(() => ({
   mockAuthenticateCustomer: vi.fn(),
   mockExchangeToken: vi.fn(),
   mockResetTokenCache: vi.fn(),
   mockResetServerRegistry: vi.fn(),
+  mockCheckSwitchboardFlag: vi.fn(),
 }))
 
 vi.mock('@/lib/customer-auth', async () => {
@@ -65,17 +67,47 @@ vi.mock('@/lib/mcp/token-exchange', async () => {
   }
 })
 
+vi.mock('@/lib/switchboard/server', () => ({
+  checkSwitchboardFlag: mockCheckSwitchboardFlag,
+}))
+
 vi.mock('@/lib/request-context', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
+interface TestMcpServerConfig {
+  id: string
+  displayName: string
+  url: string
+  protocolVersion: string
+  initializeCapabilities: Record<string, unknown>
+  allowedScopes: readonly string[]
+  discoveryScopes: readonly string[]
+}
+
+function registerCommerceServerWithProtocol(
+  protocolVersion: string,
+  id: string,
+): (registry: Record<string, TestMcpServerConfig>) => void {
+  return (registry) => {
+    registry[id] = {
+      ...registry.commerce!,
+      id,
+      protocolVersion,
+    }
+  }
+}
+
 // Import route AFTER mocks are registered.
-async function getRouteHandler() {
+async function getRouteHandler(
+  configureServers?: (registry: Record<string, TestMcpServerConfig>) => void,
+) {
   // Must also ensure env is set before the servers module reads it.
   process.env.GODADDY_API_BASE_URL = 'https://api.dev-godaddy.com'
   delete process.env.COMMERCE_MCP_URL
   const serversModule = await import('@/lib/mcp/servers')
   serversModule.__resetMcpServerRegistryForTests()
+  configureServers?.(serversModule.getMcpServerRegistry() as Record<string, TestMcpServerConfig>)
   const { POST } = await import('../route')
   return POST as (req: NextRequest) => Promise<Response>
 }
@@ -137,7 +169,9 @@ describe('POST /api/mcp/proxy', () => {
     }
     mockAuthenticateCustomer.mockReset()
     mockExchangeToken.mockReset()
+    mockCheckSwitchboardFlag.mockReset()
     mockExchangeToken.mockResolvedValue({ accessToken: 'oauth-token', cached: false })
+    mockCheckSwitchboardFlag.mockResolvedValue(false)
     mockAuthenticateCustomer.mockResolvedValue(AUTHED)
     fetchSpy = vi.spyOn(globalThis, 'fetch')
   })
@@ -253,12 +287,132 @@ describe('POST /api/mcp/proxy', () => {
     const initHeaders = initCall[1].headers as Record<string, string>
     expect(initHeaders['Authorization']).toBe('Bearer oauth-token')
     expect(initHeaders['MCP-Protocol-Version']).toBe('2024-11-05')
-    expect(JSON.parse(initCall[1].body as string).method).toBe('initialize')
+    const initBody = JSON.parse(initCall[1].body as string)
+    expect(initBody.method).toBe('initialize')
+    expect(initBody.params.capabilities).toEqual({})
+    expect(mockCheckSwitchboardFlag).not.toHaveBeenCalled()
 
     const realCall = fetchSpy.mock.calls[2]! as [string, RequestInit]
     const realHeaders = realCall[1].headers as Record<string, string>
     expect(realHeaders['Mcp-Session-Id']).toBe('sess-abc123')
     expect(JSON.parse(realCall[1].body as string).method).toBe('tools/list')
+  })
+
+  it('does not advertise MCP elicitation initialize capabilities for pre-2025-06-18 protocol servers', async () => {
+    mockCheckSwitchboardFlag.mockResolvedValueOnce(true)
+    queueHandshakeResponses(fetchSpy)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    const POST = await getRouteHandler()
+    const res = await POST(
+      makeRequest({
+        serverId: 'commerce',
+        request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const initCall = fetchSpy.mock.calls[0]! as [string, RequestInit]
+    const initBody = JSON.parse(initCall[1].body as string)
+    expect(initBody.params.capabilities).toEqual({})
+    expect(mockCheckSwitchboardFlag).not.toHaveBeenCalled()
+  })
+
+  it('advertises base MCP elicitation initialize capability for 2025-06-18 protocol servers', async () => {
+    mockCheckSwitchboardFlag.mockResolvedValueOnce(true)
+    queueHandshakeResponses(fetchSpy)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    const POST = await getRouteHandler(
+      registerCommerceServerWithProtocol('2025-06-18', 'commerce-2025'),
+    )
+    const res = await POST(
+      makeRequest({
+        serverId: 'commerce-2025',
+        request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const initCall = fetchSpy.mock.calls[0]! as [string, RequestInit]
+    const initHeaders = initCall[1].headers as Record<string, string>
+    expect(initHeaders['MCP-Protocol-Version']).toBe('2025-06-18')
+    const initBody = JSON.parse(initCall[1].body as string)
+    expect(initBody.params.capabilities).toEqual({ elicitation: {} })
+    expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith(
+      'aab-mcp-elicitation',
+      expect.any(NextRequest),
+    )
+  })
+
+  it('advertises MCP elicitation mode capabilities for 2025-11-25 protocol servers', async () => {
+    mockCheckSwitchboardFlag.mockResolvedValueOnce(true)
+    queueHandshakeResponses(fetchSpy)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    const POST = await getRouteHandler(
+      registerCommerceServerWithProtocol('2025-11-25', 'commerce-2025-11-25'),
+    )
+    const res = await POST(
+      makeRequest({
+        serverId: 'commerce-2025-11-25',
+        request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const initCall = fetchSpy.mock.calls[0]! as [string, RequestInit]
+    const initHeaders = initCall[1].headers as Record<string, string>
+    expect(initHeaders['MCP-Protocol-Version']).toBe('2025-11-25')
+    const initBody = JSON.parse(initCall[1].body as string)
+    expect(initBody.params.capabilities).toEqual({
+      elicitation: { form: {}, url: {} },
+    })
+    expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith(
+      'aab-mcp-elicitation',
+      expect.any(NextRequest),
+    )
+  })
+
+  it('fails closed when the MCP elicitation Switchboard lookup fails', async () => {
+    mockCheckSwitchboardFlag.mockRejectedValueOnce(new Error('switchboard unavailable'))
+    queueHandshakeResponses(fetchSpy)
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    const POST = await getRouteHandler(
+      registerCommerceServerWithProtocol('2025-06-18', 'commerce-2025'),
+    )
+    const res = await POST(
+      makeRequest({
+        serverId: 'commerce-2025',
+        request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
+      }),
+    )
+
+    expect(res.status).toBe(200)
+    const initCall = fetchSpy.mock.calls[0]! as [string, RequestInit]
+    const initBody = JSON.parse(initCall[1].body as string)
+    expect(initBody.params.capabilities).toEqual({})
   })
 
   it('uses discovery scopes for search_tools, allowed ceiling for named tool', async () => {

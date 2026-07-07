@@ -19,13 +19,7 @@
 
 import { logger } from '@/lib/request-context'
 
-/**
- * MCP protocol version to negotiate. 2024-11-05 is the minimum stable
- * revision that every GoDaddy MCP server currently accepts. 2025-06-18
- * is technically supported but has stricter session / header checks;
- * stick with the older revision until all servers have rolled forward.
- */
-const MCP_PROTOCOL_VERSION = '2024-11-05'
+const DEFAULT_MCP_PROTOCOL_VERSION = '2024-11-05'
 
 const MAX_RETRIES = 3
 
@@ -54,6 +48,10 @@ export interface McpClientOptions {
   url: string
   /** Stable server id (for logs only). */
   serverId: string
+  /** MCP protocol version to negotiate with this server. */
+  protocolVersion?: string
+  /** Initialize capabilities for this server/session. */
+  initializeCapabilities?: Record<string, unknown>
   /** Customer who owns this request (for logs / error context only). */
   customerId: string
   /** OAuth bearer token. */
@@ -67,6 +65,8 @@ export interface McpClientOptions {
 export class McpClient {
   private readonly url: string
   private readonly serverId: string
+  private readonly protocolVersion: string
+  private readonly initializeCapabilities: Record<string, unknown>
   private readonly customerId: string
   private readonly accessToken: string
   private sessionId: string | null = null
@@ -76,6 +76,8 @@ export class McpClient {
   constructor(options: McpClientOptions) {
     this.url = options.url
     this.serverId = options.serverId
+    this.protocolVersion = options.protocolVersion ?? DEFAULT_MCP_PROTOCOL_VERSION
+    this.initializeCapabilities = options.initializeCapabilities ?? {}
     this.customerId = options.customerId
     this.accessToken = options.accessToken
   }
@@ -88,7 +90,7 @@ export class McpClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
-      'MCP-Protocol-Version': MCP_PROTOCOL_VERSION,
+      'MCP-Protocol-Version': this.protocolVersion,
       Authorization: `Bearer ${this.accessToken}`,
     }
     if (this.sessionId) headers['Mcp-Session-Id'] = this.sessionId
@@ -112,8 +114,8 @@ export class McpClient {
       id: this.nextRequestId(),
       method: 'initialize',
       params: {
-        protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: {},
+        protocolVersion: this.protocolVersion,
+        capabilities: this.initializeCapabilities,
         clientInfo: {
           name: 'airo-app-builder-bff',
           version: '1.0.0',

@@ -100,7 +100,9 @@ describe('mcp servers registry', () => {
       const server = getMcpServer('commerce')
       expect(server).toBeDefined()
       expect(server?.id).toBe('commerce')
+      expect(server?.displayName).toBe('GoDaddy Commerce')
       expect(server?.url).toBe('https://mcp.commerce.api.dev-godaddy.com/mcp')
+      expect(server?.protocolVersion).toBe('2024-11-05')
     })
 
     it('returns undefined for unknown server ids', () => {
@@ -130,6 +132,11 @@ describe('mcp servers registry', () => {
     it('commerce discoveryScopes is minimal', () => {
       const server = getMcpServer('commerce')!
       expect(server.discoveryScopes).toEqual(['openid'])
+    })
+
+    it('commerce initialize capabilities are safe by default', () => {
+      const server = getMcpServer('commerce')!
+      expect(server.initializeCapabilities).toEqual({})
     })
 
     it('does not block store setup tools', () => {

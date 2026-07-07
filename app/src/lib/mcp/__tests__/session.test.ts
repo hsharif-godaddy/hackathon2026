@@ -131,6 +131,32 @@ describe('runWithMcpSession', () => {
     expect(fetchCall(fetchSpy, 2).headers['Cookie']).toBe('AWSALB=abc')
   })
 
+  it('uses protocol version and initialize capabilities from options', async () => {
+    fetchSpy.mockResolvedValueOnce(makeInitResponse('sess-1'))
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 202 }))
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 2, result: { tools: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    await runWithMcpSession(
+      {
+        ...baseOptions,
+        protocolVersion: '2025-11-25',
+        initializeCapabilities: { sampling: {} },
+      },
+      (client) => client.sendRaw({ jsonrpc: '2.0', method: 'tools/list', id: 2 }),
+    )
+
+    const init = fetchCall(fetchSpy, 0)
+    expect(init.headers['MCP-Protocol-Version']).toBe('2025-11-25')
+    const initBody = JSON.parse(init.body)
+    expect(initBody.params.protocolVersion).toBe('2025-11-25')
+    expect(initBody.params.capabilities).toEqual({ sampling: {} })
+  })
+
   it('throws McpUpstreamError if initialize HTTP fails', async () => {
     // MAX_RETRIES is 3; each attempt does its own initialize, so queue
     // three failing responses.

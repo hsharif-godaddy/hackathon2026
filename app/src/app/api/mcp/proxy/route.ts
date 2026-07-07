@@ -21,6 +21,11 @@ import {
   withCustomerAuth,
 } from '@/lib/customer-auth'
 import {
+  buildMcpInitializeCapabilities,
+  resolveMcpElicitationEnabled,
+  serverSupportsElicitation,
+} from '@/lib/mcp/elicitation-gate'
+import {
   decideMcpPolicy,
   normalizeScopeSet,
   parseMcpRequest,
@@ -181,6 +186,13 @@ export const POST = withCustomerAuth(
     // before the real request. runWithMcpSession handles that lifecycle
     // plus load-balancer affinity cookies and session-invalid retries.
     const started = Date.now()
+    const elicitationEnabled =
+      serverSupportsElicitation(server) && (await resolveMcpElicitationEnabled(req, server.id))
+    const initializeCapabilities = buildMcpInitializeCapabilities(
+      server.initializeCapabilities,
+      elicitationEnabled,
+      server.protocolVersion,
+    )
     let upstreamStatus: number
     let upstreamContentType: string
     let upstreamBody: string
@@ -189,6 +201,8 @@ export const POST = withCustomerAuth(
         {
           url: server.url,
           serverId: server.id,
+          protocolVersion: server.protocolVersion,
+          initializeCapabilities,
           customerId: user.customerId,
           accessToken,
         },

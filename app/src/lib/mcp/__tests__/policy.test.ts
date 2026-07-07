@@ -9,7 +9,10 @@ import type { McpServerConfig } from '../servers'
 
 const COMMERCE_SERVER: McpServerConfig = {
   id: 'commerce',
+  displayName: 'GoDaddy Commerce',
   url: 'https://mcp.commerce.api.dev-godaddy.com/mcp',
+  protocolVersion: '2024-11-05',
+  initializeCapabilities: {},
   allowedScopes: [
     'commerce.product:read',
     'commerce.product:write',

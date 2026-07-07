@@ -14,8 +14,14 @@ import { resolveGoDaddyApiBaseUrl } from './godaddy-api'
 export interface McpServerConfig {
   /** Identifier used by agents / browser to select this server */
   id: string
+  /** User-visible name for consent prompts and logs. */
+  displayName: string
   /** Fully-resolved MCP endpoint (ends in /mcp) */
   url: string
+  /** MCP protocol version to negotiate with this server. */
+  protocolVersion: string
+  /** Capabilities sent during initialize for this server. */
+  initializeCapabilities: Record<string, unknown>
   /**
    * OAuth scope ceiling for this server. The proxy will never request
    * scopes outside this list, regardless of agent / client request.
@@ -85,7 +91,10 @@ export function resolveCommerceMcpUrl(): string {
 function buildCommerceServer(): McpServerConfig {
   return {
     id: 'commerce',
+    displayName: 'GoDaddy Commerce',
     url: resolveCommerceMcpUrl(),
+    protocolVersion: '2024-11-05',
+    initializeCapabilities: {},
     allowedScopes: [
       'commerce.product:read',
       'commerce.product:write',
