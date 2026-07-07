@@ -37,6 +37,11 @@ const CANVAS_STATUS_DEFAULTS_PATH = new URL(
   import.meta.url,
 );
 
+const BUSINESS_ANALYTICS_DEFAULTS_PATH = new URL(
+  "../app/src/lib/translations/business-analytics-defaults.ts",
+  import.meta.url,
+);
+
 const DISPLAY_ADS_DEFAULTS_PATH = new URL(
   "../app/src/lib/translations/display-ads-defaults.ts",
   import.meta.url,
@@ -82,6 +87,10 @@ function loadRebuildIntakeFallbackKeys() {
 
 function loadCanvasStatusFallbackKeys() {
   return loadFallbackKeysFromDefaultsFile(CANVAS_STATUS_DEFAULTS_PATH, "canvas-status-defaults.ts");
+}
+
+function loadBusinessAnalyticsFallbackKeys() {
+  return loadFallbackKeysFromDefaultsFile(BUSINESS_ANALYTICS_DEFAULTS_PATH, "business-analytics-defaults.ts");
 }
 
 function loadCampaignFallbackKeys() {
@@ -403,6 +412,10 @@ async function main() {
   }
 
   for (const key of loadCanvasStatusFallbackKeys()) {
+    availableKeys.add(key);
+  }
+
+  for (const key of loadBusinessAnalyticsFallbackKeys()) {
     availableKeys.add(key);
   }
 

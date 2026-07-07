@@ -53,11 +53,16 @@ vi.mock('@/hooks/usePaywallModal', () => ({
 }));
 
 const mockUseSubscription = vi.fn();
+const mockUseBusinessAnalyticsData = vi.fn();
 
 // Mock the data hooks RUM depends on so it can render its full UI tree
 // without hitting the network. RUM itself is rendered for real.
 vi.mock('@/hooks/useSubscription', () => ({
   useSubscription: () => mockUseSubscription(),
+}));
+
+vi.mock('@/hooks/useBusinessAnalytics', () => ({
+  useBusinessAnalyticsData: (...args: unknown[]) => mockUseBusinessAnalyticsData(...args),
 }));
 
 vi.mock('@/hooks/useInsightsAnalytics', () => ({
@@ -133,12 +138,28 @@ vi.mock('@/hooks/useClickhouseAnalytics', () => ({
 
 const starterSubscription = { plan: 'starter', productId: null, isTrial: false, hadAiroPlus: false };
 
+const defaultBusinessAnalytics = {
+  showBusinessAnalytics: false,
+  dataReady: false,
+  storeId: null,
+  isLoading: false,
+  isFetched: true,
+  isFetching: false,
+  refetch: vi.fn(),
+  metrics: {
+    totalRevenue: 0,
+    orderCountOverTime: [] as { date: string; value: number }[],
+    revenueOverTime: [] as { date: string; value: number }[],
+  },
+};
+
 describe('AnalyticsPanel', () => {
   beforeEach(() => {
     mockUseSwitchboard.mockReturnValue(true);
     mockGetSite.mockReturnValue({ id: 'test-app-123' });
     mockUsePublishedUrl.mockReturnValue('https://example.com');
     mockHasBeenPublished.mockReturnValue(true);
+    mockUseBusinessAnalyticsData.mockReturnValue(defaultBusinessAnalytics);
     mockUseSubscription.mockReturnValue({
       data: starterSubscription,
       isFetching: false,
@@ -270,5 +291,73 @@ describe('AnalyticsPanel', () => {
     expect(screen.getByText('builder_analytics_title')).toBeInTheDocument();
     expect(screen.queryByText('builder_analytics_empty_title')).not.toBeInTheDocument();
     expect(screen.queryByText('builder_common_loading')).not.toBeInTheDocument();
+  });
+
+  it('renders business analytics when commerce store is configured', () => {
+    mockUseBusinessAnalyticsData.mockReturnValue({
+      ...defaultBusinessAnalytics,
+      showBusinessAnalytics: true,
+      dataReady: true,
+      storeId: 'store-1',
+      metrics: {
+        totalRevenue: 99,
+        orderCountOverTime: [{ date: '2026-06-03', value: 1 }],
+        revenueOverTime: [{ date: '2026-06-03', value: 99 }],
+      },
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByTestId('business-analytics-panel')).toBeInTheDocument();
+    expect(screen.getByText('Business Analytics')).toBeInTheDocument();
+    expect(screen.getByText('$99.00')).toBeInTheDocument();
+  });
+
+  it('hides business analytics when the feature flag is disabled', () => {
+    mockUseSwitchboard.mockImplementation((flag: string) => flag !== 'appbuilder-business-analytics');
+    mockUseBusinessAnalyticsData.mockReturnValue({
+      ...defaultBusinessAnalytics,
+      showBusinessAnalytics: true,
+      dataReady: true,
+      storeId: 'store-1',
+      metrics: {
+        totalRevenue: 99,
+        orderCountOverTime: [{ date: '2026-06-03', value: 1 }],
+        revenueOverTime: [{ date: '2026-06-03', value: 99 }],
+      },
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.queryByTestId('business-analytics-panel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Business Analytics')).not.toBeInTheDocument();
+  });
+
+  it('hides business analytics when commerce store is not configured', () => {
+    mockUseBusinessAnalyticsData.mockReturnValue(defaultBusinessAnalytics);
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByText('builder_analytics_title')).toBeInTheDocument();
+    expect(screen.queryByTestId('business-analytics-panel')).not.toBeInTheDocument();
+  });
+
+  it('hides business analytics panel when data is not ready', () => {
+    mockUseBusinessAnalyticsData.mockReturnValue({
+      ...defaultBusinessAnalytics,
+      showBusinessAnalytics: true,
+      dataReady: false,
+      storeId: 'store-1',
+      metrics: {
+        totalRevenue: 0,
+        orderCountOverTime: [],
+        revenueOverTime: [],
+      },
+    });
+
+    renderWithProviders(<AnalyticsPanel />);
+
+    expect(screen.getByText('builder_analytics_title')).toBeInTheDocument();
+    expect(screen.queryByTestId('business-analytics-panel')).not.toBeInTheDocument();
   });
 });

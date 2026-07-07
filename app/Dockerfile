@@ -65,10 +65,15 @@ RUN pnpm build
 
 RUN mkdir -p /workspace/app/data && chown -R node:node /workspace/app
 
+# GCI base image ships dc1_root.crt + gdica_root-r1.crt in /usr/local/share/ca-certificates/.
+# update-ca-certificates merges them into the OS bundle. NODE_EXTRA_CA_CERTS is required
+# because Node.js ignores the OS trust store and uses its own compiled-in CA list.
+RUN update-ca-certificates
+
 USER node
 
-# Set NODE_OPTIONS to load OpenTelemetry instrumentation with absolute path
 ENV NODE_OPTIONS="--import /workspace/app/otel-setup.js"
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
 EXPOSE 8443
 

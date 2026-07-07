@@ -74,6 +74,27 @@ export function analyticsDateKey(selection: AnalyticsDateSelection): string {
   return `custom:${selection.fromDate}:${selection.toDate}`
 }
 
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+/** Resolve analytics period picker values to an inclusive UTC date range ending at `now`. */
+export function resolveAnalyticsDateRange(
+  selection: AnalyticsDateSelection,
+  now = new Date(),
+): { start: Date; end: Date } {
+  const end = now
+  if (selection.mode === 'custom') {
+    const start = new Date(`${selection.fromDate}T00:00:00.000Z`)
+    const endDay = new Date(`${selection.toDate}T23:59:59.999Z`)
+    return { start, end: endDay.getTime() > end.getTime() ? end : endDay }
+  }
+
+  const start = startOfUtcDay(now)
+  start.setUTCDate(start.getUTCDate() - (selection.days - 1))
+  return { start, end }
+}
+
 /**
  * Escape a string for safe inclusion inside a GraphQL double-quoted string literal.
  * Handles backslashes, double quotes, and control characters.

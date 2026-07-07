@@ -65,6 +65,7 @@ export default gasket.actions.getNextConfig({
       'framer-motion',
       'zod',
       '@tanstack/react-query',
+      'recharts',
     ],
   },
   logging: {

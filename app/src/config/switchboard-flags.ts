@@ -12,6 +12,7 @@ export const SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL = 'appbuilder-app-delete-mo
 export const SWITCHBOARD_APPBUILDER_APP_DELETE_MODAL_BUTTON =
   'appbuilder-app-delete-modal-button';
 export const SWITCHBOARD_APPBUILDER_GO_LIVE_FEATURE = 'appbuilder-go-live-feature';
+export const SWITCHBOARD_APPBUILDER_BUSINESS_ANALYTICS = 'appbuilder-business-analytics';
 export const SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER = 'appbuilder-insights-banner';
 export const SWITCHBOARD_APPBUILDER_DEBUG_DRAWER = 'appbuilder-debug-drawer';
 export const SWITCHBOARD_APPBUILDER_PURCHASE_INTENT_CLASSIFIER =

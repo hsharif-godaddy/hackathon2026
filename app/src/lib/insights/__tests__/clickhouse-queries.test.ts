@@ -31,6 +31,7 @@ import {
   buildTotalSessionsQuery,
   buildUniqueVisitorsPerHostQuery,
   buildUniqueVisitorsPerPageQuery,
+  resolveAnalyticsDateRange,
   trafficDateFilter,
 } from '../clickhouse-queries'
 
@@ -323,6 +324,28 @@ describe('clickhouse-queries', () => {
           toDate: '2026-05-19',
         }),
       ).toBe('custom:2026-03-01:2026-05-19')
+    })
+  })
+
+  describe('resolveAnalyticsDateRange', () => {
+    it('should resolve rolling presets to inclusive UTC day ranges', () => {
+      const now = new Date('2026-06-10T15:30:00.000Z')
+      const { start, end } = resolveAnalyticsDateRange({ mode: 'rolling', days: 7 }, now)
+
+      expect(start.toISOString()).toBe('2026-06-04T00:00:00.000Z')
+      expect(end).toBe(now)
+    })
+
+    it('should resolve custom calendar ranges', () => {
+      const now = new Date('2026-06-10T15:30:00.000Z')
+      const { start, end } = resolveAnalyticsDateRange({
+        mode: 'custom',
+        fromDate: '2026-06-01',
+        toDate: '2026-06-08',
+      }, now)
+
+      expect(start.toISOString()).toBe('2026-06-01T00:00:00.000Z')
+      expect(end.toISOString()).toBe('2026-06-08T23:59:59.999Z')
     })
   })
 

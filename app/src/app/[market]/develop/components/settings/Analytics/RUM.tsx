@@ -12,6 +12,7 @@ import Spinner from '@ux/spinner'
 import text from '@ux/text'
 
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
+import BusinessAnalyticsPanel from '@/app/[market]/develop/components/settings/Analytics/BusinessAnalyticsPanel'
 import InsightsBanner from '@/app/[market]/develop/components/settings/Analytics/InsightsBanner'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
 import { ChatTab } from '@/app/[market]/develop/components/types'
@@ -37,7 +38,11 @@ import {
   SegmentedController,
   SegmentedControllerItem,
 } from '@/components/ui/SegmentedController'
-import { SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER } from '@/config/switchboard-flags'
+import {
+  SWITCHBOARD_APPBUILDER_BUSINESS_ANALYTICS,
+  SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER,
+} from '@/config/switchboard-flags'
+import { useBusinessAnalyticsData } from '@/hooks/useBusinessAnalytics'
 import { useClickhouseAnalytics } from '@/hooks/useClickhouseAnalytics'
 import { useInsightsAnalytics } from '@/hooks/useInsightsAnalytics'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -112,6 +117,7 @@ export default function RUM() {
   const appId = useAppIdFromParams()
   const publishedUrl = usePublishedUrl()
   const isInsightsBannerEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_INSIGHTS_BANNER) === true
+  const isBusinessAnalyticsEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_BUSINESS_ANALYTICS) === true
   const [periodValue, setPeriodValue] = useState<AnalyticsPeriodValue>(defaultAnalyticsPeriodValue)
   const dateSelection = useMemo(() => toAnalyticsDateSelection(periodValue), [periodValue])
 
@@ -179,6 +185,14 @@ export default function RUM() {
     dateSelection,
     enabled: !!publishedUrl,
   })
+
+  const {
+    showBusinessAnalytics,
+    dataReady: businessDataReady,
+    metrics: businessMetrics,
+    isLoading: businessLoading,
+    isFetched: businessFetched,
+  } = useBusinessAnalyticsData(appId, dateSelection)
 
   const chartData = useMemo(() => {
     return dailyHostPageViews.map(d => ({
@@ -1058,6 +1072,14 @@ export default function RUM() {
               />
             </CollapsibleContent>
           </Collapsible>
+
+          {isBusinessAnalyticsEnabled && showBusinessAnalytics && businessDataReady && (
+            <BusinessAnalyticsPanel
+              metrics={businessMetrics}
+              isLoading={businessLoading}
+              isFetched={businessFetched}
+            />
+          )}
         </div>
 
         {!isPro && <AnalyticsUpgradeBanner onUpgrade={() => openUpgradeModal('analytics.upgrade_banner', PAYWALL_ITC.UPGRADE)} />}

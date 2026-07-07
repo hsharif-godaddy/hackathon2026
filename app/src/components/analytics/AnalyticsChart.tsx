@@ -11,7 +11,7 @@ import {
 
 import { AnalyticsCard, AnalyticsTextLockup } from '@/components/analytics/AnalyticsCard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { ChartTooltip, formatChartValue } from './ChartTooltip'
+import { ChartTooltip, formatChartValue, integerYAxisProps } from './ChartTooltip'
 
 interface ChartDataPoint {
   date: string
@@ -24,6 +24,7 @@ interface AnalyticsChartProps {
   embedded?: boolean
   /** When true and data is empty, render a zero chart instead of "no data" */
   fetched?: boolean
+  formatValue?: (val: number) => string
 }
 
 /**
@@ -35,7 +36,13 @@ interface AnalyticsChartProps {
  *
  * @param data - Array of data points with date and value
  */
-export function AnalyticsChart({ data, label, embedded, fetched = false }: AnalyticsChartProps) {
+export function AnalyticsChart({
+  data,
+  label,
+  embedded,
+  fetched = false,
+  formatValue = formatChartValue,
+}: AnalyticsChartProps) {
   const t = useTranslations()
   const gradientId = useId().replace(/:/g, '')
   const chartLabel = label ?? t('builder_analytics_chart_pageviews')
@@ -87,9 +94,11 @@ export function AnalyticsChart({ data, label, embedded, fetched = false }: Analy
           stroke="hsl(var(--muted-foreground))"
           tick={{ className: 'text-xs tabular-nums' }}
           tickLine={{ stroke: 'hsl(var(--muted-foreground))' }}
-          tickFormatter={formatChartValue}
+          tickFormatter={formatValue}
+          allowDecimals={false}
+          {...integerYAxisProps(chartData)}
         />
-        <Tooltip content={<ChartTooltip valueName={chartLabel} />} />
+        <Tooltip content={<ChartTooltip valueName={chartLabel} formatValue={formatValue} />} />
         <Area
           type="monotone"
           dataKey="value"

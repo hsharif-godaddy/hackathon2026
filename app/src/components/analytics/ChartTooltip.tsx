@@ -16,6 +16,19 @@ export function formatChartValue(val: number, suffix?: string | number): string 
   return `${Math.round(val)}${sfx}`
 }
 
+export function integerYAxisProps(data: { value: number }[]): {
+  ticks?: number[]
+  domain?: [number, number]
+} {
+  const max = Math.max(...data.map(d => d.value), 0)
+  if (max > 10) return {}
+  const ceil = max + 1
+  return {
+    ticks: Array.from({ length: ceil + 1 }, (_, i) => i),
+    domain: [0, ceil],
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Shared tooltip payload types                                       */
 /* ------------------------------------------------------------------ */
@@ -115,16 +128,15 @@ export function ChartTooltip(props: ChartTooltipProps) {
 
   // Single-series (default)
   const { label: rechartsLabel, valueName, titleFrom = 'date', formatValue: fmt } = props
-  const format = fmt ?? ((v: number) => formatChartValue(v))
   const entry = (payload as SingleTooltipPayload[])[0]
-  const title = titleFrom === 'name' ? entry.name : (rechartsLabel || entry.payload.date)
-  const seriesLabel = valueName || 'Value'
 
   return (
     <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg p-3">
-      <text.p className="!text-sm !font-medium !mb-0">{title}</text.p>
+      <text.p className="!text-sm !font-medium !mb-0">
+        {titleFrom === 'name' ? entry.name : (rechartsLabel || entry.payload.date)}
+      </text.p>
       <text.p emphasis="passive" className="!text-sm !mb-0">
-        {seriesLabel}: <text.span className="!font-semibold">{format(entry.value)}</text.span>
+        {valueName || 'Value'}: <text.span className="!font-semibold">{(fmt ?? formatChartValue)(entry.value)}</text.span>
       </text.p>
     </div>
   )
