@@ -33,19 +33,23 @@ export function useSocialConnectFlow({
 }: UseSocialConnectFlowParams): UseSocialConnectFlowResult {
   const normalizedPlatform = PLATFORM_TRANSFORMS.toDisplay(platform)
 
+  // Fetch site links first so a linked connection wins entity dedup below
+  const siteLinksQuery = useSiteAssociations(appId, enabled)
+  const siteLinks = useMemo(() => siteLinksQuery.data?.associations ?? [], [siteLinksQuery.data])
+  const isLoadingSiteLinks = siteLinksQuery.isLoading
+  const isFetchingSiteLinks = siteLinksQuery.isFetching
+
+  const linkedConnectionIds = useMemo(() => {
+    return new Set<string>(siteLinks.map(link => link.socialId))
+  }, [siteLinks])
+
   // Fetch connections with metadata for this platform only
   const {
     connections: enrichedConnections,
     isLoading: isLoadingConnections,
     isLoadingMetadata: isLoadingPlatformMetadata,
     connectionsLoadingMetadata
-  } = useSocialConnections({ platform, enabled })
-
-  // Fetch site links
-  const siteLinksQuery = useSiteAssociations(appId, enabled)
-  const siteLinks = siteLinksQuery.data?.associations ?? []
-  const isLoadingSiteLinks = siteLinksQuery.isLoading
-  const isFetchingSiteLinks = siteLinksQuery.isFetching
+  } = useSocialConnections({ platform, enabled, linkedConnectionIds })
 
   // Find the current site link for this platform
   const currentSiteLink = useMemo(() => {

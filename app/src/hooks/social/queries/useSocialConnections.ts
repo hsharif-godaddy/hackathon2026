@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { useSocialConnections as useSocialConnectionsQuery } from '@/hooks/useSocial'
+import { dedupeConnectionsByEntity } from '@/lib/social-connection-dedup'
 import { PLATFORM_CONFIG, PLATFORM_TRANSFORMS } from '@/lib/social-platforms'
 import type { EnrichedSocialConnection, SocialConnection } from '@/types/social'
 import { SocialPlatform, SocialPlatformKey } from '@/types/social'
@@ -36,6 +37,17 @@ function hasMetadata(conn: SocialConnection | EnrichedSocialConnection): conn is
 interface UseSocialConnectionsOptions {
   platform?: string
   enabled?: boolean
+  /**
+   * `socialId`s already linked to the current app. Passed through to entity dedup so
+   * a linked connection wins over its duplicate siblings. Omit when link state is
+   * unknown (dedup then keeps the richest record).
+   *
+   * Must be referentially stable across renders (e.g. wrap in `useMemo`). This `Set`
+   * is a dependency of an internal `useMemo`, which compares by reference — passing a
+   * freshly-constructed `Set` on every render defeats memoization and re-runs dedup
+   * each render.
+   */
+  linkedConnectionIds?: Set<string>
 }
 
 /**
@@ -49,7 +61,7 @@ interface UseSocialConnectionsOptions {
 export function useSocialConnections(
   options: UseSocialConnectionsOptions = {}
 ): UseSocialConnectionsResult {
-  const { platform: platformFilter, enabled = true } = options
+  const { platform: platformFilter, enabled = true, linkedConnectionIds } = options
 
   // Fetch base connection data from API
   const plainConnectionsQuery = useSocialConnectionsQuery(enabled)
@@ -225,8 +237,15 @@ export function useSocialConnections(
     })
   }, [enrichedConnections, connectionsWithErrors, connectionsLoadingMetadata])
 
+  // Collapse connections that resolve to the same provider entity (e.g. multiple
+  // socialIds for one Facebook page). Runs after error/metadata filtering so only
+  // surviving connections are considered; a linked sibling wins when known.
+  const dedupedConnections = useMemo(() => {
+    return dedupeConnectionsByEntity(validConnections, { linkedConnectionIds })
+  }, [validConnections, linkedConnectionIds])
+
   return {
-    connections: validConnections,
+    connections: dedupedConnections,
     isLoading: isLoadingConnections,
     isLoadingMetadata,
     connectionsLoadingMetadata,

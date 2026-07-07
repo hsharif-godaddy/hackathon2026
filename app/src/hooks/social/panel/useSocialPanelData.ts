@@ -37,7 +37,7 @@ export function useSocialPanelData(siteId: string): UseSocialPanelDataResult {
     connections: validConnections,
     isLoading: isLoadingConnections,
     error: connectionsError
-  } = useSocialConnections()
+  } = useSocialConnections({ linkedConnectionIds })
 
   // Build platform statuses with valid connections only
   const platformStatuses = useMemo(() => {
