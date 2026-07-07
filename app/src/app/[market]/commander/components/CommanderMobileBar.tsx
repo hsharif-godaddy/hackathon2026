@@ -79,7 +79,7 @@ export function CommanderMobileBar({
   return (
     <>
       <motion.div
-        className="absolute bottom-3 left-1/2 z-30"
+        className="absolute bottom-3 left-1/2"
         initial={{ opacity: 0, y: 10, scale: 0.98, x: '-50%' }}
         animate={{ opacity: 1, y: 0, scale: 1, x: '-50%' }}
         transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
