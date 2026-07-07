@@ -1463,13 +1463,13 @@ describe('agent-token', function packageTests() {
       }
 
       it('real profile name is passed through as the agentProfile claim', async function operatorOverride() {
-        mockSwitchboardAgentProfile('prompt-enhancer');
+        mockSwitchboardAgentProfile('initial-agent-design-system');
 
         const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID }));
 
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'prompt-enhancer' })
+          expect.objectContaining({ agentProfile: 'initial-agent-design-system' })
         );
       });
 
@@ -1536,11 +1536,11 @@ describe('agent-token', function packageTests() {
       it('internal caller + known agentProfileOverride → token carries that profile', async function knownProfile() {
         enableStartOverrideFlag();
 
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'prompt-enhancer' }));
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'initial-agent-design-system' }));
 
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(
-          expect.objectContaining({ agentProfile: 'prompt-enhancer' })
+          expect.objectContaining({ agentProfile: 'initial-agent-design-system' })
         );
       });
 
@@ -1560,7 +1560,7 @@ describe('agent-token', function packageTests() {
 
       it('non-internal caller (flag off) + known agentProfileOverride → ignored', async function nonInternal() {
         // flag defaults to false (top-level beforeEach) → agentStartOverrideEnabled false
-        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'prompt-enhancer' }));
+        const response = await POST(createMockRequest({ siteId: MOCK_SITE_ID, agentProfileOverride: 'initial-agent-design-system' }));
 
         expect(response.status).toBe(200);
         expect(mockJWTService.getToken).toHaveBeenCalledWith(

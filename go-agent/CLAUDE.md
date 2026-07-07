@@ -12,29 +12,29 @@ Config-driven test harness that runs the initial agent against a suite of user p
 cd go-agent
 
 # Run a single experiment
-go run ./cmd/harness configs/harness/baseline.yaml
+go run ./cmd/harness configs/harness/v3.0.yaml
 
 # A/B test: run two configs sequentially
-go run ./cmd/harness configs/harness/baseline.yaml configs/harness/v3.0.yaml
+go run ./cmd/harness configs/harness/v3.0.yaml configs/harness/v3.0-quick.yaml
 
 # Run specific test case only
 go run ./cmd/harness -case bakery-brief configs/harness/v3.0.yaml
 
 # Control parallelism
-go run ./cmd/harness -concurrency 5 configs/harness/baseline.yaml
+go run ./cmd/harness -concurrency 5 configs/harness/v3.0.yaml
 
 # Override runs per case (for variance testing)
-go run ./cmd/harness -runs 3 configs/harness/baseline.yaml
+go run ./cmd/harness -runs 3 configs/harness/v3.0.yaml
 ```
 
 ### Reviewing Results
 
 ```bash
 # Compare two experiments (the main analysis tool)
-go run ./cmd/harness-review -compare results/harness/baseline results/harness/v3.0
+go run ./cmd/harness-review -compare results/harness/v3.0 results/harness/v3.0-quick
 
 # Show judge reasoning for ALL score changes (not just outliers)
-go run ./cmd/harness-review -compare -outlier 0 results/harness/baseline results/harness/v3.0
+go run ./cmd/harness-review -compare -outlier 0 results/harness/v3.0 results/harness/v3.0-quick
 
 # Detailed view of a single result
 go run ./cmd/harness-review results/harness/v3.0/bakery-brief/1.json
@@ -138,21 +138,17 @@ Results are saved to `results/harness/{config_name}/{test_case_id}/{run_number}.
 
 ### Existing Configs
 
-| Config               | Description                                                         |
-| -------------------- | ------------------------------------------------------------------- |
-| `baseline.yaml`      | Production v1.0 prompts (core + attributes + guidelines + examples) |
-| `v1.0.yaml`          | Same as baseline, explicit version label                            |
-| `v3.0.yaml`          | Modular prompts — 8 independent swappable files                     |
-| `simple-ask.yaml`    | Core override with simplified ask logic                             |
-| `no-attributes.yaml` | Baseline minus attributes.md                                        |
-| `partial-info.yaml`  | Partial information variant                                         |
+| Config                      | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| `v3.0.yaml`                 | Modular v3 prompts — 8 independent swappable files     |
+| `v3.0-quick.yaml`           | v3 modular prompts against the `quick` scenario set    |
+| `v3.0-plan-completion.yaml` | v3 modular prompts against the `plan-completion` set   |
 
 ### Prompt Versions (agents/src/prompts/initial/)
 
 | Version | Structure                                                                                                                                                                  | Notes                                                 |
 | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 1.0     | `core.md` + `attributes.md` + `guidelines.md` + `examples.md`                                                                                                              | Original, production default                          |
-| 3.0     | 8 modular files: `identity.md`, `questioning.md`, `project-name.md`, `design-direction.md`, `design-reference.md`, `feature-list.md`, `handoff-template.md`, `examples.md` | Each file independently swappable for A/B testing     |
+| 3.0     | 8 modular files: `identity.md`, `questioning.md`, `project-name.md`, `design-direction.md`, `design-reference.md`, `feature-list.md`, `handoff-template.md`, `examples.md` | Sole prompt set / production default; each file independently swappable for A/B testing |
 
 ### Code Structure
 
@@ -166,11 +162,7 @@ go-agent/
 ├── configs/harness/
 │   ├── scenarios/            # Test case definitions
 │   │   └── standard.yaml
-│   ├── prompts/              # Override prompt files for experiments
-│   │   └── core-simple-ask.md
-│   ├── baseline.yaml         # Config files
-│   ├── v1.0.yaml
-│   ├── v3.0.yaml
+│   ├── v3.0.yaml             # Config files
 │   └── ...
 ├── internal/harness/
 │   ├── config.go             # Config loading and validation

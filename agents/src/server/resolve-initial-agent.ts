@@ -6,9 +6,9 @@ import { getRegisteredInitialNamedVariantAgentId } from '../agents/registered-in
 
 /**
  * A `promptVersion` enters the named-variant resolver branch only when it is
- * a non-empty, non-numeric string. Numeric values like `"1.0"` reserve the
- * default initial-agent path; registered numeric variant `"3.0"` is handled
- * by its explicit branch above.
+ * a non-empty, non-numeric string. Numeric values (e.g. legacy `"1.0"`/`"2.0"`)
+ * fall through to the default `initial-v3`; `"3.0"` is handled by its explicit
+ * branch above.
  */
 export function isNamedVariantVersion(promptVersion: string | null | undefined): promptVersion is string {
   if (promptVersion == null) return false
@@ -144,5 +144,6 @@ function concreteInitialForProfile(profile: ProfileData, appId: string): string 
     })
   }
 
-  return 'initial'
+  // Default: base `initial` / v1 was retired (AIROBUILD-3487); initial-v3 is the fallback.
+  return 'initial-v3'
 }

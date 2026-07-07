@@ -69,38 +69,15 @@ vi.mock('fs', async () => {
   return {
     ...actual,
     existsSync: (path: string) => {
-      // prompt-enhancer version uses manifest-mode at initial/prompt-enhancer/: manifest.json
-      // + its local overrides exist, and the base 3.0 files referenced by the manifest resolve.
-      if (path.includes('initial/prompt-enhancer/manifest.json')) return true;
-      if (path.includes('initial/prompt-enhancer/questioning.md')) return true;
-      if (path.includes('initial/prompt-enhancer/prompt-enhancer.md')) return true;
-      if (path.includes('initial/prompt-enhancer/handoff-template.md')) return true;
       // 3.0 modular files exist — but NOT manifest.json (3.0 is the base, not a manifest variant)
       if (path.includes('initial/3.0/manifest.json')) return false;
       if (path.includes('initial/3.0/')) return true;
-      // Legacy files: core.md always exists, optional files exist for 1.0
       if (path.includes('core.md')) return true;
-      if (path.includes('initial/1.0/attributes.md')) return true;
-      if (path.includes('initial/1.0/guidelines.md')) return true;
-      if (path.includes('initial/1.0/examples.md')) return true;
       // identity.md only exists in 3.0 (sentinel for modular detection)
       if (path.includes('identity.md') && !path.includes('3.0')) return false;
       return false;
     },
     readFileSync: (path: string, encoding?: string) => {
-      if (typeof path === 'string' && path.includes('initial/prompt-enhancer/manifest.json')) {
-        return JSON.stringify({
-          base: '3.0',
-          files: [
-            { src: 'base', file: 'identity.md' },
-            { src: 'variant', file: 'questioning.md' },
-            { src: 'variant', file: 'prompt-enhancer.md' },
-            { src: 'base', file: 'project-name.md' },
-            { src: 'base', file: 'feature-list.md' },
-            { src: 'variant', file: 'handoff-template.md' }
-          ]
-        });
-      }
       return (actual as any).readFileSync(path, encoding);
     }
   };
@@ -227,12 +204,6 @@ describe('initial-agent', function initialAgentTests() {
       await expect(createInitialAgent(undefined, 'nonexistent')).rejects.toThrow('Unknown template: nonexistent');
     });
 
-    it('should assign initial-<name> id for a named manifest variant', async function namedVariantId() {
-      const config = await createInitialAgent(undefined, undefined, 'prompt-enhancer');
-      expect(config.id).toBe('initial-prompt-enhancer');
-      expect(config.name).toBe('Initial (prompt-enhancer)');
-    });
-
     it('should treat empty / whitespace promptVersion as the default initial agent', async function emptyPromptVersion() {
       const a = await createInitialAgent(undefined, undefined, '');
       expect(a.id).toBe('initial');
@@ -248,21 +219,6 @@ describe('initial-agent', function initialAgentTests() {
       expect(a.id).toBe('initial');
       const b = await createInitialAgent(undefined, undefined, '2.0');
       expect(b.id).toBe('initial');
-    });
-
-    it('should load prompt-enhancer version via manifest without error', async function promptEnhancerManifest() {
-      await createInitialAgent(undefined, undefined, 'prompt-enhancer');
-
-      // Manifest composes base identity + variant questioning/prompt-enhancer +
-      // base project-name/feature-list + variant handoff-template (the variant
-      // overrides the base handoff to lead with TODAY'S PREVIEW).
-      expect(fileCalls.some(p => p.includes('initial/3.0/identity.md'))).toBe(true);
-      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/questioning.md'))).toBe(true);
-      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/prompt-enhancer.md'))).toBe(true);
-      expect(fileCalls.some(p => p.includes('initial/prompt-enhancer/handoff-template.md'))).toBe(true);
-      expect(fileCalls.some(p => p.includes('initial/3.0/handoff-template.md'))).toBe(false);
-      // Should NOT load the base 3.0 questioning file (overridden by variant)
-      expect(fileCalls.some(p => p.includes('initial/3.0/questioning.md'))).toBe(false);
     });
 
     it('should keep default id when no templateId is provided', async function defaultId() {
@@ -330,15 +286,15 @@ describe('initial-agent', function initialAgentTests() {
       expect(mockUnloadSkill).toHaveBeenCalledWith('media-logo', 'test-conversation-id');
     });
 
-    it('logo-designer should have two handoffs (develop and initial)', async function logoDesignerHandoffs() {
+    it('logo-designer should have two handoffs (develop and initial-v3)', async function logoDesignerHandoffs() {
       const config = await createInitialAgent(undefined, 'logo-designer');
 
       expect(config.handoffs).toHaveLength(2);
       expect(config.handoffs![0].agentName).toBe('develop');
-      expect(config.handoffs![1].agentName).toBe('initial');
+      expect(config.handoffs![1].agentName).toBe('initial-v3');
     });
 
-    it('logo-designer with stateManager should have validTargets including initial', async function logoDesignerValidTargets() {
+    it('logo-designer with stateManager should have validTargets including initial-v3', async function logoDesignerValidTargets() {
       const mockStateManager = {
         switchAgent: vi.fn(),
         getCurrentAgent: vi.fn(),
@@ -373,24 +329,6 @@ describe('initial-agent', function initialAgentTests() {
   });
 
   describe('prompt file loading', function promptLoadingTests() {
-    it('should load legacy 1.0 files in correct order: core → communication → optional → security', async function legacyOrder() {
-      await createInitialAgent(undefined, undefined, '1.0');
-
-      const fileNames = fileCalls.map(p => p.split('/').pop());
-      const coreIdx = fileNames.indexOf('core.md');
-      const commIdx = fileNames.indexOf('communication.md');
-      const secIdx = fileNames.indexOf('security.md');
-
-      const attrIdx = fileNames.indexOf('attributes.md');
-
-      expect(coreIdx).toBeLessThan(commIdx);
-      expect(commIdx).toBeLessThan(attrIdx);
-      expect(commIdx).toBeLessThan(secIdx);
-      expect(fileNames).toContain('attributes.md');
-      expect(fileNames).toContain('guidelines.md');
-      expect(fileNames).toContain('examples.md');
-    });
-
     it('should load v3.0 in modular mode with all 8 modules', async function modularLoading() {
       await loadInitialPromptFiles(undefined, '3.0');
 

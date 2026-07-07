@@ -437,14 +437,14 @@ describe('useHomepageSubmission', () => {
   // AIROBUILD-3301: internal "start-as" overrides carried on ?profile= / ?agent=.
   describe('internal start-as override carry', () => {
     it('carries ?profile= and ?agent= into the session flags', async () => {
-      mockSearchParams.value = new URLSearchParams('profile=prompt-enhancer&agent=marketing')
+      mockSearchParams.value = new URLSearchParams('profile=initial-agent-design-system&agent=marketing')
 
       const { result } = renderHook(() => useHomepageSubmission())
       await act(async () => { await result.current.handleStartBuilding({ overridePrompt: 'build me a site' }) })
 
       const flagsMock = setQuickCreateSessionFlags as unknown as Mock
       const options = flagsMock.mock.calls[flagsMock.mock.calls.length - 1]?.[3]
-      expect(options).toMatchObject({ startProfile: 'prompt-enhancer', overrideAgentId: 'marketing' })
+      expect(options).toMatchObject({ startProfile: 'initial-agent-design-system', overrideAgentId: 'marketing' })
     })
   })
 

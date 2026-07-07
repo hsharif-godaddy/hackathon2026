@@ -60,7 +60,7 @@ that 404s" is the *default expected state*, not a defect.
 - **Actually:** The initial agent builds ONLY the homepage for the design preview; remaining pages are built later, only when the customer requests them.
 - **Real bug if:** The conversation shows the customer explicitly asked for that page and the agent claimed to build it, yet the route/page is absent or broken. Or the homepage itself / the 404 page is broken.
 - **Verdict:** by-design (unless the conversation shows the page was requested → then platform-bug / agent-bug)
-- **Source:** `agents/src/prompts/initial/core.md` ("Build ONLY the homepage design", "Build homepage (index.tsx) LAST"); `agents/src/prompts/initial/design-system-homepage-build/auto-select.md` ("Remaining pages have placeholder routes — build them when the user asks").
+- **Source:** `agents/src/prompts/initial/3.0/` ("Build ONLY the homepage design", "Build homepage (index.tsx) LAST"); `agents/src/prompts/initial/design-system-homepage-build/auto-select.md` ("Remaining pages have placeholder routes — build them when the user asks").
 
 ### Routes require explicit registration (no filesystem auto-discovery)
 - **Looks like:** A page file exists under `src/pages/` (or an API handler exists) but the route 404s.
@@ -81,7 +81,7 @@ that 404s" is the *default expected state*, not a defect.
 - **Actually:** The v8 starter ships `src/pages/index.tsx` as an empty stub for the develop-agent to populate; before/while the agent builds, blank is the start state.
 - **Real bug if:** The agent reported the homepage built (per the conversation) but it is still the empty stub.
 - **Verdict:** by-design
-- **Source:** `app-templates/v8/src/pages/index.tsx` (empty stub); `agents/src/prompts/initial/core.md` (homepage built last).
+- **Source:** `app-templates/v8/src/pages/index.tsx` (empty stub); `agents/src/prompts/initial/3.0/` (homepage built last).
 
 ---
 

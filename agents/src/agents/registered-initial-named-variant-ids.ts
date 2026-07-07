@@ -1,4 +1,4 @@
-/** Agent ids registered at factory startup for named initial-agent manifest variants (e.g. initial-prompt-enhancer). */
+/** Agent ids registered at factory startup for named initial-agent manifest variants (e.g. initial-design-system). */
 let registeredNamedVariants = new Map<string, string>()
 
 /**

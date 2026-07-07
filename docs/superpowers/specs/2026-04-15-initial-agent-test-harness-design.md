@@ -1,5 +1,7 @@
 # Initial Agent Test Harness — Design Spec
 
+> **Partially retired (AIROBUILD-3487).** The root baseline prompt set (`agents/src/prompts/initial/{core,attributes,guidelines,examples}.md`) and its harness configs (`baseline`/`partial-info`/`no-attributes`/`simple-ask`) were removed; the surviving harness configs are `v3.0*.yaml`.
+
 **Date:** 2026-04-15
 **Status:** Approved
 

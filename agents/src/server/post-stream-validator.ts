@@ -961,7 +961,7 @@ export function createPostStreamValidator(deps: CompositePostStreamValidatorDeps
       return;
     }
 
-    if (agentName === 'initial' || agentName === 'initial-v3' || agentName === 'initial-logo-designer') {
+    if (agentName === 'initial-v3' || agentName === 'initial-logo-designer') {
       return { skipped: true, reason: 'initial_agent' };
     }
 

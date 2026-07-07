@@ -175,11 +175,11 @@ describe('DebugStats UI', () => {
       vi.mocked(useSwitchboard).mockReturnValue(true)
       mockUseCurrentAppId.mockReturnValue('app-1')
       mockPeekAgentToken.mockReturnValue('header.payload.sig')
-      mockJwtDecode.mockReturnValue({ agentProfile: 'prompt-enhancer', modelOverride: 'claude-sonnet-4-6' })
+      mockJwtDecode.mockReturnValue({ agentProfile: 'initial-agent-v3', modelOverride: 'claude-sonnet-4-6' })
       render(<Mount />)
       fireEvent.click(screen.getByTestId('debug-stats-toggle'))
       const info = within(screen.getByTestId('debug-stats-session-info'))
-      expect(info.getByText('prompt-enhancer')).toBeInTheDocument()
+      expect(info.getByText('initial-agent-v3')).toBeInTheDocument()
       expect(info.getByText('claude-sonnet-4-6')).toBeInTheDocument()
     })
 

@@ -7,7 +7,7 @@ import { logger } from '../../logging/index.js'
 import type { ProfileData } from '../../profiles/types.js'
 
 describe('agent-router', function agentRouterTests() {
-  const allAgentIds: string[] = ['initial', 'initial-v3', 'initial-v3-exp', 'initial-v3-initial-agent-design-system', 'initial-design-system-homepage-build', 'initial-prompt-enhancer', 'develop', 'marketing', 'deep-build']
+  const allAgentIds: string[] = ['initial-v3', 'initial-v3-exp', 'initial-v3-initial-agent-design-system', 'initial-design-system-homepage-build', 'develop', 'marketing', 'deep-build']
   const resolveAgent = createAgentRouter({
     hasMessagesForApp: () => false,
     getModeIds: () => [],
@@ -77,7 +77,7 @@ describe('agent-router', function agentRouterTests() {
     expect(id).toBe('initial-v3')
   })
 
-  it('falls back to initial when promptVersion 2.0 is set (variant removed)', async function v2Removed() {
+  it('falls back to initial-v3 for legacy numeric promptVersion 2.0', async function v2Removed() {
     resolveProfileSpy.mockReturnValue(profile({
       name: 'v2prod',
       properties: { 'initial.promptVersion': '2.0' },
@@ -87,24 +87,24 @@ describe('agent-router', function agentRouterTests() {
       appId: 'app_new',
       agentContext: { agentProfile: 'v2prod' },
     })
-    expect(id).toBe('initial')
+    expect(id).toBe('initial-v3')
   })
 
   it('routes to initial-<variant> when named manifest variant is registered', async function namedVariantRegistered() {
     resolveProfileSpy.mockReturnValue(profile({
-      name: 'enhancer',
-      properties: { 'initial.promptVersion': 'prompt-enhancer' },
+      name: 'ds',
+      properties: { 'initial.promptVersion': 'design-system' },
     }))
-    setRegisteredInitialNamedVariantIds(new Map([['prompt-enhancer', 'initial-prompt-enhancer']]))
+    setRegisteredInitialNamedVariantIds(new Map([['design-system', 'initial-design-system']]))
 
     const id = await resolveAgent({
       appId: 'app_new',
-      agentContext: { agentProfile: 'enhancer' },
+      agentContext: { agentProfile: 'ds' },
     })
-    expect(id).toBe('initial-prompt-enhancer')
+    expect(id).toBe('initial-design-system')
   })
 
-  it('falls back to initial and warns when named variant is unregistered (e.g. typo or build failure)', async function namedVariantMissing() {
+  it('falls back to initial-v3 and warns when named variant is unregistered (e.g. typo or build failure)', async function namedVariantMissing() {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'typo',
@@ -115,7 +115,7 @@ describe('agent-router', function agentRouterTests() {
       appId: 'app_new',
       agentContext: { agentProfile: 'typo' },
     })
-    expect(id).toBe('initial')
+    expect(id).toBe('initial-v3')
     expect(warnSpy).toHaveBeenCalledWith(
       'agent_router.initial_named_variant_unregistered',
       expect.objectContaining({
@@ -132,16 +132,16 @@ describe('agent-router', function agentRouterTests() {
       name: 'no-version',
       properties: {},
     }))
-    setRegisteredInitialNamedVariantIds(new Map([['prompt-enhancer', 'initial-prompt-enhancer']]))
+    setRegisteredInitialNamedVariantIds(new Map([['design-system', 'initial-design-system']]))
 
     const id = await resolveAgent({
       appId: 'app_new',
       agentContext: { agentProfile: 'no-version' },
     })
-    expect(id).toBe('initial')
+    expect(id).toBe('initial-v3')
   })
 
-  it('does not warn for legacy numeric promptVersion 1.0 (falls through, no named-variant branch)', async function legacyNumeric() {
+  it('resolves legacy numeric promptVersion 1.0 to initial-v3 without a named-variant warn', async function legacyNumeric() {
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
     resolveProfileSpy.mockReturnValue(profile({
       name: 'legacy',
@@ -152,7 +152,7 @@ describe('agent-router', function agentRouterTests() {
       appId: 'app_new',
       agentContext: { agentProfile: 'legacy' },
     })
-    expect(id).toBe('initial')
+    expect(id).toBe('initial-v3')
     expect(warnSpy).not.toHaveBeenCalledWith(
       'agent_router.initial_named_variant_unregistered',
       expect.anything(),
@@ -171,7 +171,7 @@ describe('agent-router', function agentRouterTests() {
       appId: 'app_new',
       agentContext: { agentProfile: 'ws' },
     })
-    expect(id).toBe('initial')
+    expect(id).toBe('initial-v3')
     expect(warnSpy).not.toHaveBeenCalledWith(
       'agent_router.initial_named_variant_unregistered',
       expect.anything(),
@@ -278,17 +278,23 @@ describe('agent-router', function agentRouterTests() {
       return { sessionId: 'sock-new', stateManager }
     }
 
-    it('returns persisted initial even when the app already has messages (the reload bug)', async function persistedInitialBeatsHasMessages() {
-      // hasMessagesForApp=true would have wrongly promoted to develop pre-fix.
+    it('self-heals a persisted legacy initial to initial-v3 (not develop) even when the app has messages', async function persistedLegacyInitialSelfHeals() {
+      // Backward-compat: apps frozen on the retired base `initial` (AIROBUILD-3487) must
+      // self-heal to initial-v3 — never resurface the reload bug (wrong promotion to develop).
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
+      const repairPersistedAgent = vi.fn().mockResolvedValue(undefined)
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
         getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp: async () => 'initial',
+        repairPersistedAgent,
       })
 
       const id = await resolve({ appId })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
+      expect(repairPersistedAgent).toHaveBeenCalledWith(appId, 'initial-v3')
+      warnSpy.mockRestore()
     })
 
     it('preserves the persisted initial variant verbatim (no re-resolution)', async function persistedInitialVariant() {
@@ -423,7 +429,7 @@ describe('agent-router', function agentRouterTests() {
         hasMessagesForApp: () => true,
         getModeIds: () => [],
         getStartableAgentIds: () => allAgentIds,
-        getPersistedAgentForApp: async () => 'initial',
+        getPersistedAgentForApp: async () => 'initial-v3',
       })
       const stateManager = {
         getCurrentAgent: vi.fn().mockReturnValue(undefined),
@@ -433,14 +439,14 @@ describe('agent-router', function agentRouterTests() {
       }
 
       const id = await resolve({ appId, session: { sessionId: 'sock-new', stateManager } })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
       // rehydrate is fire-and-forget; flush the rejected microtask and confirm it
       // was caught (warn logged) rather than surfacing as an unhandled rejection.
       await Promise.resolve()
       await Promise.resolve()
       expect(warnSpy).toHaveBeenCalledWith(
         'agent_router.session_rehydrate_error',
-        expect.objectContaining({ appId, agentId: 'initial' }),
+        expect.objectContaining({ appId, agentId: 'initial-v3' }),
       )
       warnSpy.mockRestore()
     })
@@ -450,13 +456,13 @@ describe('agent-router', function agentRouterTests() {
         hasMessagesForApp: () => true,
         getModeIds: () => [],
         getStartableAgentIds: () => allAgentIds,
-        getPersistedAgentForApp: async () => 'initial',
+        getPersistedAgentForApp: async () => 'initial-v3',
       })
       const session = coldSession()
 
       const id = await resolve({ appId, session })
-      expect(id).toBe('initial')
-      expect(session.stateManager.switchAgent).toHaveBeenCalledWith('sock-new', 'initial')
+      expect(id).toBe('initial-v3')
+      expect(session.stateManager.switchAgent).toHaveBeenCalledWith('sock-new', 'initial-v3')
       // setSessionMetadata runs in the switchAgent .then() — flush the microtask.
       await Promise.resolve()
       expect(session.stateManager.setSessionMetadata).toHaveBeenCalledWith('sock-new', expect.objectContaining({ appId }))
@@ -471,14 +477,14 @@ describe('agent-router', function agentRouterTests() {
         getPersistedAgentForApp,
       })
       const stateManager = {
-        getCurrentAgent: vi.fn().mockReturnValue('initial'),
+        getCurrentAgent: vi.fn().mockReturnValue('initial-v3'),
         getSessionMetadata: vi.fn().mockReturnValue({ appId }),
         switchAgent: vi.fn().mockResolvedValue(undefined),
         setSessionMetadata: vi.fn(),
       }
 
       const id = await resolve({ appId, session: { sessionId: 'sock-warm', stateManager } })
-      expect(id).toBe('initial')
+      expect(id).toBe('initial-v3')
       expect(getPersistedAgentForApp).not.toHaveBeenCalled()
     })
 
@@ -495,7 +501,7 @@ describe('agent-router', function agentRouterTests() {
         getStartableAgentIds: () => allAgentIds,
         getPersistedAgentForApp,
       })
-      const stateManager = createSessionStateManager({ defaultAgentId: 'initial' })
+      const stateManager = createSessionStateManager({ defaultAgentId: 'initial-v3' })
       const session = { sessionId: 'sock-design-kit', stateManager }
 
       try {
@@ -552,7 +558,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
-        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getStartableAgentIds: () => ['initial-v3', 'develop', 'marketing'],
         getPersistedAgentForApp: async () => 'develop-prompt-optimization',
         repairPersistedAgent,
       })
@@ -593,7 +599,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
-        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getStartableAgentIds: () => ['initial-v3', 'develop', 'marketing'],
         getPersistedAgentForApp: async () => 'develop',
         repairPersistedAgent,
       })
@@ -609,7 +615,7 @@ describe('agent-router', function agentRouterTests() {
       const resolve = createAgentRouter({
         hasMessagesForApp: () => true,
         getModeIds: () => [],
-        getStartableAgentIds: () => ['initial', 'develop', 'marketing'],
+        getStartableAgentIds: () => ['initial-v3', 'develop', 'marketing'],
         getPersistedAgentForApp: async () => 'develop-prompt-optimization',
         repairPersistedAgent,
       })

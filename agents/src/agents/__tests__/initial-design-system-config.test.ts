@@ -32,6 +32,7 @@ vi.mock('fs', async () => {
       if (path.includes('initial/design-system-homepage-build-attached/')) return true
       if (path.includes('initial/design-system-homepage-build/manifest.json')) return true
       if (path.includes('initial/design-system-homepage-build/')) return true
+      if (path.includes('initial/3.0/manifest.json')) return false
       if (path.includes('initial/3.0/')) return true
       if (path.includes('initial/1.0/manifest.json')) return false
       if (path.includes('core.md')) return true

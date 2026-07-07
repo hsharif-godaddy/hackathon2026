@@ -1,5 +1,7 @@
 # Initial Agent Test Harness Implementation Plan
 
+> **Partially retired (AIROBUILD-3487).** The root baseline prompt set (`agents/src/prompts/initial/{core,attributes,guidelines,examples}.md`) and its harness configs (`baseline`/`partial-info`/`no-attributes`/`simple-ask`) were removed; the surviving harness configs are `v3.0*.yaml`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a Go CLI that runs the initial agent conversation loop against Claude API with simulated tools, measuring cost/latency and scoring outputs via LLM judge.

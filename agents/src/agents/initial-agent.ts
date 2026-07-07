@@ -35,9 +35,9 @@ export {
  * This agent is only used for brand new apps with no conversation history.
  * It creates a minimal todo list for a single-page preview and hands off to develop agent.
  *
- * Prompt versions (in agents/src/prompts/initial/<version>/):
- * - 1.0: Legacy monolithic (core.md + attributes.md + guidelines.md + examples.md)
- * - 3.0: Modular — each concern is a separate swappable file for A/B testing
+ * Prompt version 3.0 (in agents/src/prompts/initial/3.0/) is the sole base: modular —
+ * each concern is a separate swappable file for A/B testing. (The legacy 1.0 monolithic
+ * set and the base/v1 agent were retired in AIROBUILD-3487.)
  *
  * Shared files (communication.md, security.md) are appended from the shared/ directory.
  *
@@ -45,24 +45,24 @@ export {
  * agents/src/prompts/initial/modes/<templateId>/ instead.
  *
  * Endgame / profile experiments: set profile property `initial.modularPromptFiles` to a
- * comma-separated list of module filenames (under initial/<version>/) to override the
- * default modular load order for that profile. Requires prompt version 3.0 (or a dedicated
- * factory-built `initial-v3-<profileName>` agent).
+ * comma-separated list of module filenames (under initial/3.0/) to override the default
+ * modular load order for that profile (per-profile initial-v3 variants were flattened —
+ * the single initial-v3 reads the files per turn).
  */
 
-const DEFAULT_PROMPT_VERSION = '1.0'
+const DEFAULT_PROMPT_VERSION = '3.0'
 
 /**
  * Directory names under `agents/src/prompts/initial/` that are NOT named manifest
  * variants — numbered versions, modes sub-tree, anything else is scanned.
  */
-const NON_VARIANT_INITIAL_SUBDIRS = new Set(['1.0', '3.0', 'modes'])
+const NON_VARIANT_INITIAL_SUBDIRS = new Set(['3.0', 'modes'])
 
 /**
  * Discover named manifest-based initial agent variants. A named variant is any
  * subdirectory of `agents/src/prompts/initial/` (other than numbered versions
  * and `modes/`) that contains a `manifest.json`. The directory name is the
- * variant's promptVersion string (e.g. `'prompt-enhancer'`).
+ * variant's promptVersion string (e.g. `'design-system'`).
  */
 export function discoverNamedInitialVariants(): string[] {
   const paths = getModularPromptPaths(import.meta.url)
@@ -190,7 +190,7 @@ async function buildInitialSystemPrompt(
   const versionDir = `initial/${version}`
 
   // Manifest mode: a named version directory that composes files from a base version
-  // plus its own overrides (e.g. initial/prompt-enhancer/manifest.json).
+  // plus its own overrides (e.g. initial/design-system/manifest.json).
   const versionManifestPath = paths.getAgentFile(versionDir, 'manifest.json')
   if (existsSync(versionManifestPath)) {
     const preflightTools = loadFromManifest(promptBuilder, paths, versionManifestPath, versionDir, `version ${version}`)
@@ -267,11 +267,15 @@ export async function createInitialAgent(
   const preflightTools = built.preflightTools
   const { model, modelName } = await getAgentModelWithName('fast')
 
-  // Named manifest variants (e.g. prompt-enhancer) live at
+  // Named manifest variants (e.g. design-system) live at
   // `initial/<promptVersion>/` and are registered as `initial-<promptVersion>`.
   // Their agentId must match the registered id so the handoff tool and
-  // telemetry logger constructed below reference the right agent — otherwise
-  // logs would attribute actions to the generic `initial` agent.
+  // telemetry logger constructed below reference the right agent.
+  //
+  // The bare `initial` id below is only this helper's generic default: the unified
+  // factory builds the base agent with promptVersion '3.0' and overrides the id to
+  // `initial-v3` (the sole registered base initial agent). Bare `initial` is no longer
+  // registered — base/v1 was retired in AIROBUILD-3487.
   //
   // Require a non-empty *trimmed* string so a default `''` read from a
   // profile doesn't derive `initial-` / `Initial ()`.
@@ -290,7 +294,7 @@ export async function createInitialAgent(
       : 'Initial'
 
   const handoffTargetsByTemplate: Record<string, string[]> = {
-    'logo-designer': ['develop', 'initial'],
+    'logo-designer': ['develop', 'initial-v3'],
     'deep-build': ['deep-build'],
   }
   const validTargets = handoffTargetsByTemplate[templateId ?? ''] ?? ['develop']
@@ -462,7 +466,7 @@ export async function createInitialAgent(
             description: 'Hand off to development agent for website building and code tasks',
           },
           {
-            agentName: 'initial',
+            agentName: 'initial-v3',
             description: 'Hand off to initial agent for requests outside brand/logo scope (websites, domains, general app creation)',
           },
         ]

@@ -10,9 +10,7 @@ export { profileValue, profileFlag, hasActiveProfile, activeProfileName } from '
 // standalone JSON files to dist/, so readdirSync at runtime would find nothing).
 // When adding a new profile, import it here and add it to the rawProfiles array.
 import experimentalProfile from './experimental.json' with { type: 'json' }
-import initialAgentV1Profile from './initial-agent-v1.json' with { type: 'json' }
 import initialAgentV3Profile from './initial-agent-v3.json' with { type: 'json' }
-import promptEnhancerProfile from './prompt-enhancer.json' with { type: 'json' }
 import initialAgentDesignSystemProfile from './initial-agent-design-system.json' with { type: 'json' }
 import initialAgentDesignSystemHomepageBuildProfile from './initial-agent-design-system-homepage-build.json' with { type: 'json' }
 import initialAgentDesignKitProfile from './initial-agent-design-kit.json' with { type: 'json' }
@@ -25,9 +23,7 @@ import initialAgentDesignKitProfile from './initial-agent-design-kit.json' with 
 // agents/src/prompts/develop/experiments/README.md.
 const rawProfiles: unknown[] = [
   experimentalProfile,
-  initialAgentV1Profile,
   initialAgentV3Profile,
-  promptEnhancerProfile,
   initialAgentDesignSystemProfile,
   initialAgentDesignSystemHomepageBuildProfile,
   initialAgentDesignKitProfile,

@@ -103,7 +103,7 @@ The return-shape change (`{ value, source }` instead of `string | undefined`) ma
 
 - `budget.report.created` fired with `source: "finally"` (finally-block fallback, not the primary reconciliation path) — the session had errored mid-stream.
 - `ai-lib.unified-provider.budget.gocode.response` returned `status: 500` — GoCode failure.
-- `funnel.initial_prompt.processing` fired at session start with `agentName: "initial"` — InitialAgent, first-message, no prior conversationId on the client side.
+- `funnel.initial_prompt.processing` fired at session start with `agentName: "initial-v3"` — InitialAgent, first-message, no prior conversationId on the client side.
 - Repeated `Skipping onEnd/onStart for "ai.generateText.doGenerate" (type: llm) — no conversationId (missing createAgentContext?)` events throughout — the missing-conversationId symptom wasn't just the cache-write; it manifested at the AI SDK integration layer too, because the same `typedContext?.conversation?.conversationId` source was consulted there.
 - `socketId === originalSocketId` throughout — no migration ever occurred for this session.
 

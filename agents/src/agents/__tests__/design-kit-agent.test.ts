@@ -32,6 +32,7 @@ vi.mock('fs', async () => {
     existsSync: (path: string) => {
       if (path.includes('initial/design-kit/manifest.json')) return true
       if (path.includes('initial/design-kit/')) return true
+      if (path.includes('initial/3.0/manifest.json')) return false
       if (path.includes('initial/3.0/')) return true
       if (path.includes('initial/1.0/manifest.json')) return false
       if (path.includes('core.md')) return true

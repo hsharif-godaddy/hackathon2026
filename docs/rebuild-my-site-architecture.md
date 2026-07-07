@@ -518,7 +518,7 @@ intake choices.
 | Entry Point     | Location                                                   | Trigger                               |
 | --------------- | ---------------------------------------------------------- | ------------------------------------- |
 | Homepage button | `app/src/app/[market]/components/HeroExamples.tsx`         | "Rebuild my site" card                |
-| Chat input      | InitialAgent prompt (`agents/src/prompts/initial/core.md`) | "rebuild"/"recreate"/"redesign" + URL |
+| Chat input      | InitialAgent prompt (`agents/src/prompts/initial/3.0/`) | "rebuild"/"recreate"/"redesign" + URL |
 | Session restore | `app/src/app/[market]/develop/hooks/useInitialization.ts`  | `sessionStorage` rebuild key          |
 
 ---

@@ -67,7 +67,7 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
   })
 
   describe('internal start-as override (?agent=)', function startOverride() {
-    const startable = () => ['initial', 'initial-v3', 'develop', 'marketing', 'deep-build', 'initial-logo-designer']
+    const startable = () => ['initial-v3', 'develop', 'marketing', 'deep-build', 'initial-logo-designer']
 
     it('overrides ?template= AND the JWT profile when enabled + valid', function overrideWins() {
       resolveProfileSpy.mockReturnValue(profile({ name: 'jwtp', properties: { 'initial.promptVersion': '3.0' } }))
@@ -147,8 +147,8 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
     })
 
     it('looks up the trimmed promptVersion for named variants (padded value resolves)', function paddedNamedVariant() {
-      setRegisteredInitialNamedVariantIds(new Map([['prompt-enhancer', 'initial-prompt-enhancer']]))
-      expect(withJwtProfile(profile({ name: 'enhancer', properties: { 'initial.promptVersion': '  prompt-enhancer  ' } }))).toBe('initial-prompt-enhancer')
+      setRegisteredInitialNamedVariantIds(new Map([['design-system', 'initial-design-system']]))
+      expect(withJwtProfile(profile({ name: 'ds', properties: { 'initial.promptVersion': '  design-system  ' } }))).toBe('initial-design-system')
     })
 
     it('prefers the modular branch over promptVersion 3.0 (both resolve to initial-v3)', function modularBeatsV3() {
@@ -159,32 +159,29 @@ describe('resolveInitialAgentId', function resolveInitialAgentTests() {
       expect(withJwtProfile(profile({ name: 'v3only', properties: { 'initial.promptVersion': '3.0' } }))).toBe('initial-v3')
     })
 
-    it('falls back to initial for legacy promptVersion 2.0', function v2Removed() {
-      expect(withJwtProfile(profile({ name: 'v2prod', properties: { 'initial.promptVersion': '2.0' } }))).toBe('initial')
+    it('falls back to initial-v3 for legacy numeric promptVersion 2.0', function v2Removed() {
+      expect(withJwtProfile(profile({ name: 'v2prod', properties: { 'initial.promptVersion': '2.0' } }))).toBe('initial-v3')
     })
 
     it('routes to a registered named manifest variant', function namedVariantRegistered() {
-      setRegisteredInitialNamedVariantIds(new Map([['prompt-enhancer', 'initial-prompt-enhancer']]))
-      expect(withJwtProfile(profile({ name: 'enhancer', properties: { 'initial.promptVersion': 'prompt-enhancer' } }))).toBe('initial-prompt-enhancer')
+      setRegisteredInitialNamedVariantIds(new Map([['design-system', 'initial-design-system']]))
+      expect(withJwtProfile(profile({ name: 'ds', properties: { 'initial.promptVersion': 'design-system' } }))).toBe('initial-design-system')
     })
 
-    it('falls back to initial and warns when a named variant is unregistered', function namedVariantMissing() {
+    it('falls back to initial-v3 and warns when a named variant is unregistered', function namedVariantMissing() {
       const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
-      expect(withJwtProfile(profile({ name: 'typo', properties: { 'initial.promptVersion': 'prompt_enhancer' } }))).toBe('initial')
+      expect(withJwtProfile(profile({ name: 'typo', properties: { 'initial.promptVersion': 'prompt_enhancer' } }))).toBe('initial-v3')
       expect(warnSpy).toHaveBeenCalledWith('agent_router.initial_named_variant_unregistered', expect.objectContaining({ profileName: 'typo', promptVersion: 'prompt_enhancer' }))
       warnSpy.mockRestore()
     })
 
     it('does not enter the named-variant branch when promptVersion is absent', function noVersion() {
-      setRegisteredInitialNamedVariantIds(new Map([['prompt-enhancer', 'initial-prompt-enhancer']]))
-      expect(withJwtProfile(profile({ name: 'no-version', properties: {} }))).toBe('initial')
+      setRegisteredInitialNamedVariantIds(new Map([['design-system', 'initial-design-system']]))
+      expect(withJwtProfile(profile({ name: 'no-version', properties: {} }))).toBe('initial-v3')
     })
 
-    it('does not warn for legacy numeric promptVersion 1.0', function legacyNumeric() {
-      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(function () {})
-      expect(withJwtProfile(profile({ name: 'legacy', properties: { 'initial.promptVersion': '1.0' } }))).toBe('initial')
-      expect(warnSpy).not.toHaveBeenCalledWith('agent_router.initial_named_variant_unregistered', expect.anything())
-      warnSpy.mockRestore()
+    it('routes the experimental profile (model/skill overrides, no promptVersion) to initial-v3', function experimentalToV3() {
+      expect(withJwtProfile(profile({ name: 'experimental', properties: { 'model.default': 'claude-opus-4-6' } }))).toBe('initial-v3')
     })
   })
 })

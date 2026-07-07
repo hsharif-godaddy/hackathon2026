@@ -400,13 +400,13 @@ describe('migrateStartProfileToAppId', () => {
   it('copies the job-id profile onto the app id so the app-id-keyed mint resolves it', () => {
     // Profile is stored under the job id at create; the agent-token mint after the
     // job→app flip reads getStoredStartProfile(appId), which would otherwise miss it.
-    sessionStorage.setItem('initial-profile-job-1', 'prompt-enhancer')
+    sessionStorage.setItem('initial-profile-job-1', 'initial-agent-v3')
     migrateStartProfileToAppId('job-1', 'app-1')
-    expect(getStoredStartProfile('app-1')).toBe('prompt-enhancer')
+    expect(getStoredStartProfile('app-1')).toBe('initial-agent-v3')
   })
 
   it('does not overwrite an existing app-id profile', () => {
-    sessionStorage.setItem('initial-profile-job-1', 'prompt-enhancer')
+    sessionStorage.setItem('initial-profile-job-1', 'initial-agent-v3')
     sessionStorage.setItem('initial-profile-app-1', 'experimental')
     migrateStartProfileToAppId('job-1', 'app-1')
     expect(getStoredStartProfile('app-1')).toBe('experimental')
@@ -418,9 +418,9 @@ describe('migrateStartProfileToAppId', () => {
   })
 
   it('is a no-op when jobId equals appId', () => {
-    sessionStorage.setItem('initial-profile-app-1', 'prompt-enhancer')
+    sessionStorage.setItem('initial-profile-app-1', 'initial-agent-v3')
     migrateStartProfileToAppId('app-1', 'app-1')
-    expect(getStoredStartProfile('app-1')).toBe('prompt-enhancer')
+    expect(getStoredStartProfile('app-1')).toBe('initial-agent-v3')
   })
 })
 

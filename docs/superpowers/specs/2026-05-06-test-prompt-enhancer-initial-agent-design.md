@@ -1,5 +1,7 @@
 # Test Prompt Enhancer — Initial Agent Variant
 
+> **Retired (AIROBUILD-3487).** The `prompt-enhancer` initial-agent variant (profile + `agents/src/prompts/initial/prompt-enhancer/`) was removed. This spec is retained for historical context only.
+
 > **Historical note (2026-05-11):** This spec captures the original design
 > exploration and still uses the working name `test-prompt-enhancer`. The
 > shipped variant is named **`prompt-enhancer`** (lives at

@@ -54,7 +54,6 @@ export async function createUnifiedAgentFactory(options?: {
 
   const marketingConfig = await createMarketingAgent()
   const deepBuildConfig = await createDeepBuildAgent()
-  const initialConfig = await createInitialAgent(stateManager)
 
   const initialV3Config = await createInitialAgent(stateManager, undefined, '3.0')
   initialV3Config.id = 'initial-v3'
@@ -66,7 +65,7 @@ export async function createUnifiedAgentFactory(options?: {
     modeInitialConfigs[`initial-${templateId}`] = await createInitialAgent(stateManager, templateId)
   }
 
-  // Pre-create named manifest variants (e.g. initial-prompt-enhancer). Each variant is
+  // Pre-create named manifest variants (e.g. initial-design-system). Each variant is
   // a sibling of the numbered versions under `agents/src/prompts/initial/<name>/` and is
   // selectable via a profile's `initial.promptVersion` property.
   const namedVariantInitialConfigs: Record<string, AgentConfig> = {}
@@ -77,7 +76,7 @@ export async function createUnifiedAgentFactory(options?: {
   // would otherwise silently replace the built-in agent, making the bug
   // invisible until request-time routing.
   const reservedInitialAgentIds = new Set<string>([
-    'initial', 'initial-v3',
+    'initial-v3',
     ...Object.keys(modeInitialConfigs),
   ])
   for (const variantName of discoverNamedInitialVariants()) {
@@ -154,7 +153,6 @@ export async function createUnifiedAgentFactory(options?: {
   const contextPipeline = new AgentContextPipeline()
   developConfig.contextPipeline = contextPipeline
   marketingConfig.contextPipeline = contextPipeline
-  initialConfig.contextPipeline = contextPipeline
   initialV3Config.contextPipeline = contextPipeline
 
   for (const config of Object.values(modeInitialConfigs)) {
@@ -169,7 +167,6 @@ export async function createUnifiedAgentFactory(options?: {
 
   // Build agent definitions conditionally
   const agentDefinitions: Record<string, AgentConfig> = {
-    initial: initialConfig,
     'initial-v3': initialV3Config,
     ...namedVariantInitialConfigs,
     develop: developConfig,

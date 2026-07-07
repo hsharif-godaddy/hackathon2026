@@ -38,8 +38,6 @@ export interface StartSelection {
 export const START_SELECTIONS: readonly StartSelection[] = [
   // Profiles — the primary abstraction (session model/skills + default initial).
   { kind: 'profile', value: 'initial-agent-v3', label: 'Initial v3 (default)', description: 'Two-round questioning; current default.' },
-  { kind: 'profile', value: 'initial-agent-v1', label: 'Initial v1 (legacy)', description: 'Single-round questioning.' },
-  { kind: 'profile', value: 'prompt-enhancer', label: 'Prompt Enhancer', description: 'Large question set with a planning-first strategy.' },
   { kind: 'profile', value: 'initial-agent-design-system', label: 'Design System', description: 'Questions, then pick a design kit and build from it.' },
   { kind: 'profile', value: 'initial-agent-design-system-homepage-build', label: 'Design System (Homepage Build)', description: 'Design-kit profile tuned for faster homepage builds.' },
   { kind: 'profile', value: 'initial-agent-design-kit', label: 'Design Kit Wizard', description: 'Interactive design-kit wizard.' },
@@ -60,9 +58,7 @@ export const START_SELECTIONS: readonly StartSelection[] = [
   { kind: 'agent', value: 'develop', label: 'Develop', description: 'Full-stack development agent.' },
   { kind: 'agent', value: 'marketing', label: 'Marketing', description: 'SEO, marketing, and social.' },
   { kind: 'agent', value: 'deep-build', label: 'Deep Build (orchestrator)', description: 'Deep-build orchestrator agent.' },
-  { kind: 'agent', value: 'initial', label: 'Initial (base)', description: 'Base initial agent (v1 prompt).' },
   { kind: 'agent', value: 'initial-v3', label: 'Initial v3', description: 'Modular v3 initial agent.' },
-  { kind: 'agent', value: 'initial-prompt-enhancer', label: 'Initial · Prompt Enhancer', description: 'Prompt-enhancer initial variant.' },
   { kind: 'agent', value: 'initial-design-system', label: 'Initial · Design System', description: 'Design-system initial variant.' },
   { kind: 'agent', value: 'initial-design-system-homepage-build', label: 'Initial · Design System (Homepage Build)', description: 'Homepage-build initial variant.' },
   { kind: 'agent', value: 'initial-design-kit', label: 'Initial · Design Kit Wizard', description: 'Design-kit wizard initial variant.' },

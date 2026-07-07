@@ -306,7 +306,7 @@ WHEN TO USE APPLY MODE:
 - The design direction or build spec lists explicit hex values for any of
   primary/background/secondary/accent/muted — pass each one through so the
   palette matches the spec exactly. This is the right call for initial
-  builds whenever the prompt-enhancer or user provided concrete hex values.
+  builds whenever the initial agent or user provided concrete hex values.
 
 WORKFLOW FOR SET MODE (automated flows):
 1. Agent: colorScheme({ mode: 'set', description: 'warm purple tones for bakery' })

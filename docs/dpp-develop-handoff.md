@@ -1,5 +1,7 @@
 # DPP → /develop hand-off: hydrate initial prompt + domain from control plane
 
+> **Historical (pre-AIROBUILD-3487).** The base/v1 initial agent and `initial/1.0/` prompts referenced below were retired; the default initial agent is now `initial-v3` (prompts at `initial/3.0/`).
+
 ## TL;DR — the lift is small
 
 The desired outcome ("DPP redirects to /develop, prompt is enhanced, agent starts to do work") falls out of the existing system with **one required code change** and a couple of small additions for the domain-context bonus:
