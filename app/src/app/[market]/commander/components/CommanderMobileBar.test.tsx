@@ -5,7 +5,7 @@ import '@testing-library/jest-dom'
 
 import { forwardRef, type ReactElement, type ReactNode, type Ref } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 
 import type { LatestNBAData } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useCommanderStore } from '@/stores/useCommanderStore'
@@ -22,6 +22,7 @@ let initialBuildActive = false
 let initialBuildComplete = false
 let activeRunningToolName: string | null = null
 let isLoading = false
+let mobileChatAutoOpenedQuestion: string | null = null
 
 vi.mock('../canvas/badgeProviders', () => ({
   useCanvasBadgeMap: () => badgeMapRef.current,
@@ -99,8 +100,17 @@ const BADGE_NODE_TESTID = 'active-badge-node'
 
 const badgeNode = <span data-testid={BADGE_NODE_TESTID}>1</span>
 
+function mark(question: string): void {
+  mobileChatAutoOpenedQuestion = question
+}
+
 function renderBar(): ReturnType<typeof renderWithProviders> {
-  return renderWithProviders(<CommanderMobileBar />)
+  return renderWithProviders(
+    <CommanderMobileBar
+      mobileChatAutoOpenedQuestion={mobileChatAutoOpenedQuestion}
+      onMobileChatAutoOpened={mark}
+    />,
+  )
 }
 
 beforeEach(function reset(): void {
@@ -109,9 +119,11 @@ beforeEach(function reset(): void {
   initialBuildComplete = false
   activeRunningToolName = null
   isLoading = false
+  mobileChatAutoOpenedQuestion = null
   badgeMapRef.current = {}
   useCommanderStore.setState({
     activeCanvasId: PINNED_CANVAS_ID,
+    isMobileChatOpen: false,
     openCanvasIds: [CanvasId.Preview],
   })
 })
@@ -128,6 +140,27 @@ describe('CommanderMobileBar chat question badge', () => {
     renderBar()
 
     expect(screen.getByTestId('commander-mobile-chat-question-badge')).toBeInTheDocument()
+  })
+
+  it('opens mobile chat once when an askQuestion badge is pending', async function openQuestionChat(): Promise<void> {
+    initialBuildActive = true
+    latestNBA = {
+      source: 'askQuestion',
+      question: 'Pick a color',
+      suggestions: [],
+    }
+
+    const { unmount } = renderBar()
+
+    await waitFor(function opened(): void {
+      expect(useCommanderStore.getState().isMobileChatOpen).toBe(true)
+    })
+
+    useCommanderStore.getState().closeMobileChat()
+    unmount()
+    renderBar()
+
+    expect(useCommanderStore.getState().isMobileChatOpen).toBe(false)
   })
 
   it('does not show a badge for suggested response NBAs', function suggestedResponseNoBadge(): void {
@@ -175,7 +208,7 @@ describe('CommanderMobileBar badge indicators', () => {
     useCommanderStore.setState({ activeCanvasId: CanvasId.Inbox })
     badgeMapRef.current = { [CanvasId.Inbox]: badgeNode }
 
-    renderWithProviders(<CommanderMobileBar />)
+    renderBar()
 
     expect(screen.getByTestId(SELECTOR_TESTID)).toBeInTheDocument()
     expect(screen.getByTestId(BADGE_NODE_TESTID)).toBeInTheDocument()
@@ -186,7 +219,7 @@ describe('CommanderMobileBar badge indicators', () => {
     useCommanderStore.setState({ activeCanvasId: CanvasId.Preview })
     badgeMapRef.current = { [CanvasId.Inbox]: badgeNode }
 
-    renderWithProviders(<CommanderMobileBar />)
+    renderBar()
 
     expect(screen.getByTestId(DOT_TESTID)).toBeInTheDocument()
     // The active canvas (Preview) has no badge, so its own badge node is absent.
@@ -197,7 +230,7 @@ describe('CommanderMobileBar badge indicators', () => {
     useCommanderStore.setState({ activeCanvasId: CanvasId.Preview })
     badgeMapRef.current = {}
 
-    renderWithProviders(<CommanderMobileBar />)
+    renderBar()
 
     expect(screen.getByTestId(SELECTOR_TESTID)).toBeInTheDocument()
     expect(screen.queryByTestId(BADGE_NODE_TESTID)).not.toBeInTheDocument()
@@ -211,7 +244,7 @@ describe('CommanderMobileBar badge indicators', () => {
     useCommanderStore.setState({ activeCanvasId: CanvasId.Inbox })
     badgeMapRef.current = { [CanvasId.Inbox]: badgeNode }
 
-    renderWithProviders(<CommanderMobileBar />)
+    renderBar()
 
     expect(screen.queryByTestId(DOT_TESTID)).not.toBeInTheDocument()
   })

@@ -67,6 +67,7 @@ export function CommanderShell({
 
   const canvasAreaRef = useRef<HTMLDivElement>(null)
   const [canvasWidth, setCanvasWidth] = useState(0)
+  const [mobileChatAutoOpenedQuestion, setMobileChatAutoOpenedQuestion] = useState<string | null>(null)
   useEffect(() => {
     const el = canvasAreaRef.current
     if (!el) return
@@ -121,7 +122,12 @@ export function CommanderShell({
             <CommanderCanvasSettingsOverlay edgeToEdge />
           </div>
           {isMobileChatOpen && <Commander appId={appId} chatPane={chatPaneNode} isMobile />}
-          {!isMobileChatOpen && <CommanderMobileBar />}
+          {!isMobileChatOpen && (
+            <CommanderMobileBar
+              mobileChatAutoOpenedQuestion={mobileChatAutoOpenedQuestion}
+              onMobileChatAutoOpened={setMobileChatAutoOpenedQuestion}
+            />
+          )}
         </div>
       </CommanderCanvasActionProvider>
     )

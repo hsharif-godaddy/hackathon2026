@@ -2,7 +2,7 @@
 
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
-import { type ReactElement, useMemo, useState } from 'react'
+import { type ReactElement, useEffect, useMemo, useState } from 'react'
 import Button from '@ux/button'
 import ConversationsIcon from '@ux/icon/conversations'
 
@@ -19,7 +19,15 @@ import { CanvasBadgeDot } from '../canvas/CanvasBadgeDot'
 import { CommanderCanvasSheet } from '../canvas/CommanderCanvasSheet'
 import { CANVAS_REGISTRY } from '../canvas/registry'
 
-export function CommanderMobileBar() {
+interface CommanderMobileBarProps {
+  mobileChatAutoOpenedQuestion: string | null
+  onMobileChatAutoOpened: (question: string) => void
+}
+
+export function CommanderMobileBar({
+  mobileChatAutoOpenedQuestion,
+  onMobileChatAutoOpened,
+}: CommanderMobileBarProps) {
   const t = useTranslations()
   const appId = useAppIdFromParams()
   const clickContext = useMemo(() => (appId ? { appId } : undefined), [appId])
@@ -34,6 +42,7 @@ export function CommanderMobileBar() {
   const isLoading: boolean = useIsLoading()
   const isInitialBuildQuestion: boolean = isInitialBuildFunnelActive() && !isInitialBuildComplete()
   const isProcessing: boolean = isLoading || activeRunningToolName !== null
+  const latestQuestion: string | undefined = latestNBA?.question
   const showQuestionBadge: boolean =
     latestNBA?.source === 'askQuestion' && isInitialBuildQuestion && !isProcessing
 
@@ -59,6 +68,13 @@ export function CommanderMobileBar() {
     logClickEvent('commander.mobile_bar.open_chat', clickContext)()
     openMobileChat()
   }
+
+  useEffect(function openQuestionChat(): void {
+    if (!showQuestionBadge || !latestQuestion || mobileChatAutoOpenedQuestion === latestQuestion) return
+
+    onMobileChatAutoOpened(latestQuestion)
+    openMobileChat()
+  }, [latestQuestion, mobileChatAutoOpenedQuestion, onMobileChatAutoOpened, openMobileChat, showQuestionBadge])
 
   return (
     <>
