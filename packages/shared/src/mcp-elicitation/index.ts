@@ -1,0 +1,27 @@
+export type {
+  ElicitationMode,
+  ElicitationSchemaOption,
+  ElicitationStringSchema,
+  ElicitationNumberSchema,
+  ElicitationBooleanSchema,
+  ElicitationUntitledSingleSelectEnumSchema,
+  ElicitationTitledSingleSelectEnumSchema,
+  ElicitationSingleSelectEnumSchema,
+  ElicitationUntitledMultiSelectEnumSchema,
+  ElicitationTitledMultiSelectEnumSchema,
+  ElicitationSchemaProperty,
+  ElicitationRequestedSchema,
+  ElicitationFormParams,
+  ElicitationUrlParams,
+  ElicitationParams,
+  ElicitInputRequest,
+  InputRequiredResult,
+  ElicitAction,
+  ElicitContentValue,
+  ElicitResult,
+  ElicitResponses,
+  ElicitationClientCapabilities,
+} from './types.js';
+export {
+  MCP_ELICITATION_CLIENT_CAPABILITIES,
+} from './types.js';

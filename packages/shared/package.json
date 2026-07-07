@@ -82,6 +82,10 @@
     "./logo-shimmer": {
       "types": "./dist/logo-shimmer/index.d.ts",
       "import": "./dist/logo-shimmer/index.js"
+    },
+    "./mcp-elicitation": {
+      "types": "./dist/mcp-elicitation/index.d.ts",
+      "import": "./dist/mcp-elicitation/index.js"
     }
   },
   "typesVersions": {
@@ -139,6 +143,9 @@
       ],
       "logo-shimmer": [
         "dist/logo-shimmer/index.d.ts"
+      ],
+      "mcp-elicitation": [
+        "dist/mcp-elicitation/index.d.ts"
       ]
     }
   },
