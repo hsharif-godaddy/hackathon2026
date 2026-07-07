@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateCssRadius } from '../radius-css.js'
+import { updateCssRadius, updateCssButtonRadius } from '../radius-css.js'
 
 /**
  * Build a minimal WorkspaceFiles double backed by an in-memory file map, exposing
@@ -89,5 +89,55 @@ describe('updateCssRadius', () => {
     const { files } = mockFiles({})
     const res = await updateCssRadius(files as never, 18)
     expect(res).toBe(false)
+  })
+})
+
+const TEMPLATE_WITH_BUTTON = `@layer base {
+  :root {
+    /* Border Radius */
+    --radius: 0.5rem;
+    --radius-button: calc(var(--radius) - 2px);
+  }
+}`
+
+describe('updateCssButtonRadius', () => {
+  it('replaces --radius-button with the kit value in px, preserving indentation', async () => {
+    const { files, store } = mockFiles({ [GLOBALS]: TEMPLATE_WITH_BUTTON })
+    const res = await updateCssButtonRadius(files as never, 999)
+    expect(res).toBe(true)
+    expect(store[GLOBALS]).toContain('    --radius-button: 999px;') // pill
+    expect(store[GLOBALS]).not.toContain('calc(var(--radius) - 2px)')
+  })
+
+  it('writes 0px for a sharp kit (radiusButton 0)', async () => {
+    const { files, store } = mockFiles({ [GLOBALS]: TEMPLATE_WITH_BUTTON })
+    expect(await updateCssButtonRadius(files as never, 0)).toBe(true)
+    expect(store[GLOBALS]).toContain('--radius-button: 0px;')
+  })
+
+  it('does not touch the base --radius line', async () => {
+    const { files, store } = mockFiles({ [GLOBALS]: TEMPLATE_WITH_BUTTON })
+    await updateCssButtonRadius(files as never, 24)
+    expect(store[GLOBALS]).toContain('--radius: 0.5rem;') // base untouched
+    expect(store[GLOBALS]).toContain('--radius-button: 24px;')
+  })
+
+  it('returns false for a non-finite or negative radius, leaving content unchanged', async () => {
+    const { files, store } = mockFiles({ [GLOBALS]: TEMPLATE_WITH_BUTTON })
+    expect(await updateCssButtonRadius(files as never, Number.NaN)).toBe(false)
+    expect(await updateCssButtonRadius(files as never, -4)).toBe(false)
+    expect(store[GLOBALS]).toBe(TEMPLATE_WITH_BUTTON)
+  })
+
+  it('returns false and leaves content unchanged when --radius-button is absent', async () => {
+    const noButton = `:root {\n  --radius: 0.5rem;\n}`
+    const { files, store } = mockFiles({ [GLOBALS]: noButton })
+    expect(await updateCssButtonRadius(files as never, 18)).toBe(false)
+    expect(store[GLOBALS]).toBe(noButton)
+  })
+
+  it('never throws when the file is missing (best-effort)', async () => {
+    const { files } = mockFiles({})
+    expect(await updateCssButtonRadius(files as never, 18)).toBe(false)
   })
 })

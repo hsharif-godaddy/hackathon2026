@@ -16,6 +16,7 @@ const mockInstallDesignSystem = vi.hoisted(() => vi.fn())
 const mockResolveBaseUrl = vi.hoisted(() => vi.fn(() => 'https://blobby.wsimg.com/brand-kits'))
 const mockMerge = vi.hoisted(() => vi.fn())
 const mockUpdateCssRadius = vi.hoisted(() => vi.fn())
+const mockUpdateCssButtonRadius = vi.hoisted(() => vi.fn())
 
 vi.mock('../catalog.js', () => ({
   fetchDesignSystemCatalog: mockFetchCatalog,
@@ -29,6 +30,7 @@ vi.mock('../../../database/index.js', () => ({
 }))
 vi.mock('../radius-css.js', () => ({
   updateCssRadius: mockUpdateCssRadius,
+  updateCssButtonRadius: mockUpdateCssButtonRadius,
 }))
 
 const ENTRY = {
@@ -92,6 +94,39 @@ describe('installDesignKitForApp', () => {
     const { installDesignKitForApp } = await import('../install.js')
     await installDesignKitForApp('app1', 'modern-bento')
     expect(mockUpdateCssRadius).not.toHaveBeenCalled()
+  })
+
+  // --- AIROBUILD-2976: deterministic kit BUTTON radius → --radius-button ---
+  it('writes the button radius into --radius-button when the anchor carries one', async () => {
+    await primeRealInstallWithFiles({
+      'colors.md': '# palette',
+      'anchor.json': JSON.stringify({ radius: { base: 18, button: 24 } }),
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(mockUpdateCssButtonRadius).toHaveBeenCalledWith(mockWorkspaceObj.files, 24)
+  })
+
+  it('writes button radius for a sharp kit (radiusButton 0) — guard is !== undefined', async () => {
+    await primeRealInstallWithFiles({
+      'colors.md': '# palette',
+      'anchor.json': JSON.stringify({ radius: { base: 18, button: 0 } }),
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    const result = await installDesignKitForApp('app1', 'modern-bento')
+    expect('error' in result).toBe(false)
+    expect(mockUpdateCssButtonRadius).toHaveBeenCalledWith(mockWorkspaceObj.files, 0)
+  })
+
+  it('does not write button radius when the kit ships no button-radius source', async () => {
+    await primeRealInstallWithFiles({
+      'colors.md': '# palette',
+      'anchor.json': JSON.stringify({ radius: { base: 18 } }), // base only, no button source
+    })
+    const { installDesignKitForApp } = await import('../install.js')
+    await installDesignKitForApp('app1', 'modern-bento')
+    expect(mockUpdateCssButtonRadius).not.toHaveBeenCalled()
   })
 
   // --- AIROBUILD-2845 I2: bounded retry for TRANSIENT install failures ---

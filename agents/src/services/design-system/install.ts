@@ -12,7 +12,7 @@ import { AppMetadataRepository } from '../../database/index.js'
 import type { DesignKitRef } from '../../types/design-kit.js'
 import type { DesignSystemCatalogEntry, DesignKitDesign } from './types.js'
 import { extractKitTokens } from './kit-tokens.js'
-import { updateCssRadius } from './radius-css.js'
+import { updateCssRadius, updateCssButtonRadius } from './radius-css.js'
 import type { BrandKitTokens } from '@airo/shared/brand-data'
 
 const UPLOAD_CONCURRENCY = 8
@@ -196,6 +196,14 @@ export async function installDesignKitForApp(appId: string, slug: string): Promi
     // auto-select paths, since both route through installDesignKitForApp.
     if (result.tokens?.radiusBase !== undefined) {
       await updateCssRadius(workspace.files, result.tokens.radiusBase)
+    }
+
+    // Deterministically write the kit's button radius into --radius-button. The
+    // template Button `cva` consumes `rounded-[var(--radius-button)]`, so this one
+    // write makes every <Button> match the kit's button shape (pill/sharp/subtle)
+    // — the shadcn Button case a className codemod can't reach (AIROBUILD-3249).
+    if (result.tokens?.radiusButton !== undefined) {
+      await updateCssButtonRadius(workspace.files, result.tokens.radiusButton)
     }
 
     const message = `Installed design system \`${result.slug}\` (${result.written} files extracted to docs/ui-kit/). Call \`loadUiKit\` next to read the design system primitives and components.`
