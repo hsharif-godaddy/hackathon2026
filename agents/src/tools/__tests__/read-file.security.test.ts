@@ -82,7 +82,7 @@ describe('ReadFileTool', () => {
 
   describe('line range selection', () => {
     it('should pass offset and limit to view', async () => {
-      await readFileTool.readFile({ path: 'file.ts', startLine: 5, numLines: 10 });
+      await readFileTool.readFile({ path: 'file.ts', offset: 4, limit: 10 });
       expect(mockFiles.view).toHaveBeenCalledWith({ path: 'file.ts', offset: 4, limit: 10 });
     });
 
@@ -92,19 +92,19 @@ describe('ReadFileTool', () => {
       });
       readFileTool = new ReadFileTool(mockFiles);
 
-      const result = await readFileTool.readFile({ path: 'file.ts', startLine: 5, numLines: 2 });
+      const result = await readFileTool.readFile({ path: 'file.ts', offset: 4, limit: 2 });
       expect(result.success).toBe(true);
       expect(result.linesRead).toEqual({ start: 5, end: 6 });
       expect(result.totalLines).toBe(10);
     });
 
-    it('should error when startLine exceeds file length', async () => {
+    it('should error when offset exceeds file length', async () => {
       mockFiles = createStubWorkspaceFiles({
         view: vi.fn().mockResolvedValue(viewResult('', 3)),
       });
       readFileTool = new ReadFileTool(mockFiles);
 
-      const result = await readFileTool.readFile({ path: 'file.ts', startLine: 10 });
+      const result = await readFileTool.readFile({ path: 'file.ts', offset: 10 });
       expect(result.success).toBe(false);
       expect(result.error).toContain('exceeds file length');
     });

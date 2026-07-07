@@ -140,19 +140,21 @@ function editGuards(path, content) {
 
 // ---------- tool implementations ----------
 
-function _readFile({ path, startLine, numLines }) {
+function _readFile({ path, offset, limit }) {
   const blocked = isFileBlocked(path)
   if (blocked.blocked) throw new Error(`${blocked.reason} Do not retry — use a different approach.`)
   const abs = resolveInApp(path)
   if (!existsSync(abs)) throw new Error(`File not found: ${path}`)
   const all = readFileSync(abs, 'utf8').split('\n')
   const total = all.length
-  const start = startLine && startLine > 0 ? startLine : 1
-  const end = numLines ? Math.min(total, start + numLines - 1) : total
-  const numbered = all.slice(start - 1, end).map((l, i) => `${String(start + i).padStart(6)}|${l}`).join('\n')
-  const ranged = startLine || numLines
-  const header = `${path}${ranged ? ` [${start}-${end} of ${total}]` : ` [${total} lines]`}`
-  return `${header}\n${numbered}`
+  const start = Math.max(0, offset || 0)
+  if (start >= total) throw new Error(`Offset ${start} exceeds file length (${total} lines)`)
+  const cap = limit || 2000
+  const end = Math.min(total, start + cap)
+  const padWidth = String(end).length
+  return all.slice(start, end)
+    .map((l, i) => `${String(start + i + 1).padStart(padWidth)}\t${l}`)
+    .join('\n')
 }
 
 function _view(path, viewRange) {
@@ -166,7 +168,10 @@ function _view(path, viewRange) {
   const lines = readFileSync(abs, 'utf8').split('\n')
   const start = viewRange ? viewRange[0] : 1
   const end = viewRange && viewRange[1] !== -1 ? viewRange[1] : lines.length
-  return lines.slice(start - 1, end).map((l, i) => `${start + i}: ${l}`).join('\n')
+  const padWidth = String(end).length
+  return lines.slice(start - 1, end)
+    .map((l, i) => `${String(start + i).padStart(padWidth)}\t${l}`)
+    .join('\n')
 }
 
 // Whitespace/EOL-tolerant line-block match — used ONLY as a fallback when exact
@@ -211,7 +216,7 @@ function _strReplace(path, oldStr, newStr) {
       throw new Error(`Found ${tol.matches} whitespace-insensitive matches for old_str. Include more surrounding context to make it unique.`)
     }
     const lines = content.split('\n')
-    const snippet = lines.slice(0, 60).map((l, i) => `${String(i + 1).padStart(6)}|${l}`).join('\n')
+    const snippet = lines.slice(0, 60).map((l, i) => `${String(i + 1).padStart(6)}\t${l}`).join('\n')
     throw new Error(`No match found for old_str in this file.\n\nFile content (${lines.length} lines):\n${snippet}`)
   }
   if (count > 1) {
@@ -235,10 +240,8 @@ function _create(path, fileText) {
   editGuards(path, fileText)
   const abs = resolveInApp(path)
   // Parity with the canonical workspace write (dev-supervisor os.MkdirAll): create missing
-  // parent dirs so `create` into a new directory succeeds instead of throwing ENOENT. The
-  // target already passed editGuards + resolveInApp (in-app, not protected/immutable), so the
-  // parent is inside the same validated bounds. Warn (captured in logs) when a dir is new so a
-  // path typo that silently materializes a junk dir is visible in telemetry.
+  // parent dirs so `create` into a new directory succeeds instead of throwing ENOENT.
+  // Warn when a dir is new so a path typo that silently materializes a junk dir is visible.
   const dir = dirname(abs)
   if (!existsSync(dir)) console.warn(`turnscript.create: created missing parent directory ${relative(APP_ROOT, dir)}`)
   mkdirSync(dir, { recursive: true })

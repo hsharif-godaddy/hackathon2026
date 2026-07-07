@@ -768,9 +768,9 @@ func (s *Server) handleWorkspaceFilesView(w http.ResponseWriter, r *http.Request
 		first = false
 
 		if lineTruncated {
-			_, _ = fmt.Fprintf(w, "%*d|%s… [truncated]", padWidth, lineNum, line)
+			_, _ = fmt.Fprintf(w, "%*d\t%s… [truncated]", padWidth, lineNum, line)
 		} else {
-			_, _ = fmt.Fprintf(w, "%*d|%s", padWidth, lineNum, line)
+			_, _ = fmt.Fprintf(w, "%*d\t%s", padWidth, lineNum, line)
 		}
 	}
 }

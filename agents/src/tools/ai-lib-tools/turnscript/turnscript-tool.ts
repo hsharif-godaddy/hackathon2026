@@ -32,8 +32,8 @@ import { generateTurnscriptTypes } from './type-gen.js'
 // def; mirror the shapes here purely for type-gen (the real guards live in execute()).
 const readFileCodeSchema = z.object({
   path: z.string().describe('File path relative to app root'),
-  startLine: z.number().int().min(1).optional().describe('Start line (1-indexed). Omit to read from line 1'),
-  numLines: z.number().int().min(1).optional().describe('Line count from startLine. Omit to read to end'),
+  offset: z.number().int().min(0).optional().describe('The line number to start reading from (0-based). Only provide if the file is too large to read at once'),
+  limit: z.number().int().min(1).optional().describe('The number of lines to read. Only provide if the file is too large to read at once.'),
 })
 
 const directoryListingCodeSchema = z.object({
@@ -48,10 +48,10 @@ const directoryListingCodeSchema = z.object({
 const strReplaceCodeSchema = z.object({
   command: z.enum(['view', 'str_replace', 'create', 'insert']).describe('view | str_replace | create | insert'),
   path: z.string().describe('Path to the file (relative to app root)'),
-  view_range: z.array(z.number().int()).optional().describe('For view: [start_line, end_line] (1-indexed)'),
+  view_range: z.array(z.number().int()).optional().describe('For view: [start_line, end_line] (1-indexed, -1 for EOF)'),
   old_str: z.string().optional().describe('For str_replace: EXACT text to find (must match exactly once)'),
   new_str: z.string().optional().describe('For str_replace: replacement text'),
-  file_text: z.string().optional().describe('For create: full file content'),
+  file_text: z.string().optional().describe('For create: the complete raw file content'),
   insert_line: z.number().int().min(0).optional().describe('For insert: 0-indexed line to insert before'),
   insert_text: z.string().optional().describe('For insert: text to insert'),
 })
@@ -87,6 +87,8 @@ const DESCRIPTION = [
   API_TYPES,
   '',
   'Rules:',
+  '- readFile results use cat -n format (line number + tab + content). The line numbers are display-only.',
+  '  Never include line number prefixes in old_str, new_str, file_text, or insert_text.',
   '- Read every file you need UP FRONT, and batch those reads with Promise.all: the reads are',
   '  independent + idempotent, so fire them concurrently (one await for the whole read phase)',
   '  rather than awaiting each readFile/grepSearch/directoryListing one at a time.',

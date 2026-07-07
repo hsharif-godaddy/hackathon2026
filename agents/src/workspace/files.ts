@@ -106,7 +106,7 @@ export interface ViewOptions {
 
 export interface ViewResult {
   path: string;
-  /** Pre-formatted content with line numbers (format: "%Nd|line"). */
+  /** Pre-formatted content with line numbers (cat -n format: number + tab + content). */
   content: string;
   /** Total number of lines in the file. */
   lines: number;

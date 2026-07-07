@@ -53,7 +53,7 @@ function buildErrorSnippet(lines: string[], searchText: string): string {
     let result = '';
     let totalChars = 0;
     for (let i = 0; i < selected.length; i++) {
-      const fullLine = `${String(startLine + i).padStart(6)}|${selected[i]!}`;
+      const fullLine = `${String(startLine + i).padStart(6)}\t${selected[i]!}`;
       if (totalChars + fullLine.length + 1 > charBudget) {
         if (totalChars === 0) {
           const truncLen = Math.max(0, charBudget - 50);
@@ -136,7 +136,7 @@ function buildMultiMatchError(content: string, oldStr: string, lines: string[]):
         Math.max(sliceStart + 1, endLine0 + ctx + 1),
       );
       const block = lines.slice(sliceStart, sliceEndExclusive)
-        .map((line, j) => `${String(sliceStart + j + 1).padStart(6)}|${line}`)
+        .map((line, j) => `${String(sliceStart + j + 1).padStart(6)}\t${line}`)
         .join('\n');
       matchSnippets.push(`Match ${i + 1} (starts line ${startLine}):\n${block}`);
     }

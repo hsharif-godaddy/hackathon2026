@@ -327,15 +327,16 @@ const textEditorSchema = z.object({
  */
 export const textEditorSchemaAITool: Tool = createTool(
   `File editor with four commands:
-- view: Read a file's contents (optionally a line range) or list a directory
+- view: Read a file's contents (optionally a line range) or list a directory. Results use cat -n format (line number + tab + content).
 - str_replace: Replace an exact text match in a file (must match exactly once)
 - create: Create a new file or overwrite an existing one
 - insert: Insert text before a specific line number
 
 RULES:
-1. For str_replace, the old_str must match file content EXACTLY (whitespace, indentation). Read the file first if unsure.
-2. str_replace old_str must match exactly ONCE. Include more context lines to disambiguate if needed.
-3. For create, provide the complete file content in file_text.`,
+1. The line number prefix format from view/readFile is: line number + tab. Everything after the tab is the actual file content. Never include any part of the line number prefix in old_str, new_str, file_text, or insert_text.
+2. For str_replace, the old_str must match file content EXACTLY (whitespace, indentation). Read the file first if unsure.
+3. str_replace old_str must match exactly ONCE. Include more context lines to disambiguate if needed.
+4. For create, provide the complete raw file content in file_text — no line numbers, no metadata headers.`,
   textEditorSchema,
   async (input, context) => executeTextEditor(input, context),
 );

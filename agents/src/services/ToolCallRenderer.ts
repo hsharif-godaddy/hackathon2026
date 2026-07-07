@@ -82,14 +82,16 @@ export class ToolCallRenderer {
     const charCount = result.length;
     const sizeInfo = charCount < 1024 ? `${charCount} chars` : `${(charCount / 1024).toFixed(1)} KB`;
 
-    // Check if it was a partial read based on line numbers in args
-    const startLine = args?.startLine as number;
-    const numLines = args?.numLines as number;
-    if (startLine && numLines) {
-      const endLine = startLine + numLines - 1;
-      return `Read ${fileName} lines ${startLine}-${endLine} (${lineCount} lines, ${sizeInfo})`;
-    } else if (startLine) {
-      return `Read ${fileName} from line ${startLine} (${lineCount} lines, ${sizeInfo})`;
+    // Check if it was a partial read based on offset/limit in args
+    const offset: number | undefined = args?.offset as number | undefined;
+    const limit: number | undefined = args?.limit as number | undefined;
+    if (offset != null && limit) {
+      const endLine: number = offset + limit;
+      return `Read ${fileName} lines ${offset + 1}-${endLine} (${lineCount} lines, ${sizeInfo})`;
+    } else if (offset != null && offset > 0) {
+      return `Read ${fileName} from line ${offset + 1} (${lineCount} lines, ${sizeInfo})`;
+    } else if (limit) {
+      return `Read ${fileName} first ${limit} lines (${lineCount} lines, ${sizeInfo})`;
     } else {
       return `Read ${fileName} (${lineCount} lines, ${sizeInfo})`;
     }

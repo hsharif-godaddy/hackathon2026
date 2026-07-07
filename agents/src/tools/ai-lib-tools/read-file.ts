@@ -4,11 +4,11 @@ import { ReadFileTool, type ReadFileOptions } from '../read-file.js'
 import { createForWorkspace } from '../../workspace/index.js'
 
 export const readFileAITool: Tool = createTool(
-  'Read file contents with line numbers (format: "     1|line content"). Supports line range selection for large files. If blocked, try a different approach — no retries.',
+  'Read file contents. Each line is prefixed by its 1-based file line number and a tab (cat -n format). By default, reads up to 2000 lines starting from the beginning of the file. If blocked, try a different approach — no retries.',
   z.object({
     path: z.string().describe('File path relative to app root'),
-    startLine: z.number().min(1).optional().describe('Start line (1-indexed). Omit to read from line 1'),
-    numLines: z.number().min(1).optional().describe('Line count from startLine. Omit to read to end')
+    offset: z.number().int().min(0).optional().describe('The line number to start reading from (0-based). Only provide if the file is too large to read at once'),
+    limit: z.number().int().min(1).optional().describe('The number of lines to read. Only provide if the file is too large to read at once.')
   }),
   async (input, context) => {
     const appId = context?.metadata?.appId as string
@@ -28,17 +28,6 @@ export const readFileAITool: Tool = createTool(
       throw new Error(result.error || 'Failed to read file')
     }
 
-    let response = `${result.path}`
-    if (result.linesRead) {
-      response += ` [${result.linesRead.start}-${result.linesRead.end} of ${result.totalLines}]`
-    } else {
-      response += ` [${result.totalLines} lines]`
-    }
-    if (result.truncated) {
-      response += ' (truncated — use startLine/numLines to read remaining)'
-    }
-    response += `\n${result.content}`
-
-    return response
+    return result.content
   }
 )

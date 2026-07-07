@@ -25,13 +25,13 @@ function isMarkdownFile(path: string): boolean {
 }
 
 /**
- * Strip line numbers from content (format: "   123|content")
+ * Strip line numbers from content (cat -n format: "   123\tcontent" or legacy "   123|content")
  */
 function stripLineNumbers(content: string): string {
   return content
     .split('\n')
     .map(line => {
-      const match = line.match(/^\s*\d+\|(.*)$/)
+      const match = line.match(/^\s*\d+[\t|](.*)$/)
       return match ? match[1] : line
     })
     .join('\n')
@@ -59,50 +59,43 @@ export default function ReadFileToolRenderer({
   let filename = ''
   let fileContent = ''
   let metadata: Record<string, any> = {}
-  let startLine: number | undefined
-  let numLines: number | undefined
+  let offset: number | undefined
+  let limit: number | undefined
 
   if (input && typeof input === 'object') {
     const inputObj = input as any
     filePath = inputObj.path || ''
     filename = getFilename(filePath)
 
-    if (inputObj.startLine) {
-      startLine = inputObj.startLine
-      metadata[t('builder_tools_read_file_start_line')] = startLine
+    // Support both new (offset/limit) and legacy (startLine/numLines) params for history compat
+    if (inputObj.offset != null) {
+      offset = inputObj.offset
+      metadata[t('builder_tools_read_file_start_line')] = offset + 1
+    } else if (inputObj.startLine) {
+      offset = inputObj.startLine - 1
+      metadata[t('builder_tools_read_file_start_line')] = inputObj.startLine
     }
-    if (inputObj.numLines) {
-      numLines = inputObj.numLines
-      metadata[t('builder_tools_read_file_number_lines')] = numLines
+    if (inputObj.limit != null) {
+      limit = inputObj.limit
+      metadata[t('builder_tools_read_file_number_lines')] = limit
+    } else if (inputObj.numLines) {
+      limit = inputObj.numLines
+      metadata[t('builder_tools_read_file_number_lines')] = inputObj.numLines
     }
   }
 
   if (result && typeof result === 'string') {
-    // Parse the result string to extract metadata and content
+    // New format: just cat-n numbered content (no header).
+    // Legacy format: "path [N lines]\n" header followed by numbered content.
     const lines = result.split('\n')
-    let contentStartIndex = 0
+    const firstLineIsHeader = /^\S+ \[\d+(-\d+)?( of \d+| lines\])/.test(lines[0] || '')
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      if (line.startsWith(`${t('builder_common_file')}: `)) {
-        const extractedPath = line.substring(6).trim()
-        if (!filePath) {
-          filePath = extractedPath
-          filename = getFilename(extractedPath)
-        }
-      } else if (line.startsWith('Lines ')) {
-        metadata[t('builder_tools_read_file_lines_read')] = line.substring(6).trim()
-      } else if (line.startsWith('Total lines: ')) {
-        metadata[t('builder_tools_file_edit_metadata_lines_total')] = line.substring(13).trim()
-      } else if (line.startsWith('File size: ')) {
-        metadata[t('builder_tools_read_file_size')] = line.substring(11).trim()
-      } else if (line.trim() === '') {
-        contentStartIndex = i + 1
-        break
-      }
+    if (firstLineIsHeader) {
+      // Legacy: skip the header line
+      fileContent = lines.slice(1).join('\n')
+    } else {
+      fileContent = result
     }
-
-    fileContent = lines.slice(contentStartIndex).join('\n')
   }
 
   const hasContent = Boolean(fileContent)
@@ -147,9 +140,9 @@ export default function ReadFileToolRenderer({
   let displayName = filename ? `${t('builder_tools_read_file_title')}: ${filename}` : t('builder_tools_read_file_title')
 
   // Add range indicator if only a subset was read
-  if (filename && (startLine || numLines)) {
-    const start = startLine || 1
-    const end = numLines ? start + numLines - 1 : '...'
+  if (filename && (offset != null || limit)) {
+    const start = (offset ?? 0) + 1
+    const end = limit ? start + limit - 1 : '...'
     displayName += ` (lines ${start}-${end})`
   }
 

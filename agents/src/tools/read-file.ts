@@ -10,10 +10,10 @@ import { translateDockerPath } from '../utils/path-helper.js';
 export interface ReadFileOptions {
   /** Path to the file to read (relative to app root) */
   path: string;
-  /** Starting line number (1-indexed, optional) */
-  startLine?: number;
-  /** Number of lines to read from start line (optional, reads to end if not specified) */
-  numLines?: number;
+  /** Line offset to start reading from (0-based, optional) */
+  offset?: number;
+  /** Number of lines to read (optional, reads to end if not specified) */
+  limit?: number;
 }
 
 export interface ReadFileResult {
@@ -163,28 +163,26 @@ export class ReadFileTool {
         };
       }
 
-      const startLine = Math.max(1, options.startLine || 1);
-      const offset = startLine - 1;
-      const limit = options.numLines;
+      const offset: number = Math.max(0, options.offset || 0);
+      const limit: number | undefined = options.limit;
 
       const result = await this.files.view({ path: normalizedPath, offset, limit });
 
-      const totalLines = result.lines;
+      const totalLines: number = result.lines;
 
-      if (options.startLine && startLine > totalLines) {
+      if (options.offset != null && offset >= totalLines) {
         return {
           success: false,
           path: options.path,
           content: '',
           totalLines,
-          error: `Start line ${startLine} exceeds file length (${totalLines} lines)`,
+          error: `Offset ${offset} exceeds file length (${totalLines} lines)`,
         };
       }
 
-      // Content arrives pre-formatted with line numbers from the server.
-      const lineCount = result.content === '' ? 0 : result.content.split('\n').length;
-      const endLine = Math.min(offset + lineCount, totalLines);
-      const includeRange = options.startLine || options.numLines || result.truncated;
+      const lineCount: number = result.content === '' ? 0 : result.content.split('\n').length;
+      const endLine: number = Math.min(offset + lineCount, totalLines);
+      const includeRange: boolean = options.offset != null || !!options.limit || result.truncated;
 
       return {
         success: true,
@@ -193,7 +191,7 @@ export class ReadFileTool {
         totalLines,
         ...(includeRange ? {
           linesRead: {
-            start: startLine,
+            start: offset + 1,
             end: endLine,
           }
         } : {}),

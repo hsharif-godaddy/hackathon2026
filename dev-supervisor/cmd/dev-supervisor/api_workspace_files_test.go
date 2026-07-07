@@ -75,8 +75,8 @@ func TestWorkspaceFilesView_Basic(t *testing.T) {
 	if trunc := w.Header().Get("X-Truncated"); trunc != "" {
 		t.Errorf("expected no X-Truncated header, got %s", trunc)
 	}
-	// Body should be numbered lines (1-indexed).
-	expected := "1|line1\n2|line2\n3|line3"
+	// Body should be numbered lines (cat-n format: number + tab).
+	expected := "1\tline1\n2\tline2\n3\tline3"
 	if w.Body.String() != expected {
 		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
@@ -92,7 +92,7 @@ func TestWorkspaceFilesView_OffsetLimit(t *testing.T) {
 	})
 
 	// Lines 2-3 (offset=1 means skip first line, limit=2 means return 2 lines).
-	expected := "2|b\n3|c"
+	expected := "2\tb\n3\tc"
 	if w.Body.String() != expected {
 		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
@@ -226,7 +226,7 @@ func TestWorkspaceFilesView_LongLineTruncation(t *testing.T) {
 	if !strings.Contains(body, "… [truncated]") {
 		t.Error("expected truncation marker in output for long line")
 	}
-	if !strings.Contains(body, "3|after long") {
+	if !strings.Contains(body, "3\tafter long") {
 		t.Error("expected line after long line to be present")
 	}
 }
@@ -263,13 +263,13 @@ func TestWorkspaceFilesView_PaddingWidth(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	// Line 1 should be padded to 2 chars: " 1|L1"
-	if !strings.HasPrefix(body, " 1|L1") {
+	// Line 1 should be padded to 2 chars: " 1\tL1"
+	if !strings.HasPrefix(body, " 1\tL1") {
 		t.Errorf("expected padding width 2 for line 1, got prefix %q", body[:min(10, len(body))])
 	}
-	// Line 10 should be "10|L10"
-	if !strings.Contains(body, "10|L10") {
-		t.Errorf("expected '10|L10' in body")
+	// Line 10 should be "10\tL10"
+	if !strings.Contains(body, "10\tL10") {
+		t.Errorf("expected '10\\tL10' in body")
 	}
 }
 
@@ -286,7 +286,7 @@ func TestWorkspaceFilesView_NoTrailingNewline(t *testing.T) {
 	if lines := w.Header().Get("X-File-Lines"); lines != "2" {
 		t.Errorf("expected X-File-Lines=2, got %s", lines)
 	}
-	expected := "1|first\n2|second"
+	expected := "1\tfirst\n2\tsecond"
 	if w.Body.String() != expected {
 		t.Errorf("body mismatch:\n  got:  %q\n  want: %q", w.Body.String(), expected)
 	}
@@ -1711,8 +1711,8 @@ func TestWorkspaceFilesView_PublicAssetsRoot(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	// Single-line file: "1|asset content"
-	expected := "1|asset content"
+	// Single-line file: "1\tasset content"
+	expected := "1\tasset content"
 	if w.Body.String() != expected {
 		t.Errorf("expected %q, got %q", expected, w.Body.String())
 	}

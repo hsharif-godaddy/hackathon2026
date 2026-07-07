@@ -9,7 +9,7 @@ describe('turnscript-type-gen', () => {
       const out = generateTurnscriptTypes({
         readFile: z.object({
           path: z.string(),
-          startLine: z.number().int().min(1).optional(),
+          offset: z.number().int().min(0).optional(),
         }),
       })
 
@@ -18,7 +18,7 @@ describe('turnscript-type-gen', () => {
       expect(out).toContain('): Promise<string>')
       expect(out).toContain('path: string')
       // optional field renders with `?`
-      expect(out).toMatch(/startLine\?: number/)
+      expect(out).toMatch(/offset\?: number/)
     })
 
     it('renders enums and command unions from a str_replace-shaped schema', () => {

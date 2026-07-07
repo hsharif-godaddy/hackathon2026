@@ -63,12 +63,14 @@ describe('turnscript in-container shim', () => {
   beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'cm-shim-')) })
   afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-  it('readFile returns line-numbered content + records a dispatch', () => {
+  it('readFile returns cat-n formatted content + records a dispatch', () => {
     writeFileSync(join(dir, 'a.txt'), 'one\ntwo\nthree')
     const env = run(dir, `async () => turnscript.readFile({ path: 'a.txt' })`)
     expect(env.ok).toBe(true)
-    expect(String(env.result)).toContain('a.txt [3 lines]')
-    expect(String(env.result)).toContain('     1|one')
+    expect(String(env.result)).toContain('1\tone')
+    expect(String(env.result)).toContain('2\ttwo')
+    expect(String(env.result)).toContain('3\tthree')
+    expect(String(env.result)).not.toContain('[3 lines]')
     expect(env.dispatches).toHaveLength(1)
     expect(env.dispatches[0]).toMatchObject({ tool: 'readFile', ok: true, status: 'ok' })
   })
@@ -260,11 +262,11 @@ describe('turnscript in-container shim', () => {
         turnscript.readFile({ path: 'p.txt' }),
         turnscript.readFile({ path: 'q.txt' }),
       ])
-      return a.split('\\n')[1] + ' ' + b.split('\\n')[1]
+      return a + ' ' + b
     }`)
     expect(env.ok).toBe(true)
-    expect(String(env.result)).toContain('|P')
-    expect(String(env.result)).toContain('|Q')
+    expect(String(env.result)).toContain('1\tP')
+    expect(String(env.result)).toContain('1\tQ')
     expect(env.dispatches).toHaveLength(2)
   })
 
