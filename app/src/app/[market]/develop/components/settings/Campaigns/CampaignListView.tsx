@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import { useCallback } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
-import ChevronLeftIcon from '@ux/icon/chevron-left'
 import MegaphoneIcon from '@ux/icon/megaphone'
 import text from '@ux/text'
 
@@ -13,36 +12,26 @@ import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/comp
 import { focusChatWithCreateCampaignPrompt } from '@/app/[market]/develop/components/settings/Campaigns/createCampaignInChat'
 import type { Campaign } from '@/app/[market]/develop/components/settings/Campaigns/types'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
-import { ViewMode } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
 import { useTranslations } from '@/hooks/useTranslations'
-import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { logClickEvent } from '@/utils/instrumentation'
 
 interface CampaignListViewProps {
   campaigns: Campaign[]
   loading: boolean
   onSelectCampaign: (campaign: Campaign) => void
-  onBack?: () => void
 }
 
-export default function CampaignListView({ campaigns, loading, onSelectCampaign, onBack }: CampaignListViewProps) {
+export default function CampaignListView({ campaigns, loading, onSelectCampaign }: CampaignListViewProps) {
   const t = useTranslations()
   const router = useRouter()
   const appId = useAppIdFromParams()
-  const handleViewModeChange = useDevelopPageStore((state) => state.handleViewModeChange)
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback((): void => {
+    logClickEvent('settings.campaigns.create')()
     focusChatWithCreateCampaignPrompt(t)
   }, [t])
-
-  const handleHubBack = useCallback(() => {
-    if (onBack) {
-      onBack()
-      return
-    }
-    handleViewModeChange(ViewMode.PREVIEW, false)
-  }, [onBack, handleViewModeChange])
 
   if (!appId) {
     return (
@@ -69,18 +58,9 @@ export default function CampaignListView({ campaigns, loading, onSelectCampaign,
           inlineAlignChildren="center"
           gap="md"
         >
-          <Box orientation="horizontal" inlineAlignChildren="center" gap="sm" className="flex-1 min-w-0">
-            <Button
-              design="inline"
-              size="small"
-              icon={<ChevronLeftIcon className="size-2.5 rtl:scale-x-[-1]" />}
-              aria-label={translateCampaignKey(t, CAMPAIGN_KEYS.marketingHubBack)}
-              onClick={handleHubBack}
-            />
-            <text.span as="title" size={2} className="truncate">
-              {translateCampaignKey(t, CAMPAIGN_KEYS.campaignsTitle)}
-            </text.span>
-          </Box>
+          <text.span as="title" size={2} className="truncate flex-1 min-w-0">
+            {translateCampaignKey(t, CAMPAIGN_KEYS.campaignsTitle)}
+          </text.span>
 
           <Button
             design="primary"

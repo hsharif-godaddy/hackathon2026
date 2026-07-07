@@ -37,7 +37,6 @@ const MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsSocial,
   CanvasId.SettingsVisualScan,
   CanvasId.SettingsAnalytics,
-  CanvasId.SettingsMarketing,
   CanvasId.SettingsCampaigns,
   CanvasId.SettingsGitHub,
   CanvasId.SettingsSso,

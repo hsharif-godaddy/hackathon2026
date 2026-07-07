@@ -24,12 +24,6 @@ const SecretsPanel = dynamic(
 const BackupsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/BackupsPanel'), {
   loading: () => <SettingsLoadingState fullPage />,
 })
-const MarketingPanel = dynamic(() => import('@/app/[market]/develop/components/settings/MarketingPanel'), {
-  loading: () => <SettingsLoadingState fullPage />,
-})
-const CampaignsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/CampaignsPanel'), {
-  loading: () => <SettingsLoadingState fullPage />,
-})
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), {
   loading: () => <PanelSkeleton />,
 })
@@ -60,13 +54,11 @@ const SETTINGS_CANVAS_TO_SECTION: Partial<Record<CanvasId, SettingsSection>> = {
   [CanvasId.SettingsAnalytics]: SettingsSection.ANALYTICS,
   [CanvasId.SettingsBackups]: SettingsSection.BACKUPS,
   [CanvasId.SettingsDatabase]: SettingsSection.DATABASE,
-  [CanvasId.SettingsMarketing]: SettingsSection.MARKETING,
   [CanvasId.SettingsSecurity]: SettingsSection.SECURITY,
   [CanvasId.SettingsSecrets]: SettingsSection.SECRETS,
   [CanvasId.SettingsSocial]: SettingsSection.SOCIAL,
   [CanvasId.SettingsSso]: SettingsSection.SSO,
   [CanvasId.SettingsVisualScan]: SettingsSection.VISUAL_SCAN,
-  [CanvasId.SettingsCampaigns]: SettingsSection.CAMPAIGNS,
   [CanvasId.SettingsGitHub]: SettingsSection.GITHUB,
 }
 
@@ -79,8 +71,6 @@ const SECTION_TO_COMPONENT: Partial<Record<SettingsSection, ComponentType<{ appI
   [SettingsSection.SOCIAL]: ({ appId }) => <SocialPanel siteId={appId} />,
   [SettingsSection.VISUAL_SCAN]: () => <VisualScanPanel />,
   [SettingsSection.ANALYTICS]: () => <AnalyticsPanel />,
-  [SettingsSection.MARKETING]: () => <MarketingPanel />,
-  [SettingsSection.CAMPAIGNS]: () => <CampaignsPanel />,
   [SettingsSection.GITHUB]: () => <GitHubPanel />,
   [SettingsSection.SSO]: () => <SsoPanel />,
 }

@@ -47,7 +47,7 @@ export function useOpenSocialPostCanvas(): UseOpenSocialPostCanvasResult {
       ? { ...origin, previousCanvasId: activeCanvasId ?? null }
       : origin
     if (useCanvasTabs) {
-      useCommanderStore.getState().openCanvas(CanvasId.SettingsMarketing)
+      useCommanderStore.getState().openCanvas(CanvasId.SettingsCampaigns)
       useDevelopPageStore.getState().showMarketingSocialPost(post, nextOrigin)
       return
     }

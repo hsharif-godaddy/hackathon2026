@@ -50,16 +50,6 @@ describe('useSettingsNavItems', () => {
     expect(result.current.length).toBeGreaterThan(0);
   });
 
-  it('never includes the Marketing Campaigns item — it lives in the header now (RUBICON-535)', () => {
-    // Even with the campaigns feature flag on, campaigns is no longer a settings/nav entry;
-    // the header megaphone is the entry point.
-    mockSwitchboardResults['appbuilder-marketing-campaigns'] = true;
-
-    const { result } = renderHookWithProviders(() => useSettingsNavItems());
-
-    expect(result.current.find(item => item.id === SettingsSection.CAMPAIGNS)).toBeUndefined();
-  });
-
   it('should include project settings item', () => {
     const { result } = renderHookWithProviders(() => useSettingsNavItems());
 

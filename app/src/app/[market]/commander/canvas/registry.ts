@@ -1,7 +1,6 @@
 'use client'
 
 import type { ComponentType, SVGProps } from 'react'
-import CalendarIcon from '@ux/icon/calendar'
 import CodeIcon from '@ux/icon/code'
 import ColorPaletteIcon from '@ux/icon/color-palette'
 import ContentIcon from '@ux/icon/content'
@@ -42,7 +41,6 @@ export enum CanvasId {
   SettingsSocial = 'settings.social',
   SettingsVisualScan = 'settings.visualScan',
   SettingsAnalytics = 'settings.analytics',
-  SettingsMarketing = 'settings.marketing',
   SettingsCampaigns = 'settings.campaigns',
   SettingsGitHub = 'settings.github',
   SettingsSso = 'settings.sso',
@@ -242,24 +240,14 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     activation: { settingsSection: SettingsSection.VISUAL_SCAN },
     switchboardFlag: 'appbuilder-settings-visualscan',
   },
-  [CanvasId.SettingsMarketing]: {
-    id: CanvasId.SettingsMarketing,
-    labelKey: 'builder_settings_nav_marketing',
-    fallbackLabel: 'Marketing',
-    Icon: CalendarIcon,
-    dismissible: true,
-    defaultOpen: false,
-    activation: { settingsSection: SettingsSection.MARKETING },
-    switchboardFlag: 'appbuilder-settings-marketing',
-  },
   [CanvasId.SettingsCampaigns]: {
     id: CanvasId.SettingsCampaigns,
-    labelKey: 'builder_settings_nav_campaigns',
-    fallbackLabel: 'Campaigns',
+    labelKey: 'builder_settings_nav_marketing',
+    fallbackLabel: 'Marketing',
     Icon: MegaphoneIcon,
     dismissible: true,
     defaultOpen: false,
-    activation: { settingsSection: SettingsSection.CAMPAIGNS },
+    activation: { viewMode: ViewMode.MARKETING },
     switchboardFlag: 'appbuilder-marketing-campaigns',
   },
   [CanvasId.Docs]: {
@@ -303,7 +291,6 @@ export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsGitHub,
   CanvasId.Inbox,
   CanvasId.Automations,
-  CanvasId.SettingsMarketing,
   CanvasId.Media,
   CanvasId.SettingsSecrets,
   CanvasId.SettingsSecurity,

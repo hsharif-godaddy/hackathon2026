@@ -44,7 +44,6 @@ export const CAMPAIGN_KEYS = {
   deleteConfirmCancel: 'builder_campaign_delete_confirm_cancel',
   close: 'builder_campaign_close',
   schedule: 'builder_campaign_schedule',
-  marketingHubBack: 'builder_campaign_marketing_hub_back',
   listBack: 'builder_campaign_list_back',
   listPageDescription: 'builder_campaign_list_page_description',
   createNew: 'builder_campaign_create_new',

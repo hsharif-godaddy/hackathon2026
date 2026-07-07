@@ -11,13 +11,13 @@ export const CAMPAIGN_DEFAULT_MESSAGES: Record<string, string> = {
   builder_campaign_see_details: 'See details',
   builder_campaign_content_pieces: '{count, plural, one {# content piece} other {# content pieces}}',
   builder_campaign_creating_plan: 'Creating campaign plan...',
-  builder_campaigns_title: 'Campaigns',
+  builder_campaigns_title: 'Marketing Campaigns',
   builder_campaigns_description: 'Track your marketing campaigns, content schedule, and performance',
   builder_campaigns_create: 'Create Campaign',
   builder_campaigns_loading: 'Loading campaigns...',
   builder_campaigns_empty_title: 'No campaigns yet',
   builder_campaigns_empty_description:
-    'Ask Airo to create a marketing campaign. It will generate a plan with blog posts, social content, and ads tailored to your business.',
+    'Ask Airo to create a marketing campaign. It will generate a plan with content tailored to your business.',
   builder_campaigns_no_app_title: 'No app selected',
   builder_campaigns_no_app_description: 'Select an app to view its campaigns.',
   builder_campaigns_go_to_apps: 'Go to Apps',
@@ -32,7 +32,6 @@ export const CAMPAIGN_DEFAULT_MESSAGES: Record<string, string> = {
   builder_campaign_close: 'Close',
   builder_campaign_status: 'Status',
   builder_campaign_schedule: 'Schedule',
-  builder_campaign_marketing_hub_back: 'Back to Marketing Hub',
   builder_campaign_list_back: 'Back to all Campaigns',
   builder_campaign_list_page_description:
     'Marketing campaigns let you create and publish a mix of content, all at once.',

@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode } from 'react';
-import CalendarIcon from '@ux/icon/calendar';
 import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
@@ -59,7 +58,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const visualScan = useSwitchboard('appbuilder-settings-visualscan');
   const secrets = useSwitchboard('appbuilder-settings-secrets');
   const social = useSwitchboard('appbuilder-settings-social');
-  const marketing = useSwitchboard('appbuilder-settings-marketing');
   const seo = useSeoSettingsEnabled();
   const displayAds = useSwitchboard('appbuilder-settings-display-ads');
   const githubSync = useSwitchboard('appbuilder-github-sync');
@@ -137,12 +135,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       id: SettingsSection.VISUAL_SCAN,
       label: t('builder_settings_nav_visualscan'),
       icon: <ContentIcon />,
-      disabled: false,
-    }] : []),
-    ...(marketing ? [{
-      id: SettingsSection.MARKETING,
-      label: t('builder_settings_nav_marketing'),
-      icon: <CalendarIcon />,
       disabled: false,
     }] : []),
     ...(displayAds ? [{

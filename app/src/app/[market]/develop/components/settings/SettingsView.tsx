@@ -25,9 +25,6 @@ const DisplayAdsPanel = dynamic(() => import('@/app/[market]/develop/components/
 
 // Uses SettingsLoadingState as its either RemoteModulePage or is complex to create a skeleton
 const BackupsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/BackupsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
-const MarketingPanel = dynamic(() => import('@/app/[market]/develop/components/settings/MarketingPanel'), { loading: () => <SettingsLoadingState fullPage />  })
-const CampaignsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/CampaignsPanel'), { loading: () => <SettingsLoadingState fullPage />  })
-
 // Uses default skeleton as its matching the structure
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
@@ -78,10 +75,8 @@ export default function SettingsView() {
   const isVisualScanEnabled = useSwitchboard('appbuilder-settings-visualscan');
   const isSecretsEnabled = useSwitchboard('appbuilder-settings-secrets');
   const isSocialEnabled = useSwitchboard('appbuilder-settings-social');
-  const isMarketingEnabled = useSwitchboard('appbuilder-settings-marketing');
   const isDisplayAdsEnabled = useSwitchboard('appbuilder-settings-display-ads');
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
-  const isCampaignsEnabled = useSwitchboard('appbuilder-marketing-campaigns');
   const isSeoEnabled = useSeoSettingsEnabled();
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
   const isMultiUserEnabled = useSwitchboard('aab-multi-user');
@@ -114,9 +109,6 @@ export default function SettingsView() {
       case SettingsSection.VISUAL_SCAN:
         if (isVisualScanEnabled === undefined) return sectionSkeleton;
         return isVisualScanEnabled ? <VisualScanPanel /> : null;
-      case SettingsSection.MARKETING:
-        if (isMarketingEnabled === undefined) return sectionSkeleton;
-        return isMarketingEnabled ? <MarketingPanel /> : null;
       case SettingsSection.DISPLAY_ADS:
         if (isDisplayAdsEnabled === undefined) return sectionSkeleton;
         return isDisplayAdsEnabled ? <DisplayAdsPanel appId={appId} /> : null;
@@ -129,9 +121,6 @@ export default function SettingsView() {
         // returns null when ssoRequired is false, so wiring it here is safe
         // for non-ent apps too.
         return <SsoPanel />;
-      case SettingsSection.CAMPAIGNS:
-        if (isCampaignsEnabled === undefined) return sectionSkeleton;
-        return isCampaignsEnabled ? <CampaignsPanel /> : null;
       case SettingsSection.SEO:
         if (isSeoEnabled === undefined) return sectionSkeleton;
         return isSeoEnabled ? <SeoPanel siteId={appId} /> : null;

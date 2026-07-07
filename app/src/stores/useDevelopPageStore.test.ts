@@ -23,12 +23,11 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
     const DEFAULT_CHAT_PANE_WIDTH = 415;
     const WIDE_CHAT_PANE_WIDTH = 616; // 640 - 24
 
-    // Wide sections: BACKUPS, DATABASE, DOMAIN, MARKETING, SECRETS (ANALYTICS is now a ChatTab)
+    // Wide sections: BACKUPS, DATABASE, DOMAIN, SECRETS (ANALYTICS is now a ChatTab)
     const wideSections = [
       SettingsSection.BACKUPS,
       SettingsSection.DATABASE,
       SettingsSection.DOMAIN,
-      SettingsSection.MARKETING,
       SettingsSection.SECRETS,
     ];
 
@@ -419,7 +418,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
 
         // Switch to another wide section (should keep same originalChatPaneWidth)
         act(function switchWide() {
-          useDevelopPageStore.getState().setActiveSettingsSection(SettingsSection.MARKETING);
+          useDevelopPageStore.getState().setActiveSettingsSection(SettingsSection.SECRETS);
         });
 
         const state = useDevelopPageStore.getState();

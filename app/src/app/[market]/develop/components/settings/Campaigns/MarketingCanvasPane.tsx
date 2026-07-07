@@ -21,12 +21,7 @@ import { logger } from '@/lib/request-context'
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
-interface MarketingCanvasPaneProps {
-  /** Called when the user clicks Back in list view. Omit to hide the back button. */
-  onBack?: () => void
-}
-
-export default function MarketingCanvasPane({ onBack }: MarketingCanvasPaneProps = {}) {
+export default function MarketingCanvasPane() {
   const t = useTranslations()
   const appId = useAppIdFromParams()
   const marketingView = useDevelopPageStore((state) => state.marketingView)
@@ -149,7 +144,7 @@ export default function MarketingCanvasPane({ onBack }: MarketingCanvasPaneProps
   }, [marketingView, loading, selectedCampaignId, campaign, showMarketingList, t])
 
   const shellClass = 'h-full flex flex-col'
-  const innerClass = 'relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor'
+  const innerClass = 'relative h-full overflow-auto rounded-lg md:rounded-b-none bg-intents-ux-box-backgroundColor'
 
   if (error && marketingView === 'list') {
     return (
@@ -183,7 +178,6 @@ export default function MarketingCanvasPane({ onBack }: MarketingCanvasPaneProps
             campaigns={campaigns}
             loading={loading}
             onSelectCampaign={handleSelectCampaign}
-            onBack={onBack}
           />
         </div>
       </div>

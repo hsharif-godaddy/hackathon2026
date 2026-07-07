@@ -42,7 +42,7 @@ export function useOpenMarketingCampaign(): UseOpenMarketingCampaignResult {
       return
     }
     if (useCanvasTabs) {
-      useCommanderStore.getState().openCanvas(CanvasId.SettingsMarketing)
+      useCommanderStore.getState().openCanvas(CanvasId.SettingsCampaigns)
       useDevelopPageStore.getState().showMarketingList()
       return
     }
@@ -55,7 +55,7 @@ export function useOpenMarketingCampaign(): UseOpenMarketingCampaignResult {
       return
     }
     if (useCanvasTabs) {
-      useCommanderStore.getState().openCanvas(CanvasId.SettingsMarketing)
+      useCommanderStore.getState().openCanvas(CanvasId.SettingsCampaigns)
       useDevelopPageStore.getState().showMarketingDetail(campaignId)
       return
     }

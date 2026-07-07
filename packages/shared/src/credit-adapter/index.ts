@@ -12,7 +12,6 @@ export interface AdapterLogger {
 
 const DEFAULT_LOGGER: AdapterLogger = {
   error: (event, ctx) => {
-    // eslint-disable-next-line no-console
     console.error(event, ctx)
   },
 }
