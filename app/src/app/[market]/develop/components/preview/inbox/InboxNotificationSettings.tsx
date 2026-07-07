@@ -43,6 +43,7 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
   const [direction, setDirection] = useState(1);
   const [draftEmail, setDraftEmail] = useState('');
   const [panelHeight, setPanelHeight] = useState<number>();
+  const [panelWidth, setPanelWidth] = useState<number>();
   const [animateHeight, setAnimateHeight] = useState(false);
 
   // Server state lives in the React Query cache; only fetch while the popover is
@@ -56,13 +57,18 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
   const notificationEmail = staff?.notificationEmail ?? '';
   const emailNotifications = emailNotificationsData?.emailNotifications ?? false;
 
-  // Measure the entering view's natural height as it mounts. Each navigation
-  // remounts the active branch (including a return to `list` after a save,
-  // which may have a longer email subtitle), so the height stays current
-  // without a ResizeObserver.
+  // Measure the entering view's natural width and height as it mounts. The view
+  // is absolutely positioned (so views can slide-crossfade), so it contributes
+  // nothing to the panel's box — the panel animates to these measured values
+  // instead. The inner view sizes to its content within a min/max bound, so the
+  // panel accommodates any title/language up to the cap. Each navigation
+  // remounts the active branch (including a return to `list` after a save, which
+  // may have a longer email subtitle), so the size stays current without a
+  // ResizeObserver.
   const measureActiveView = useCallback((node: HTMLDivElement | null) => {
     if (node) {
       setPanelHeight(node.offsetHeight);
+      setPanelWidth(node.offsetWidth);
     }
   }, []);
 
@@ -84,6 +90,7 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
       setDirection(1);
       setDraftEmail('');
       setPanelHeight(undefined);
+      setPanelWidth(undefined);
       setAnimateHeight(false);
     }
   }
@@ -169,7 +176,7 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
             onClick={handleEmailNotificationsToggle}
           />
           <div className='min-w-0 flex-1'>
-            <text.span as='action' size={0} className='block whitespace-nowrap'>
+            <text.span as='action' size={0} className='block truncate'>
               {t('builder_inbox_notifications_label', undefined, 'Email Notifications')}
             </text.span>
             <text.p emphasis='passive' size={-1} className='m-0 truncate'>
@@ -177,6 +184,7 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
             </text.p>
           </div>
           <Button
+            className='shrink-0'
             design='minimal'
             size='sm'
             icon={<ChevronRightIcon width={16} height={16} />}
@@ -261,14 +269,14 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
       </PopoverTrigger>
       <PopoverContent
         align='end'
-        className='min-w-[320px] w-auto p-0'
+        className='min-w-[320px] max-w-[420px] w-auto p-0'
         data-testid='inbox-notification-settings-menu'
       >
         <motion.div
           initial={false}
-          animate={{ height: panelHeight }}
+          animate={{ height: panelHeight, width: panelWidth }}
           transition={animateHeight ? slideTransition : { duration: 0 }}
-          className='relative w-[320px] min-w-[320px] overflow-hidden'
+          className='relative min-w-[320px] max-w-[420px] overflow-hidden'
           data-testid='inbox-notification-settings-panel'
         >
           <AnimatePresence initial={false} custom={direction}>
@@ -276,7 +284,7 @@ export function InboxNotificationSettings({ brandId, disabled }: InboxNotificati
               key={view}
               ref={measureActiveView}
               {...slideMotionProps(direction)}
-              className='absolute inset-x-0 top-0 w-full min-w-[320px]'
+              className='absolute left-0 top-0 w-max min-w-[320px] max-w-[420px]'
             >
               {view === 'list' && renderSettingsList()}
               {view === 'edit-email' && renderNotificationEmailEdit()}
