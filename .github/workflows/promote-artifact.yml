@@ -29,12 +29,13 @@ on:
         required: true
         type: string
       strategy:
-        description: 'Promotion strategy (dark_release deploys at 0% traffic; reach it via x-katana-version)'
+        description: 'Promotion strategy (canary, the default, ramps weight in steps to avoid demotion-race 503s; dark_release deploys at 0% traffic, reach it via x-katana-version)'
         required: false
-        default: 'simple'
+        default: 'canary'
         type: choice
         options:
           - 'simple'
+          - 'canary'
           - 'dark_release'
       dark_ttl:
         description: 'dark_release only: how long before Katana demotes the dark artifact, as a duration like 3h or 90m. Default 3h. Ignored for simple deploys (they never carry a TTL).'
@@ -47,7 +48,7 @@ on:
         type: boolean
         default: false
 
-run-name: "[${{ inputs.component }}] ${{ inputs.strategy == 'dark_release' && 'DARK-RELEASE' || 'SIMPLE' }}: Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
+run-name: "[${{ inputs.component }}] ${{ inputs.strategy == 'dark_release' && 'DARK-RELEASE' || inputs.strategy == 'canary' && 'CANARY' || 'SIMPLE' }}: Promoting ${{ inputs.artifact_id }} to ${{ inputs.environment }} | actor: ${{ github.actor }}"
 
 permissions:
   id-token: write # Required for Katana auth

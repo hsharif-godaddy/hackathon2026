@@ -324,6 +324,9 @@ pipeline:
             component: app
             environment: prod
             artifact_id: '{{test.deploy-app.artifact_id}}'
+            # canary ramps weight in steps so a demoted target group is only dropped
+            # after its weight hits 0 — avoids the routing-race 503s (AIROBUILD-3394).
+            strategy: canary
             skip_e2e: 'true'
 
         - id: upsert-reload-preprov
