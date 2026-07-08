@@ -394,7 +394,7 @@ app.put(
   adminServiceAddonsPut,
 );
 app.delete(
-  "/api/appointments/admin/services/:id/addons",
+  "/api/appointments/admin/services/:id/addons/:addonId",
   requireAdmin,
   requireFeature("admin.addons"),
   adminServiceAddonsDelete,
