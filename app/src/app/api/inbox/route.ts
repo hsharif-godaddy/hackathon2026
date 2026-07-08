@@ -194,12 +194,18 @@ export const POST = withCustomerAuth(async (
   }
 
   if (!upstream.ok) {
+    const nowSeconds: number = Math.floor(Date.now() / 1000);
     logger.warn('inbox.bff.proxy.error', {
       operation: body.operation,
       brandId: body.brandId,
       status: upstream.status,
       path: resolved.path,
       upstreamBody: data ? JSON.stringify(data).slice(0, 1000) : null,
+      tokenExp: authContext.user.exp,
+      tokenHbi: authContext.user.hbi,
+      tokenTTLSeconds: authContext.user.exp ? authContext.user.exp - nowSeconds : undefined,
+      tokenAgeSeconds: authContext.user.iat ? nowSeconds - authContext.user.iat : undefined,
+      isPersistent: authContext.user.isPersistent,
     });
   } else {
     logger.info('inbox.bff.proxy.success', {

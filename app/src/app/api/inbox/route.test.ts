@@ -23,7 +23,11 @@ vi.stubEnv('ENVIRONMENT_NAME', 'development');
 const { POST } = await import('./route');
 
 describe('POST /api/inbox', () => {
-  const createAuthContext = (jwt?: string) => ({ jwt });
+  const createAuthContext = (jwt?: string) => ({
+    jwt,
+    user: { shopperId: 'test-shopper', customerId: 'test-customer', exp: 1781000000, iat: 1780999000, hbi: 1780999500 },
+    isAuthenticated: true as const,
+  });
 
   function makeRequest(body: unknown, host = 'local.gasket.dev-godaddy.com:8443'): NextRequest {
     return new NextRequest('http://localhost/api/inbox', {

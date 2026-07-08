@@ -112,6 +112,10 @@ export async function dispatch<T>(
   }
 
   if (!clientResult.success) {
+    logger.warn(`inbox.client.${args.operation}.client_action_failed`, {
+      ...logCtx,
+      error: clientResult.error || 'client action failed',
+    });
     return { success: false, error: clientResult.error || 'client action failed' };
   }
 
