@@ -238,10 +238,7 @@ export function useDeploymentsQuery({
           isFirstPublish,
         });
 
-        // Suppress the confetti congrats modal when this publish is also connecting a custom
-        // domain — that path is communicated via chat lifecycle messages and lands the user on
-        // the domain connect page instead (AIROBUILD-3501).
-        if (isFirstPublish && !publishState.publishConnectFqdn) {
+        if (isFirstPublish) {
           setShowFirstPublishCongrats(appId, true);
         }
 

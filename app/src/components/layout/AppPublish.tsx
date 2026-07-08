@@ -39,13 +39,12 @@ import { useAppSsoStatus } from '@/hooks/useAppSsoStatus';
 import { useChatTabs } from '@/hooks/useChatTabs';
 import { MAX_POLLING_DURATION_MS, useDeploymentsQuery } from '@/hooks/useDeploymentsQuery';
 import { useDnsConflictGate } from '@/hooks/useDnsConflictGate';
-import { useDomainJobPolling } from '@/hooks/useDomainJobPolling';
 import { useDomainsQuery } from '@/hooks/useDomainsQuery';
 import { useGitHistoryQuery } from '@/hooks/useGitHistory';
 import { useGscSitemapOnPublish } from '@/hooks/useGscSitemapOnPublish';
 import { useHivemind } from '@/hooks/useHivemind';
 import { useIsHistoryDisabled } from '@/hooks/useIsHistoryDisabled';
-import { type DomainMutationDetails, type ModifyDomainsPayload, useModifyDomains } from '@/hooks/useModifyDomains';
+import { type DomainMutationDetails, DomainMutationError, useModifyDomains } from '@/hooks/useModifyDomains';
 import { usePaywallEligibility } from '@/hooks/usePaywallEligibility';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
 import { usePublishApp } from '@/hooks/usePublishApp';
@@ -77,7 +76,7 @@ import { useCommanderCanvasTabsEnabled, useCommanderStore } from '@/stores/useCo
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore';
 import { useSitesStore } from '@/stores/useSitesStore';
 import { useSiteStore } from '@/stores/useSiteStore';
-import { type ChatMessage, useIsLoading, useStreamingConversationStore, useStreamingState } from '@/stores/useStreamingConversationStore';
+import { useIsLoading, useStreamingState } from '@/stores/useStreamingConversationStore';
 import { getPlanDisplayLabelKey } from '@/utils/credits';
 import { isAiroSubdomain, resolveSiteFqdn } from '@/utils/domain';
 import { generateClickEID, logAiroHQEvent, logClickEvent, logImpressionEvent } from '@/utils/instrumentation';
@@ -101,24 +100,6 @@ function publishSubmitClickEid(surfaceLocation: string): string {
 
 function normalizeDomainToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-// The title mgmt-airo returns is generateTitle(prompt) — the first ~50 chars of the first prompt
-// (+ "…") — until the app is renamed. Detect that prompt-derived title (the title is a prefix of the
-// initial prompt) and treat it as unnamed, so the Move Domain modal shows its clean fallback rather
-// than dumping a raw prompt as the "project name" (AIROBUILD-3501).
-function resolveOtherProjectName(name?: string, initialPrompt?: string): string | undefined {
-  const trimmed: string = (name ?? '').trim();
-  if (!trimmed) return undefined;
-  // generateTitle() appends an ellipsis when it truncates a >50-char prompt. A real app name never
-  // ends this way, so a trailing "..."/"…" reliably marks a prompt-derived title even when the sites
-  // list omits initial_prompt.
-  if (/(\.\.\.|…)$/.test(trimmed)) return undefined;
-  // Shorter prompts (no truncation) produce a title equal to the prompt: detect via prefix match when
-  // the initial prompt is available.
-  const prompt: string = (initialPrompt ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-  if (prompt.length > 0 && prompt.startsWith(trimmed.toLowerCase())) return undefined;
-  return trimmed;
 }
 
 // Module-level (shared across both AppPublish instances) so the exposure fires once per app. Holds
@@ -166,13 +147,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const [securityFooterDismissed, setSecurityFooterDismissed] = useState(false);
   // Drives the "domain in use" override confirmation when the picked domain is used elsewhere.
   const [domainConflict, setDomainConflict] = useState<DomainMutationDetails['conflictDetails'] | null>(null);
-  // Set once a publish-and-connect succeeds; a dedicated effect (after handleViewDomain is defined)
-  // consumes it to land the user on the domain connect page (AIROBUILD-3501).
-  const [pendingConnectLanding, setPendingConnectLanding] = useState(false);
-  // Gates connect-job polling until the attach has run. Polling from publish time (before the domain
-  // exists) returns a premature terminal status that cleared the intent too early — un-suppressing the
-  // confetti + duplicate notice and surfacing a misleading "live" line (AIROBUILD-3501).
-  const [domainConnectPollEnabled, setDomainConnectPollEnabled] = useState(false);
+  const [isOverriding, setIsOverriding] = useState(false);
   // Drives the "Are you sure you want to connect this domain?" confirmation before attaching.
   const [showConnectConfirm, setShowConnectConfirm] = useState(false);
 
@@ -187,22 +162,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const openRef = useRef(false);
   const prevAppIdRef = useRef<string | null>(null);
   const prevPublishingRef = useRef(false);
-  // True from the moment a publish attempt is initiated until its deployment surfaces in the
-  // deployments query. Guards against a stale prior FAILED deployment (still "most recent" during
-  // the attach→publish window) masquerading as this attempt's failure (AIROBUILD-3501).
-  const publishInFlightRef = useRef(false);
-  // The id of the deployment THIS publish attempt produced. Survives deploymentInProgressId being
-  // cleared on completion so success/failure is judged from our own deployment — not whatever is
-  // "most recent" (a historical FAILED, or the domain-attach redeploy in a publish-and-connect),
-  // which otherwise shows a false "Publishing failed" while the publish + connect actually succeeded.
-  const attemptDeploymentIdRef = useRef<string | null>(null);
-  // Publish-first custom-domain connect: the attach/transfer to run once THIS attempt's deployment
-  // reaches DEPLOYED. Holds a plain attach (fqdn only) or a Move-Domain transfer (prebuilt payload).
-  // Consumed by the connectAfterPublish effect so the connection + redirect no longer run before the
-  // code deploy (AIROBUILD-3501).
-  const pendingConnectRef = useRef<{ fqdn: string; transferPayload?: ModifyDomainsPayload } | null>(null);
-  // Guards the one-time "domain connected" chat notice (keyed by fqdn) once the domain job terminates.
-  const connectedAnnouncedRef = useRef<string | null>(null);
   const lastHandledPublishPopoverRequestRef = useRef<{ appId: string | null; nonce: number }>({ appId: null, nonce: 0 });
 
   const pathname = usePathname();
@@ -224,9 +183,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const { isDisabled: isHistoryDisabled } = useIsHistoryDisabled(currentAppId || '');
   const setIsPublishing = useDevelopPageStore((state) => state.setIsPublishing);
   const setPublishError = useDevelopPageStore((state) => state.setPublishError);
-  const setPublishConnectFqdn = useDevelopPageStore((state) => state.setPublishConnectFqdn);
   const clearPublishStatus = useDevelopPageStore((state) => state.clearPublishStatus);
-  const addCompletedMessage = useStreamingConversationStore((state) => state.addCompletedMessage);
   const setDeploymentsRefetch = useDevelopPageStore((state) => state.setDeploymentsRefetch);
   const openFeedbackModal = useDevelopPageStore((state) => state.openFeedbackModal);
 
@@ -370,12 +327,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const deploymentInProgressId = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.deploymentInProgressId ?? null
   );
-  // Non-null while this publish attempt is also connecting a custom domain — drives the chat
-  // lifecycle notices, the confetti suppression, the picker-hide gate, and the landing on the
-  // domain connect page (AIROBUILD-3501).
-  const publishConnectFqdn = useDevelopPageStore(
-    (state) => state.publishStates?.[currentAppId]?.publishConnectFqdn ?? null
-  );
   const seoRegressionAlert = useDevelopPageStore(
     (state) => state.publishStates?.[currentAppId]?.seoRegressionAlert ?? null
   );
@@ -410,10 +361,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   // resolveSiteFqdn returns a protocol-prefixed URL; the selector compares against bare hostnames,
   // so strip the protocol before using it as a default/selected value.
   const hostnameFqdn: string = fqdn.replace(/^https?:\/\//, '');
-  const isFirstTimePublishing: boolean = !hasBeenPublished(site);
-  // Published on the free airo subdomain (the "temp URL"): the picker shows NO pre-selected custom
-  // domain, so publishing stays on the temp URL unless the user explicitly picks one (AIROBUILD-3501).
-  const isPublishedOnFreeUrl: boolean = !isFirstTimePublishing && !!fqdn && isAiroSubdomain(fqdn);
   // The picker lists the user's account-owned domains; fetch only for the treatment cohort.
   const { data: accountDomains = [] } = useDomainsQuery({ enabled: isDefaultDomainSelectionTreatment });
   // Domains already connected to this app (active, non-prefix) — used for default selection and to
@@ -454,7 +401,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
               appId: otherSite.id,
               systemId: otherSite.system_id,
               ownerId: otherSite.subscription_id,
-              appName: resolveOtherProjectName(otherSite.name, otherSite.initial_prompt),
+              appName: otherSite.name,
             });
           }
         }
@@ -478,15 +425,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const [selectedDomainFqdn, setSelectedDomainFqdn] = useState<string>('');
   // Default to the currently-connected ("in use") domain so the untouched pre-selection matches the
   // domain publish actually targets; fall back to the project-name match, then the first owned domain.
-  // On the temp URL there is no default — an untouched picker selects nothing (AIROBUILD-3501).
-  const effectiveSelectedFqdn: string = isPublishedOnFreeUrl
-    ? selectedDomainFqdn
-    : selectedDomainFqdn || connectedFqdn || matchesProjectFqdn || selectableDomains[0]?.fqdn || hostnameFqdn;
-  // On the temp URL, re-clicking the selected domain clears it (deselect) so publishing stays on the
-  // temp URL; elsewhere the picker always keeps a default, so a row click just moves the selection.
-  const handleDomainSelect = useCallback((domainFqdn: string): void => {
-    setSelectedDomainFqdn((prev) => (isPublishedOnFreeUrl && prev === domainFqdn ? '' : domainFqdn));
-  }, [isPublishedOnFreeUrl]);
+  const effectiveSelectedFqdn: string =
+    selectedDomainFqdn || connectedFqdn || matchesProjectFqdn || selectableDomains[0]?.fqdn || hostnameFqdn;
   const showDomainSelector: boolean = isDefaultDomainSelectionTreatment;
   const { modal: dnsConflictModal, runGate } = useDnsConflictGate({ appId: currentAppId, site });
 
@@ -559,26 +499,10 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     // We just triggered a deployment but the query hasn't surfaced it yet (the "most recent" is still
     // a prior/stale deployment). Stay in the publishing state and don't let that stale deployment's
     // status decide this attempt — otherwise a leftover FAILED would fire a false "publish failed".
-    // The `deploymentInProgressId && mismatch` case covers when the new id is known; the
-    // `publishInFlightRef` case additionally covers the window BEFORE that id is set (e.g. the
-    // attach→publish latency in a publish-and-connect), which the id check alone would miss and let a
-    // stale FAILED surface as this attempt's failure (AIROBUILD-3501).
-    const newDeploymentSurfaced: boolean =
-      !!deploymentInProgressId && mostRecentDeployment.id === deploymentInProgressId;
-    if (publishInFlightRef.current && !newDeploymentSurfaced) {
-      setIsPublishing(currentAppId, true);
-      setPublishError(currentAppId, false);
-      return;
-    }
     if (deploymentInProgressId && mostRecentDeployment.id !== deploymentInProgressId) {
       setIsPublishing(currentAppId, true);
       setPublishError(currentAppId, false);
       return;
-    }
-    // The tracked deployment has surfaced — hand off to normal terminal handling below so a genuine
-    // later FAILED still resolves.
-    if (newDeploymentSurfaced) {
-      publishInFlightRef.current = false;
     }
 
     // Guard: stale non-terminal deployments (older than the polling window) should
@@ -604,26 +528,13 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     } else {
       setIsPublishing(currentAppId, false);
 
-      // Only let a terminal FAILED mark THIS attempt as failed when the most-recent deployment is the
-      // one this attempt produced. When we're tracking a specific attempt deployment and a DIFFERENT
-      // deployment is most-recent (a historical failure, or the domain-attach redeploy), leave
-      // publishError untouched — otherwise a false "Publishing failed" fires while the publish + domain
-      // connect succeeded (AIROBUILD-3501).
-      const isThisAttemptsDeployment: boolean =
-        !attemptDeploymentIdRef.current || mostRecentDeployment.id === attemptDeploymentIdRef.current;
-      if (isThisAttemptsDeployment) {
-        setPublishError(currentAppId, status === DeploymentStatus.FAILED);
+      if (status === DeploymentStatus.FAILED) {
+        setPublishError(currentAppId, true);
+      } else {
+        setPublishError(currentAppId, false);
       }
     }
   }, [mostRecentDeployment, isDeploymentInProgress, deploymentInProgressId, currentAppId, queryEnabled, setIsPublishing, setPublishError]);
-
-  // Capture the deployment id this attempt produced (survives deploymentInProgressId being cleared on
-  // completion) so both this component's effects can judge the attempt by its OWN deployment.
-  useEffect(() => {
-    if (deploymentInProgressId) {
-      attemptDeploymentIdRef.current = deploymentInProgressId;
-    }
-  }, [deploymentInProgressId]);
 
   useEffect(() => {
     if (!currentAppId) {
@@ -642,9 +553,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       setIsAgentInitiatedPublish(false);
       setSelectedDomainFqdn('');
       setDomainConflict(null);
-      pendingConnectRef.current = null;
-      connectedAnnouncedRef.current = null;
-      setDomainConnectPollEnabled(false);
     }
   }, [currentAppId, publishPopoverRequestNonce]);
 
@@ -684,6 +592,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     setPublishResult(null);
   }, [currentAppId, showFirstPublishCongrats]);
 
+  // Check if this is first-time publishing
+  const isFirstTimePublishing = !hasBeenPublished(site);
   const publishButtonLabelKey = usePublishButtonLabel(isFirstTimePublishing);
 
   // Publish mutation + post-publish security scan; shared by the normal and override paths.
@@ -702,119 +612,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       },
     });
   }, [publishMutation, site, triggerAnalysis, setSecurityAnalysisResult]);
-
-  // Publish-and-connect lifecycle notices are injected locally (not via sendMessage): an agent turn
-  // here would be killed by the publish redeploy ('server_shutdown' → spurious "Connection lost").
-  // Mirrors DomainBar.appendLocalNotice / DomainAttach.beginPublishThenConnect (first-person, user role).
-  const appendPublishNotice = useCallback((content: string): void => {
-    const notice: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      timestamp: new Date(),
-    };
-    addCompletedMessage(notice);
-  }, [addCompletedMessage]);
-
-  // Publish-first custom-domain connect: once THIS attempt's deployment lands, confirm the publish is
-  // live, then run the deferred attach/transfer and take the user to the domain page. Mirrors
-  // DomainAttach.attachPendingDomainAfterPublish; on publish failure the pending connect is dropped
-  // (the publish-failure UI reports it) (AIROBUILD-3501).
-  useEffect(function connectAfterPublish() {
-    const pending = pendingConnectRef.current;
-    if (!pending || !currentAppId) return;
-    if (publishError) {
-      pendingConnectRef.current = null;
-      setPublishConnectFqdn(currentAppId, null);
-      return;
-    }
-    if (isPublishing) return;
-    const attemptDeployment = attemptDeploymentIdRef.current
-      ? deployments.find((d) => d.id === attemptDeploymentIdRef.current)
-      : undefined;
-    if (attemptDeployment?.status !== DeploymentStatus.DEPLOYED) return;
-    // Consume exactly once (the effect re-fires on every deployments poll).
-    pendingConnectRef.current = null;
-    const fqdn: string = pending.fqdn;
-    const transferPayload: ModifyDomainsPayload | undefined = pending.transferPayload;
-    const normalizedFqdn: string = fqdn.replace(/^https?:\/\//, '').toLowerCase();
-    appendPublishNotice('Your project is published successfully.');
-    void (async function attachAfterPublish() {
-      try {
-        await modifyDomains.mutateAsync({
-          siteId: currentAppId,
-          payload: transferPayload ?? {
-            domainsToCreate: [{ fqdn, primary: true }],
-            domainsToDelete: (site?.domains ?? [])
-              .filter(
-                (d) =>
-                  d.domainType !== DomainType.PREFIX &&
-                  d.status === DomainStatus.ACTIVE &&
-                  !!d.fqdn &&
-                  d.fqdn.replace(/^https?:\/\//, '').toLowerCase() !== normalizedFqdn,
-              )
-              .map((d) => ({ fqdn: d.fqdn })),
-            createCdn: true,
-            isWildcardDomain: true,
-          },
-        });
-        shipAnalyticsLog(
-          transferPayload ? 'publish.domain_attach.override_success' : 'publish.domain_attach.success',
-          { appId: currentAppId, fqdn },
-        );
-        appendPublishNotice(`Connecting ${fqdn} to your project now — this can take a few minutes. Opening the domain page so you can track the connection.`);
-        // The domain now exists — safe to poll the connect job for its real terminal state.
-        setDomainConnectPollEnabled(true);
-        setOpen(false);
-        setPendingConnectLanding(true);
-      } catch (error) {
-        const errorMessage: string = error instanceof Error ? error.message : String(error);
-        logger.error('app-publish.domain-attach.post-publish-failure', { appId: currentAppId, fqdn, error: errorMessage });
-        shipAnalyticsLog(
-          transferPayload ? 'publish.domain_attach.override_failed' : 'publish.domain_attach.failure',
-          { appId: currentAppId, fqdn },
-        );
-        appendPublishNotice(`Your project is published, but connecting ${fqdn} didn't complete: ${errorMessage} You can retry from the Domains page.`);
-        setPublishConnectFqdn(currentAppId, null);
-      }
-    })();
-  }, [deployments, isPublishing, publishError, currentAppId, site, modifyDomains, appendPublishNotice, setPublishConnectFqdn, setDomainConnectPollEnabled]);
-
-  // Poll the domain-connect job while a connect is in progress so we can detect the terminal state
-  // (SUCCESS/FAILED/NOT_FOUND) and clear the connect intent — success is silent, only a genuine
-  // failure is surfaced in chat (the domain page shows live status) (AIROBUILD-3501).
-  const domainConnectJob = useDomainJobPolling(
-    currentAppId ?? '',
-    publishConnectFqdn ?? '',
-    !!currentAppId && !!publishConnectFqdn && domainConnectPollEnabled,
-  );
-
-  // On a terminal connect state, clear the intent so the publish UI leaves its "connecting" state.
-  // Success is silent (the domain page shows live status); only a genuine failure is surfaced in chat
-  // — a "published and live" line here fired misleadingly early and duplicated the notice (AIROBUILD-3501).
-  useEffect(function finishDomainConnect() {
-    if (!currentAppId || !publishConnectFqdn) return;
-    if (connectedAnnouncedRef.current === publishConnectFqdn) return;
-    const isConnected: boolean =
-      domainConnectJob.overallStatus === 'SUCCESS' || domainConnectJob.status === 'SUCCESS';
-    const isConnectFailed: boolean =
-      domainConnectJob.overallStatus === 'FAILED' || domainConnectJob.status === 'FAILED';
-    // NOT_FOUND is manufactured client-side from any job-read 404 (useDomainJobPolling.fetchDomainJob),
-    // and job-read can lag job-create — so a transient NOT_FOUND is NOT a genuine failure. Only FAILED
-    // surfaces the "didn't finish" chat notice; on NOT_FOUND we leave a breadcrumb and clear the intent
-    // silently, deferring to the domain page for live status rather than falsely claiming failure
-    // (AIROBUILD-3501).
-    const isConnectNotFound: boolean = domainConnectJob.overallStatus === 'NOT_FOUND';
-    if (!isConnected && !isConnectFailed && !isConnectNotFound) return;
-    connectedAnnouncedRef.current = publishConnectFqdn;
-    if (isConnectFailed) {
-      appendPublishNotice(`${publishConnectFqdn}'s connection didn't finish. You can retry from the Domains page.`);
-    } else if (isConnectNotFound) {
-      logger.warn('app-publish.domain-connect.not-found', { appId: currentAppId, fqdn: publishConnectFqdn });
-    }
-    setPublishConnectFqdn(currentAppId, null);
-    setDomainConnectPollEnabled(false);
-  }, [domainConnectJob.overallStatus, domainConnectJob.status, currentAppId, publishConnectFqdn, appendPublishNotice, setPublishConnectFqdn, setDomainConnectPollEnabled]);
 
   // Internal deploy function (called after QA gate passes or is skipped)
   const handleDeploy = useCallback(async () => {
@@ -874,13 +671,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
       clearPublishStatus(currentAppId);
       setIsPublishing(currentAppId, true);
-      publishInFlightRef.current = true;
-      attemptDeploymentIdRef.current = null;
-      // Clean slate for this attempt: no pending connect and no prior "connected" announcement.
-      pendingConnectRef.current = null;
-      connectedAnnouncedRef.current = null;
-      setDomainConnectPollEnabled(false);
-      setPublishConnectFqdn(currentAppId, null);
       // Clear any prior scan outcome so the footer reverts to its pre-publish state for this run.
       setSecurityAnalysisResult(currentAppId, null);
 
@@ -892,11 +682,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) })
       }
 
-      // Publish-first: when the user EXPLICITLY picked a custom domain (not the visual default) that
-      // isn't already on this app, defer the attach until the deploy lands (the connectAfterPublish
-      // effect). We record the connect intent now (publishConnectFqdn) so confetti stays suppressed
-      // and the picker hides, but the attach + redirect wait for the publish to finish. This never
-      // silently re-points the live domain on a routine/agent publish (AIROBUILD-3501).
+      // Attach only when the user EXPLICITLY picked a custom domain (not the visual default), so a
+      // routine/agent publish can't silently re-point the live domain.
       const normalizedSelected = selectedDomainFqdn.replace(/^https?:\/\//, '').toLowerCase();
       // Any non-prefix domain already on the app counts as connected (avoids a redundant attach).
       const appCustomDomains = (site.domains ?? []).filter(
@@ -908,17 +695,57 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         (d) => d.fqdn.replace(/^https?:\/\//, '').toLowerCase() === normalizedSelected,
       );
       if (isCustomDomainSelected && !isAlreadyConnected) {
-        pendingConnectRef.current = { fqdn: selectedDomainFqdn };
-        setPublishConnectFqdn(currentAppId, selectedDomainFqdn);
-        appendPublishNotice(`Publishing your project — I'll connect ${selectedDomainFqdn} as soon as it's live.`);
-      } else {
-        // Immediate feedback the moment publishing begins, so the user knows it's underway.
-        appendPublishNotice("Publishing your project — I'll let you know here as soon as it's live.");
+        try {
+          await modifyDomains.mutateAsync({
+            siteId: currentAppId,
+            payload: {
+              domainsToCreate: [{ fqdn: selectedDomainFqdn, primary: true }],
+              domainsToDelete: appCustomDomains
+                .filter((d) => d.status === DomainStatus.ACTIVE && d.fqdn.replace(/^https?:\/\//, '').toLowerCase() !== normalizedSelected)
+                .map((d) => ({ fqdn: d.fqdn })),
+              createCdn: true,
+              isWildcardDomain: true,
+            },
+          });
+          shipAnalyticsLog('publish.domain_attach.success', { appId: currentAppId, fqdn: selectedDomainFqdn });
+        } catch (attachError) {
+          // Already attached to this app → goal already met, continue to publish.
+          if (attachError instanceof DomainMutationError && attachError.details.nestedCode === 'DOMAIN_ALREADY_OWNED') {
+            logger.info('app-publish.domain-attach.already-owned', { appId: currentAppId, fqdn: selectedDomainFqdn });
+          } else if (attachError instanceof DomainMutationError && attachError.details.conflictDetails) {
+            // Connected to another project — show the override confirmation instead of failing.
+            logger.info('app-publish.domain-attach.conflict', {
+              appId: currentAppId,
+              fqdn: selectedDomainFqdn,
+              nestedCode: attachError.details.nestedCode,
+            });
+            shipAnalyticsLog('publish.domain_attach.conflict', { appId: currentAppId, fqdn: selectedDomainFqdn });
+            setDomainConflict(attachError.details.conflictDetails);
+            setIsPublishing(currentAppId, false);
+            // Don't setOpen here — it closes the popover and clears domainConflict (see closePopover).
+            return;
+          } else {
+            // Real attach failure — keep the typed conflict detail and abort publish.
+            if (attachError instanceof DomainMutationError) {
+              logger.error('app-publish.domain-attach.failure', {
+                appId: currentAppId,
+                fqdn: selectedDomainFqdn,
+                nestedCode: attachError.details.nestedCode,
+                conflictingProduct: attachError.details.conflictingProduct,
+              });
+            }
+            shipAnalyticsLog('publish.domain_attach.failure', {
+              appId: currentAppId,
+              fqdn: selectedDomainFqdn,
+              nestedCode: attachError instanceof DomainMutationError ? attachError.details.nestedCode : undefined,
+            });
+            throw attachError;
+          }
+        }
       }
 
       await performPublish(currentAppId, gateResult.consent);
-      // Note: usePublishApp hook polls until deployment appears and triggers refetch. The
-      // connectAfterPublish effect runs the attach + redirect once the deployment reaches DEPLOYED.
+      // Note: usePublishApp hook polls until deployment appears and triggers refetch
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error('app-publish.deploy.error', {
@@ -926,23 +753,16 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         error: errorMessage,
       });
       useDevelopPageStore.getState().setFirstPublishDeployPending(currentAppId, false);
-      publishInFlightRef.current = false;
-      setIsPublishing(currentAppId, false);
 
-      // Publish-first: the attach hasn't run yet, so a throw here is a publish (or gate) failure. Drop
-      // the pending connect and report it normally (AIROBUILD-3501).
-      pendingConnectRef.current = null;
-      setPublishConnectFqdn(currentAppId, null);
       if (!shouldSuppressPublishError(currentAppId)) {
         setPublishError(currentAppId, true);
-        appendPublishNotice("Publishing didn't go through — please try again.");
       }
-    }
-  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, setPublishConnectFqdn, setDomainConnectPollEnabled, appendPublishNotice, clearPublishStatus, performPublish, runGate, setSecurityAnalysisResult, showDomainSelector, hasPendingCustomDomain, selectedDomainFqdn, freeProjectUrl, mostRecentDeployment?.gitHash]);
 
-  // Override (Move Domain): publish first, then transfer the domain off the other project and connect
-  // it. The transfer is deferred to the connectAfterPublish effect (publish-first), so we build its
-  // payload here and stash it (AIROBUILD-3501).
+      setIsPublishing(currentAppId, false);
+    }
+  }, [clickContext, currentAppId, site, location, isFirstTimePublishing, isPublishComplianceBlocked, publishComplianceBlockReason, setPublishError, setIsPublishing, clearPublishStatus, performPublish, runGate, setSecurityAnalysisResult, showDomainSelector, hasPendingCustomDomain, selectedDomainFqdn, freeProjectUrl, modifyDomains]);
+
+  // Override: transfer the domain off the other project, then publish.
   const handleOverrideAndPublish = useCallback(async () => {
     if (!currentAppId || !domainConflict) return;
     const conflict = domainConflict;
@@ -957,55 +777,47 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
           d.fqdn.replace(/^https?:\/\//, '').toLowerCase() !== normalizedConflictFqdn,
       )
       .map((d) => ({ fqdn: d.fqdn }));
-    const transferPayload: ModifyDomainsPayload = {
-      domainsToCreate: [{ fqdn: conflict.domain, primary: true }],
-      domainsToDelete,
-      createCdn: true,
-      isWildcardDomain: true,
-      ...(conflict.existingOwnerType === MWP_V2_APP_OWNER_TYPE
-        ? { transferFromMWP: { v2AppId: conflict.existingAppId } }
-        : {
-          transferFrom: {
-            appId: conflict.existingAppId,
-            systemId: conflict.existingSystemId ?? '',
-            subscriptionId: conflict.existingOwnerId,
-          },
-        }),
-    };
-    // Close the Move modal immediately and publish; the transfer + connect runs once the deploy lands
-    // (connectAfterPublish effect). Recording the connect intent now (publishConnectFqdn) keeps the
-    // published-domain card shown and confetti suppressed (AIROBUILD-3501).
-    setDomainConflict(null);
-    clearPublishStatus(currentAppId);
-    setIsPublishing(currentAppId, true);
-    publishInFlightRef.current = true;
-    attemptDeploymentIdRef.current = null;
-    connectedAnnouncedRef.current = null;
-    setDomainConnectPollEnabled(false);
-    pendingConnectRef.current = { fqdn: conflict.domain, transferPayload };
-    setPublishConnectFqdn(currentAppId, conflict.domain);
-    setSecurityAnalysisResult(currentAppId, null);
-    appendPublishNotice(`Publishing your project — once it's live I'll move ${conflict.domain} here and connect it.`);
+    setIsOverriding(true);
     try {
+      await modifyDomains.mutateAsync({
+        siteId: currentAppId,
+        payload: {
+          domainsToCreate: [{ fqdn: conflict.domain, primary: true }],
+          domainsToDelete,
+          createCdn: true,
+          isWildcardDomain: true,
+          ...(conflict.existingOwnerType === MWP_V2_APP_OWNER_TYPE
+            ? { transferFromMWP: { v2AppId: conflict.existingAppId } }
+            : {
+              transferFrom: {
+                appId: conflict.existingAppId,
+                systemId: conflict.existingSystemId ?? '',
+                subscriptionId: conflict.existingOwnerId,
+              },
+            }),
+        },
+      });
+      shipAnalyticsLog('publish.domain_attach.override_success', { appId: currentAppId, fqdn: conflict.domain });
+      clearPublishStatus(currentAppId);
+      setIsPublishing(currentAppId, true);
+      // Keep the banner through "Overriding and Publishing…", then clear once publish starts.
       await performPublish(currentAppId);
+      setDomainConflict(null);
     } catch (error) {
-      logger.error('app-publish.deploy.error', {
+      logger.error('app-publish.domain-attach.override-failed', {
         appId: currentAppId,
+        fqdn: conflict.domain,
         error: error instanceof Error ? error.message : String(error),
       });
-      useDevelopPageStore.getState().setFirstPublishDeployPending(currentAppId, false);
-      publishInFlightRef.current = false;
+      shipAnalyticsLog('publish.domain_attach.override_failed', { appId: currentAppId, fqdn: conflict.domain });
+      setDomainConflict(null);
+      setPublishError(currentAppId, true);
       setIsPublishing(currentAppId, false);
-      // Publish-first: the transfer hasn't run yet, so a throw here is a publish failure. Drop the
-      // pending connect and report it (AIROBUILD-3501).
-      pendingConnectRef.current = null;
-      setPublishConnectFqdn(currentAppId, null);
-      if (!shouldSuppressPublishError(currentAppId)) {
-        setPublishError(currentAppId, true);
-        appendPublishNotice("Publishing didn't go through — please try again.");
-      }
+      setPublishResult('failed');
+    } finally {
+      setIsOverriding(false);
     }
-  }, [currentAppId, domainConflict, site, performPublish, clearPublishStatus, setIsPublishing, setPublishConnectFqdn, setDomainConnectPollEnabled, setPublishError, setSecurityAnalysisResult, appendPublishNotice]);
+  }, [currentAppId, domainConflict, site, modifyDomains, performPublish, clearPublishStatus, setIsPublishing, setPublishError]);
 
   const handleChangeDomain = useCallback(() => {
     setDomainConflict(null);
@@ -1130,17 +942,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
 
     if ((!wasPublishing && !buildErrorDetailsUpdated) || isPublishingOrDeploying) return;
 
-    // Judge this attempt ONLY by the deployment IT produced (tracked via attemptDeploymentIdRef) plus
-    // publishError — never by whatever is "most recent". On an app with prior deployments (or in a
-    // publish-and-connect where the code deploy never starts), `deployments[0]` is a DIFFERENT
-    // deployment: an old DEPLOYED would masquerade as this attempt's success, an old/attach-redeploy
-    // FAILED as this attempt's failure. When the attempt produced no deployment and set no error, there
-    // is nothing to report here — it was handled synchronously in handleDeploy (AIROBUILD-3501).
-    const attemptDeployment = attemptDeploymentIdRef.current
-      ? deployments.find((d) => d.id === attemptDeploymentIdRef.current)
-      : undefined;
-    const failed = publishError || attemptDeployment?.status === DeploymentStatus.FAILED;
-    const succeeded = attemptDeployment?.status === DeploymentStatus.DEPLOYED;
+    const failed = publishError || mostRecentDeployment?.status === DeploymentStatus.FAILED;
+    const succeeded = mostRecentDeployment?.status === DeploymentStatus.DEPLOYED;
 
     if (!failed && !succeeded) return;
 
@@ -1153,18 +956,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         // JTBD event: website publish completed successfully.
         markFeedbackRevealMilestone(currentAppId, 'websitePublish');
       }
-
-      // Publish-and-connect: the connectAfterPublish effect owns the published → connecting → redirect
-      // sequence, and finishDomainConnect owns terminal handling (silent on success/NOT_FOUND, a chat
-      // notice only on failure). Skip the confetti/feedback celebration here (AIROBUILD-3501).
-      if (currentAppId && publishConnectFqdn) {
-        setPublishResult(null);
-        return;
-      }
-
-      // Plain publish (no domain connect): confirm it's live in chat too, alongside the confetti/growl
-      // (AIROBUILD-3501).
-      appendPublishNotice('Your project is published successfully.');
 
       if (
         currentAppId &&
@@ -1229,14 +1020,6 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       return;
     }
 
-    // outcome === 'failed'. Publish-first: no domain was attached yet (the attach is deferred until a
-    // successful deploy), so a failed deploy is a plain publish failure — drop any pending-connect
-    // intent and report it normally (AIROBUILD-3501).
-    if (currentAppId && publishConnectFqdn) {
-      pendingConnectRef.current = null;
-      setPublishConnectFqdn(currentAppId, null);
-    }
-
     if (openRef.current) {
       if (wasPublishing) setPublishResult(outcome);
       return;
@@ -1258,7 +1041,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
       ),
       emphasis: 'critical',
     });
-  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, deployments, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, openFeedbackModal, publishConnectFqdn, setPublishConnectFqdn, appendPublishNotice]);
+  }, [currentAppId, isPublishingOrDeploying, mostRecentDeployment?.status, publishError, buildErrorDetails, fqdn, t, handleDeploy, handleFixBuildError, handlePublishFeedbackClick, location, openFeedbackModal]);
 
   useEffect(() => {
     if (!seoRegressionAlert || !currentAppId) return;
@@ -1316,30 +1099,12 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     }
   }, [clickContext, closePopover, handleMobileModeChange, handleViewModeChange, hasUnsavedChanges, isCanvasTabsEnabled, isMobile, isTopLevelDomainEnabled, location, openCanvas, setActiveChatTab, setActiveSettingsSection]);
 
-  // Land the user on the domain connect page once a publish-and-connect completes. Kept as a separate
-  // effect (not called inline from the resolution effect) because handleViewDomain is defined here,
-  // after that effect — this reuses it for both the top-level-domain and settings-panel layouts.
-  useEffect(() => {
-    if (!pendingConnectLanding) return;
-    handleViewDomain();
-    setPendingConnectLanding(false);
-  }, [pendingConnectLanding, handleViewDomain]);
-
   // "Use a domain I own elsewhere": open Domains and deep-link to the external input via the hash
   // (DomainAttach reads it to open the External tab + focus the input).
   const handleUseExternalDomain = useCallback(() => {
     handleViewDomain();
     if (typeof window !== 'undefined') {
       window.location.hash = 'custom-domain-slug';
-    }
-  }, [handleViewDomain]);
-
-  // Edit from the temp-URL card: open Domains and deep-link to the Project Domain section (the page
-  // scrolls there instead of landing at the top) (AIROBUILD-3501).
-  const handleViewProjectDomain = useCallback(() => {
-    handleViewDomain();
-    if (typeof window !== 'undefined') {
-      window.location.hash = 'project-domain';
     }
   }, [handleViewDomain]);
 
@@ -1499,6 +1264,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const lastDeployedTimeAgo = lastDeployedDate ? timeAgo(lastDeployedDate) : null;
   // Treatment "published" states: live on a custom domain, or on the free airo subdomain.
   const isPublishedOnCustomDomain: boolean = !isFirstTimePublishing && !!fqdn && !isAiroSubdomain(fqdn);
+  const isPublishedOnFreeUrl: boolean = !isFirstTimePublishing && !!fqdn && isAiroSubdomain(fqdn);
   const publishedLastPublishLabel: string | undefined = lastDeployedTimeAgo
     ? t(lastDeployedTimeAgo.key, lastDeployedTimeAgo.values)
     : undefined;
@@ -1513,7 +1279,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
   const showSecurityFooter =
     isSecurityScanUiEnabled &&
     !securityFooterDismissed &&
-    (isPublishingOrDeploying || !!publishConnectFqdn || isSecurityAnalysisRunning || securityAnalysisResult !== null);
+    (isPublishingOrDeploying || isOverriding || isSecurityAnalysisRunning || securityAnalysisResult !== null);
 
   return (
     <>
@@ -1536,8 +1302,8 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
         domain={domainConflict?.domain ?? ''}
         existingAppName={domainConflict?.existingAppName}
         existingAppId={domainConflict?.existingAppId ?? ''}
-        isTransferring={false}
-        onClose={handleChangeDomain}
+        isTransferring={isOverriding}
+        onClose={isOverriding ? undefined : handleChangeDomain}
         onConfirm={handleOverrideAndPublish}
       />
       <ResponsivePopover
@@ -1614,10 +1380,9 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
             {getPublishStatusAlert()}
 
             {/* Domain Editing */}
-            {/* Published on a custom domain, or a connection is in progress (domain PENDING, a
-                publish-and-connect running, or a Move transfer): show the published URL card, not the
-                connect picker (re-offering an attaching domain is redundant) (AIROBUILD-3501). */}
-            {showDomainSelector && (isPublishedOnCustomDomain || hasPendingCustomDomain || !!publishConnectFqdn) ? (
+            {/* Published on a custom domain, or one is mid-connect: show the published URL card, not
+                the connect picker (re-offering an attaching domain is redundant). */}
+            {showDomainSelector && (isPublishedOnCustomDomain || hasPendingCustomDomain) ? (
               <PublishedDomainCard
                 domain={hostnameFqdn}
                 lastPublishLabel={publishedLastPublishLabel}
@@ -1633,7 +1398,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                     domain={hostnameFqdn}
                     lastPublishLabel={publishedLastPublishLabel}
                     isHistoryDisabled={isHistoryDisabled}
-                    onEdit={handleViewProjectDomain}
+                    onEdit={handleViewDomain}
                     onViewHistory={handleViewHistory}
                   />
                 )}
@@ -1642,7 +1407,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
                   freeProjectUrl={isPublishedOnFreeUrl ? '' : freeProjectUrl}
                   selectedFqdn={effectiveSelectedFqdn}
                   matchesProjectFqdn={matchesProjectFqdn}
-                  onSelect={handleDomainSelect}
+                  onSelect={setSelectedDomainFqdn}
                   onNewDomain={handleViewDomain}
                   onSeeAllDomains={handleViewDomain}
                   onUseExternalDomain={handleUseExternalDomain}
@@ -1792,7 +1557,7 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
             )}
 
             {/* Feedback + security footer: shown during a normal publish or a conflict override. */}
-            {(isPublishingOrDeploying || !!publishConnectFqdn) && publishResult === null && (
+            {(isPublishingOrDeploying || isOverriding) && publishResult === null && (
               <Button
                 type='button'
                 className='w-full'

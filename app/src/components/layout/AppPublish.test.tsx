@@ -72,8 +72,6 @@ type MockPublishSlice = {
   publishPopoverRequestNonce?: number;
   buildErrorDetails?: { error: string; details: string; exitCode?: number } | null;
   showPostPublishFeatureSelection?: boolean;
-  publishConnectFqdn?: string | null;
-  deploymentInProgressId?: string | null;
   securityAnalysisResult?: 'safe' | 'issues' | null;
   seoRegressionAlert?: {
     scoreDelta: number;
@@ -101,7 +99,6 @@ const mockDevelopStore = {
       showFirstPublishCongrats: slice?.showFirstPublishCongrats ?? false,
       firstPublishDeployPending: slice?.firstPublishDeployPending ?? false,
       showPostPublishFeatureSelection: slice?.showPostPublishFeatureSelection ?? false,
-      publishConnectFqdn: slice?.publishConnectFqdn ?? null,
     };
   },
   hasUnsavedChanges: false,
@@ -109,7 +106,6 @@ const mockDevelopStore = {
   handleMobileModeChange: vi.fn(),
   setIsPublishing: vi.fn(),
   setPublishError: vi.fn(),
-  setPublishConnectFqdn: vi.fn(),
   clearPublishStatus: vi.fn(),
   setSecurityAnalysisResult: vi.fn(),
   setDeploymentsRefetch: vi.fn(),
@@ -134,12 +130,6 @@ const mockRefetchDeployments = vi.fn();
 const mockLogClickEvent = vi.fn(function () { return vi.fn(); });
 const mockRunGate = vi.fn();
 const mockMutateAsync = vi.fn().mockResolvedValue(undefined);
-const mockAddCompletedMessage = vi.fn();
-const mockModifyMutateAsync = vi.fn().mockResolvedValue(undefined);
-const mockModifyReset = vi.fn();
-const mockDomainJob: { value: { overallStatus: string | null; status: string | null } } = {
-  value: { overallStatus: null, status: null },
-};
 let mockDnsConflictModal: ReactNode = null;
 
 vi.mock('next/navigation', () => ({
@@ -307,37 +297,6 @@ vi.mock('@/stores/useSiteStore', () => ({
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useIsLoading: () => mockStreaming.isLoading,
   useStreamingState: () => mockStreaming.streamingState,
-  useStreamingConversationStore: (
-    selector: (state: { addCompletedMessage: (message: unknown) => void }) => unknown,
-  ) => selector({ addCompletedMessage: mockAddCompletedMessage }),
-}));
-
-// Without this, triggerAnalysis reads acquireSecurityAnalysisLock off the mocked store (undefined) and
-// throws inside performPublish AFTER the publish mutation resolves, so handleDeploy's catch drops the
-// deferred connect intent before the attach can run (AIROBUILD-3501).
-vi.mock('@/hooks/useTriggerSecurityAnalysis', () => ({
-  useTriggerSecurityAnalysis: () => ({ triggerAnalysis: vi.fn() }),
-}));
-
-vi.mock('@/hooks/useModifyDomains', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/useModifyDomains')>();
-  return {
-    ...actual,
-    useModifyDomains: () => ({ mutateAsync: mockModifyMutateAsync, reset: mockModifyReset }),
-  };
-});
-
-vi.mock('@/hooks/useDomainJobPolling', () => ({
-  // Honor the `enabled` gate: disabled → no status, matching the real hook (AIROBUILD-3501).
-  useDomainJobPolling: (_appId: string, _fqdn: string, enabled: boolean) => ({
-    labelKey: null,
-    status: enabled ? mockDomainJob.value.status : null,
-    overallStatus: enabled ? mockDomainJob.value.overallStatus : null,
-    steps: [],
-    isLoading: false,
-    isFetching: false,
-    error: null,
-  }),
 }));
 
 vi.mock('@/utils/instrumentation', () => ({
@@ -378,11 +337,6 @@ describe('AppPublish', () => {
     mockRunGate.mockResolvedValue({ proceed: true });
     mockMutateAsync.mockReset();
     mockMutateAsync.mockResolvedValue(undefined);
-    mockAddCompletedMessage.mockReset();
-    mockModifyMutateAsync.mockReset();
-    mockModifyMutateAsync.mockResolvedValue(undefined);
-    mockModifyReset.mockReset();
-    mockDomainJob.value = { overallStatus: null, status: null };
     mockDnsConflictModal = null;
     mockIsUpgradePolling.value = false;
     mockShowPaywall.value = true;
@@ -554,262 +508,6 @@ describe('AppPublish', () => {
       });
       expect(screen.queryByText('builder_domain_connect_confirmation_title')).not.toBeInTheDocument();
       expect(screen.queryByText('Move Domain')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('publish-first domain connect (AIROBUILD-3501)', () => {
-    function connectingMessages(): unknown[] {
-      return mockAddCompletedMessage.mock.calls
-        .map(([message]: [unknown]) => (message as { content?: string })?.content)
-        .filter((content): content is string => typeof content === 'string');
-    }
-
-    async function openSubmitConfirm(user: ReturnType<typeof renderWithProviders>['user']): Promise<void> {
-      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
-      await waitFor(() => {
-        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
-      });
-      const submit: HTMLElement | undefined = screen
-        .getAllByRole('button', { name: 'builder_publish_button' })
-        .find((button) => button.id !== 'tour-publish-button');
-      await user.click(submit as HTMLElement);
-      const confirm: HTMLElement = await screen.findByRole('button', {
-        name: 'builder_custom_domain_modal_button_continue',
-      });
-      await user.click(confirm);
-    }
-
-    it('publishes BEFORE attaching, then attaches only once the deploy reaches DEPLOYED', async function publishThenAttach() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      // Publish fired; the attach is deferred until the deploy lands.
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalledWith({ appId: 'app-123', dnsUpdateConsent: undefined });
-      });
-      expect(mockModifyMutateAsync).not.toHaveBeenCalled();
-      expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', 'fresh.com');
-
-      // Deploy completes → attach runs now, and the "connecting" notice + redirect fire.
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-
-      await waitFor(() => {
-        expect(mockModifyMutateAsync).toHaveBeenCalled();
-      });
-      const attachArg = mockModifyMutateAsync.mock.calls[0][0] as { siteId: string; payload: { domainsToCreate?: Array<{ fqdn: string }> } };
-      expect(attachArg.siteId).toBe('app-123');
-      expect(attachArg.payload.domainsToCreate?.[0].fqdn).toBe('fresh.com');
-      expect(connectingMessages().some((c) => c.includes('Connecting fresh.com'))).toBe(true);
-    });
-
-    it('does not attach the domain when the publish fails', async function noAttachOnPublishFailure() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalled();
-      });
-
-      // Deploy fails (no DEPLOYED) → the deferred attach must be dropped.
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: true, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.FAILED }];
-      rerender(<AppPublish />);
-
-      await waitFor(() => {
-        expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', null);
-      });
-      expect(mockModifyMutateAsync).not.toHaveBeenCalled();
-    });
-
-    it('does not surface a connected/live chat line and holds the connect intent until the attach polls', async function noPrematureConnectedMessage() {
-      // A SUCCESS before the attach must be ignored — polling is gated on the attach (AIROBUILD-3501).
-      mockDomainJob.value = { overallStatus: 'SUCCESS', status: null };
-      mockDevelopStore.publishStates['app-123'] = { publishConnectFqdn: 'fresh.com' };
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test' }),
-      );
-
-      renderWithProviders(<AppPublish />);
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'builder_publish_button' })).toBeInTheDocument();
-      });
-      expect(connectingMessages().some((c) => /published and live|is now connected/.test(c))).toBe(false);
-      expect(mockDevelopStore.setPublishConnectFqdn).not.toHaveBeenCalledWith('app-123', null);
-    });
-
-    it('clears the connect intent silently — no "live" chat line — once the attach + connect job complete', async function silentConnectComplete() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      // Deploy completes → attach runs, which enables the connect-job polling.
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(connectingMessages().some((c) => c.includes('Connecting fresh.com'))).toBe(true);
-      });
-
-      // Connect job now reaches SUCCESS: the intent is cleared, but nothing is announced in chat.
-      mockDomainJob.value = { overallStatus: 'SUCCESS', status: null };
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', null);
-      });
-      expect(connectingMessages().some((c) => /published and live|is now connected/.test(c))).toBe(false);
-    });
-
-    it('surfaces a "didn\'t complete" notice and clears the intent when the post-publish attach fails', async function attachFailsAfterPublish() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-      mockModifyMutateAsync.mockRejectedValueOnce(new Error('domain API rejected'));
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      // Deploy completes → the deferred attach runs and rejects (the realistic prod failure: publish
-      // succeeds, the domain API rejects the attach).
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-
-      await waitFor(() => {
-        expect(mockModifyMutateAsync).toHaveBeenCalled();
-      });
-      await waitFor(() => {
-        expect(connectingMessages().some((c) => c.includes("connecting fresh.com didn't complete"))).toBe(true);
-      });
-      expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', null);
-    });
-
-    it('surfaces a "didn\'t finish" notice and clears the intent when the connect job FAILS', async function connectJobFailed() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      // Deploy completes → attach runs, which enables the connect-job polling.
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(connectingMessages().some((c) => c.includes('Connecting fresh.com'))).toBe(true);
-      });
-
-      // Connect job now reaches FAILED: surface the "didn't finish" notice and clear the intent.
-      mockDomainJob.value = { overallStatus: 'FAILED', status: null };
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(connectingMessages().some((c) => c.includes("fresh.com's connection didn't finish"))).toBe(true);
-      });
-      expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', null);
-    });
-
-    it('treats a transient NOT_FOUND as non-failure: no chat notice, warn breadcrumb, intent cleared', async function connectJobNotFound() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'fresh.com' }];
-      mockAllSites.value = [];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await openSubmitConfirm(user);
-
-      // Deploy completes → attach runs, which enables the connect-job polling.
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'fresh.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(connectingMessages().some((c) => c.includes('Connecting fresh.com'))).toBe(true);
-      });
-
-      // NOT_FOUND is manufactured from any job-read 404 (read side lagging job-create), so it must NOT
-      // surface a failure notice — only a warn breadcrumb, then clear the intent silently.
-      mockDomainJob.value = { overallStatus: 'NOT_FOUND', status: null };
-      rerender(<AppPublish />);
-      await waitFor(() => {
-        expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
-          'app-publish.domain-connect.not-found',
-          { appId: 'app-123', fqdn: 'fresh.com' },
-        );
-      });
-      expect(connectingMessages().some((c) => /didn't finish|didn't complete/.test(c))).toBe(false);
-      expect(mockDevelopStore.setPublishConnectFqdn).toHaveBeenCalledWith('app-123', null);
-    });
-
-    it('defers the Move-Domain transfer until after the deploy, then sends transferFrom', async function deferredTransfer() {
-      mockHivemindCohort.value = 'on';
-      mockAccountDomains.value = [{ domain: 'onanotherapp.com' }];
-      mockAllSites.value = [{
-        id: 'other-app',
-        system_id: 'sys-2',
-        subscription_id: 'sub-2',
-        name: 'DailyDesk',
-        domains: [{ fqdn: 'onanotherapp.com', domainType: DomainType.CUSTOM, status: DomainStatus.ACTIVE }],
-      }];
-      mockSiteStore.getSite.mockReturnValue(
-        createMockSite({ id: 'app-123', name: 'My App', agent_url: 'https://app-123.agent.test', domains: [], published_url: 'app-123.c4.test-airoapp.ai' }),
-      );
-
-      const { user, rerender } = renderWithProviders(<AppPublish />);
-      await user.click(await screen.findByRole('button', { name: 'builder_publish_button' }));
-      await waitFor(() => {
-        expect(screen.getByText('builder_publish_popover_title')).toBeInTheDocument();
-      });
-      const submit: HTMLElement | undefined = screen
-        .getAllByRole('button', { name: 'builder_publish_button' })
-        .find((button) => button.id !== 'tour-publish-button');
-      await user.click(submit as HTMLElement);
-      await user.click(await screen.findByRole('button', { name: 'Move Domain' }));
-
-      // Publish fired; the transfer is deferred until the deploy lands.
-      await waitFor(() => {
-        expect(mockMutateAsync).toHaveBeenCalled();
-      });
-      expect(mockModifyMutateAsync).not.toHaveBeenCalled();
-
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1', publishConnectFqdn: 'onanotherapp.com' };
-      mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      rerender(<AppPublish />);
-
-      await waitFor(() => {
-        expect(mockModifyMutateAsync).toHaveBeenCalled();
-      });
-      const transferArg = mockModifyMutateAsync.mock.calls[0][0] as { payload: { transferFrom?: { appId: string } } };
-      expect(transferArg.payload.transferFrom?.appId).toBe('other-app');
     });
   });
 
@@ -1264,12 +962,12 @@ describe('AppPublish', () => {
 
   it('should open feedback modal directly to NPS on successful publish when feedback not given', async function postPublishFeedbackModal() {
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
 
     const { rerender } = renderWithProviders(<AppPublish />);
 
     mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
     rerender(<AppPublish />);
 
     await waitFor(() => {
@@ -1283,12 +981,12 @@ describe('AppPublish', () => {
   it('should always call openFeedbackModal on publish and delegate re-show guard to store', async function delegatesGuardToStore() {
     localStorage.setItem('airo-feedback-shown:airo#app-builder', 'true');
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
 
     const { rerender } = renderWithProviders(<AppPublish />);
 
     mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
     rerender(<AppPublish />);
 
     await waitFor(() => {
@@ -1451,12 +1149,12 @@ describe('AppPublish', () => {
 
   it('should add success growl with feedback CTA when publish completes while popover closed', async function successGrowlIncludesFeedback() {
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
 
     const { rerender, unmount } = renderWithProviders(<AppPublish />);
 
     mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
     rerender(<AppPublish />);
 
     await waitFor(() => {
@@ -1502,12 +1200,12 @@ describe('AppPublish', () => {
 
     try {
       mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+      mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
 
       const { rerender, unmount } = renderWithProviders(<AppPublish />);
 
       mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
-      mockDevelopStore.publishStates['app-123'] = { isPublishing: false, deploymentInProgressId: 'dep-1' };
+      mockDevelopStore.publishStates['app-123'] = { isPublishing: false };
       rerender(<AppPublish />);
 
       await waitFor(() => {
@@ -2453,11 +2151,6 @@ describe('AppPublish — closePopover state clearing', () => {
     mockRunGate.mockResolvedValue({ proceed: true });
     mockMutateAsync.mockReset();
     mockMutateAsync.mockResolvedValue(undefined);
-    mockAddCompletedMessage.mockReset();
-    mockModifyMutateAsync.mockReset();
-    mockModifyMutateAsync.mockResolvedValue(undefined);
-    mockModifyReset.mockReset();
-    mockDomainJob.value = { overallStatus: null, status: null };
     mockDnsConflictModal = null;
     mockIsUpgradePolling.value = false;
     mockShowPaywall.value = false;
@@ -2478,7 +2171,7 @@ describe('AppPublish — closePopover state clearing', () => {
 
   it('should clear success state when View Fixes is clicked so popover shows Publish on reopen', async function clearSuccessOnViewFixes() {
     mockSwitchboardOverrides['appbuilder-security-scan-ui'] = true;
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
 
     const { user, rerender } = renderWithProviders(<AppPublish />);
@@ -2494,7 +2187,6 @@ describe('AppPublish — closePopover state clearing', () => {
     mockDevelopStore.publishStates['app-123'] = {
       isPublishing: false,
       publishError: false,
-      deploymentInProgressId: 'dep-1',
       securityAnalysisResult: 'issues',
     };
     mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
@@ -2528,7 +2220,7 @@ describe('AppPublish — closePopover state clearing', () => {
         variants: ['publish'],
       })
     );
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: true, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: true };
     mockDeploymentsData = [{ id: 'dep-1', status: 'IN_PROGRESS' }];
 
     const { user, rerender } = renderWithProviders(<AppPublish />);
@@ -2541,7 +2233,7 @@ describe('AppPublish — closePopover state clearing', () => {
     });
 
     // Publish completes
-    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: false, deploymentInProgressId: 'dep-1' };
+    mockDevelopStore.publishStates['app-123'] = { isPublishing: false, publishError: false };
     mockDeploymentsData = [{ id: 'dep-1', status: DeploymentStatus.DEPLOYED }];
     rerender(<AppPublish />);
 

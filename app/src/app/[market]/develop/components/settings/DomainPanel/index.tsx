@@ -90,38 +90,6 @@ export default function DomainPanel() {
   }, []);
   const isExternalConnectDeepLink: boolean = externalConnectDeepLinkNonce > 0;
 
-  // "Edit" on the publish popover's temp-URL card deep-links here via #project-domain so the page
-  // scrolls straight to the Project Domain section instead of landing at the top (AIROBUILD-3501).
-  const [projectDomainDeepLinkNonce, setProjectDomainDeepLinkNonce] = useState<number>(
-    () => (typeof window !== 'undefined' && window.location.hash === '#project-domain' ? 1 : 0),
-  );
-  useEffect(function watchProjectDomainDeepLink() {
-    if (typeof window === 'undefined') return;
-    if (window.location.hash === '#project-domain') {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    }
-    function onHashChange() {
-      if (window.location.hash !== '#project-domain') return;
-      setProjectDomainDeepLinkNonce((nonce) => nonce + 1);
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
-    }
-    window.addEventListener('hashchange', onHashChange);
-    return function cleanup() {
-      window.removeEventListener('hashchange', onHashChange);
-    };
-  }, []);
-  // Scroll once the section is actually rendered — gate on load state so a deep link that arrives
-  // while the panel is still a skeleton re-fires this effect after the section mounts.
-  useEffect(function scrollToProjectDomainOnDeepLink() {
-    if (!projectDomainDeepLinkNonce || isSiteLoading || isPaywallLoading) return;
-    if (typeof window === 'undefined') return;
-    window.requestAnimationFrame(function scrollProjectDomainIntoView() {
-      const section = document.getElementById('project-domain-section');
-      if (!section || typeof section.scrollIntoView !== 'function') return;
-      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }, [projectDomainDeepLinkNonce, isSiteLoading, isPaywallLoading]);
-
   const hasActiveDomainJob = useDevelopPageStore(
     (s) => Boolean(currentAppId && s.domainJobsInProgress?.[currentAppId]),
   );
@@ -219,7 +187,7 @@ export default function DomainPanel() {
           </Box>
         )}
 
-        <Box id="project-domain-section" className={isDomainAttachEnabled ? 'mt-5 w-full min-w-0' : 'w-full min-w-0'}>
+        <Box className={isDomainAttachEnabled ? 'mt-5 w-full min-w-0' : 'w-full min-w-0'}>
           <ProjectDomain />
         </Box>
       </Box>
