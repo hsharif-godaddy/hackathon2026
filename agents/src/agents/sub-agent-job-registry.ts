@@ -333,6 +333,7 @@ export class SubAgentJobRegistry {
       ...(job.result?.usage && { usage: job.result.usage }),
       ...(job.finishedAt !== undefined && { durationMs: Math.max(0, job.finishedAt - job.startedAt) }),
       ...(job.error && { error: job.error }),
+      ...(job.result?.structuredOutput !== undefined && { structuredOutput: job.result.structuredOutput }),
     })
   }
 }

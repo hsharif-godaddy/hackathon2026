@@ -1,11 +1,10 @@
 import { createTool, type Tool, type AgentContext } from '@airo/ai-lib'
 import { z } from 'zod'
 
-import { SubAgentRunner, buildContinuationMessage, type SubAgentEvent } from '../../agents/sub-agent-runner.js'
+import { SubAgentRunner, buildContinuationMessage, type SubAgentEvent, type ReturnFormat } from '../../agents/sub-agent-runner.js'
+import { WorkflowInitResultSchema } from './workflow-schemas.js'
 import { getSubAgentConfig, type SubAgentName as BackgroundAgentName } from '../../agents/sub-agents/index.js'
 import { interactiveSubAgentManager } from '../../agents/interactive-sub-agent-manager.js'
-import { createInteractiveInterviewConfig } from '../../agents/sub-agents/interview.js'
-import { createInteractiveBuilderConfig } from '../../agents/sub-agents/builder.js'
 import { computeDebugTurnStats } from '../../utils/debug-turn-stats.js'
 import { Logger } from '../../logging/index.js'
 import { subAgentJobRegistry, TASK_TIMEOUT_ABORT_REASON } from '../../agents/sub-agent-job-registry.js'
@@ -16,6 +15,15 @@ const logger = Logger.create({ component: 'run-agent-tool' })
 const VALID_AGENTS = ['planning', 'plan-review', 'media', 'design', 'builder', 'design-kit-build', 'task-worker', 'brand-showcase', 'interview', 'workflow-init', 'developer-typecheck'] as const
 type AgentName = typeof VALID_AGENTS[number]
 
+// Sub-agents that return a schema-validated payload instead of prose. `returnFormat`
+// is a code-level API set here (never by the calling model): the worker is given a
+// synthetic returnResult tool and its validated result rides back on the envelope's
+// `structuredOutput`. workflow-init returns its step DAG this way, so the orchestrator
+// consumes a validated object rather than hand-parsing JSON out of the summary.
+const AGENT_RETURN_FORMATS: Partial<Record<AgentName, ReturnFormat>> = {
+  'workflow-init': { schema: WorkflowInitResultSchema },
+}
+
 export const runAgentAITool: Tool = createTool(
   `Dispatch a task to a specialized sub-agent. Each sub-agent runs in its own context with its own tools.
 
@@ -23,7 +31,7 @@ Modes:
 - "background" (default): Sub-agent is dispatched NON-BLOCKING. Returns { jobId, status: "running" } immediately. You MUST call awaitAgents([jobId]) to get results before using them. Multiple background calls can be dispatched in the same turn for true parallelism, then awaited together.
 - "interactive": Sub-agent takes over the conversation temporarily. It CAN ask the user questions via askQuestion. Only one interactive agent at a time. Use for tasks requiring user input (e.g. interview).
 
-Available agents: planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), design-kit-build (build one slice of a website — the site chrome or the homepage — faithfully from an installed design kit; self-loads docs/ui-kit/ + anchor.json), task-worker (generic worker with no built-in prompt — executes a single self-contained task exactly as written in the task string, e.g. searching media into slots or running a skill; media/skill tools only, cannot write source files), brand-showcase (write the standalone public/brand-showcase.html brand-specimen page from inlined brand content; file-only, never generates media), interview (structured Q&A with user to produce docs/brief.md), workflow-init (produce a step DAG for workflow initialization — returns JSON with archetype, northStar, steps).`,
+Available agents: planning (write implementation plans), plan-review (review and fix plans against quality criteria), media (find/generate images), design (create/update design.md + CSS), builder (execute plans, write code), design-kit-build (build one slice of a website — the site chrome or the homepage — faithfully from an installed design kit; self-loads docs/ui-kit/ + anchor.json), task-worker (generic worker with no built-in prompt — executes a single self-contained task exactly as written in the task string, e.g. searching media into slots or running a skill; media/skill tools only, cannot write source files), brand-showcase (write the standalone public/brand-showcase.html brand-specimen page from inlined brand content; file-only, never generates media), interview (structured Q&A with user to produce docs/brief.md), workflow-init (produce a step DAG for workflow initialization — returns a validated { archetype, northStar, steps } object on the result's structuredOutput).`,
   z.object({
     agent: z.enum(VALID_AGENTS).describe('Which sub-agent to dispatch to'),
     title: z.string().describe('Short display title for the task (shown to user in the UI card)'),
@@ -142,6 +150,11 @@ Available agents: planning (write implementation plans), plan-review (review and
         ? (fromJobId ? registry.getSession(fromJobId) : registry.findLatestSessionByAgent(agent)?.session)
         : undefined
 
+      // Structured-return agents (e.g. workflow-init) get a returnFormat here; the
+      // resulting structuredOutput rides back on the envelope for the orchestrator.
+      const returnFormat: ReturnFormat | undefined = AGENT_RETURN_FORMATS[agent]
+      const runOptions: { returnFormat?: ReturnFormat } | undefined = returnFormat ? { returnFormat } : undefined
+
       let result
       if (session) {
         const stale = await detectStaleFiles([...session.filesRead, ...session.filesWritten], appPath)
@@ -152,7 +165,8 @@ Available agents: planning (write implementation plans), plan-review (review and
           inputs,
           emitEvent,
           context as unknown as Record<string, unknown> | undefined,
-          signal
+          signal,
+          runOptions
         )
       } else {
         result = await runner.execute(
@@ -160,7 +174,8 @@ Available agents: planning (write implementation plans), plan-review (review and
           inputs,
           emitEvent,
           context as unknown as Record<string, unknown> | undefined,
-          signal
+          signal,
+          runOptions
         )
       }
 
@@ -218,9 +233,20 @@ Available agents: planning (write implementation plans), plan-review (review and
   }
 )
 
-const INTERACTIVE_AGENT_FACTORIES: Partial<Record<AgentName, (agentId: string) => Promise<unknown>>> = {
-  interview: createInteractiveInterviewConfig,
-  builder: createInteractiveBuilderConfig,
+type InteractiveAgentFactory = (agentId: string) => Promise<unknown>
+
+// Keep these factories lazy: the interactive configs import the full tool registry,
+// which pulls executable tool deps (including AppRepository/native sqlite) at module
+// load time. Background runAgent should not pay that cost or inherit that import path.
+const INTERACTIVE_AGENT_FACTORIES: Partial<Record<AgentName, InteractiveAgentFactory>> = {
+  interview: async (agentId: string): Promise<unknown> => {
+    const module: typeof import('../../agents/sub-agents/interview.js') = await import('../../agents/sub-agents/interview.js')
+    return module.createInteractiveInterviewConfig(agentId)
+  },
+  builder: async (agentId: string): Promise<unknown> => {
+    const module: typeof import('../../agents/sub-agents/builder.js') = await import('../../agents/sub-agents/builder.js')
+    return module.createInteractiveBuilderConfig(agentId)
+  },
 }
 
 async function handleInteractiveMode(
@@ -284,7 +310,7 @@ async function handleInteractiveMode(
 export const awaitAgentsAITool: Tool = createTool(
   `Wait for one or more previously dispatched sub-agent jobs to finish, then return their results.
 
-Pass the jobIds returned by earlier runAgent calls. Blocks until all listed jobs complete. Returns each job as a result envelope: status ("success" | "error" | "aborted" | "timeout"), summary (the sub-agent's final output), artifacts (files it wrote), usage (token counts), durationMs, and (on failure) error. A failed, aborted, or timed-out job is reported as a structured result — it does NOT throw — so you can decide whether to retry or route around it. "timeout" means the worker exceeded the per-task limit and was stopped.`,
+Pass the jobIds returned by earlier runAgent calls. Blocks until all listed jobs complete. Returns each job as a result envelope: status ("success" | "error" | "aborted" | "timeout"), summary (the sub-agent's final output), artifacts (files it wrote), usage (token counts), durationMs, structuredOutput (present only for schema-returning agents such as workflow-init — a SCHEMA-validated payload, so use it directly instead of re-parsing the summary; note "schema-validated" means shape and static DAG rules only — a stateful tool like workflow({ operation: "init" }) can still reject a well-formed payload, e.g. "already initialized", so check that tool's own return value too), and (on failure) error. A failed, aborted, or timed-out job is reported as a structured result — it does NOT throw — so you can decide whether to retry or route around it. "timeout" means the worker exceeded the per-task limit and was stopped.`,
   z.object({
     jobIds: z.array(z.string()).min(1).describe('Job IDs returned by prior runAgent dispatches'),
   }),

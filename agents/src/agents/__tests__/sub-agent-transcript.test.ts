@@ -50,6 +50,43 @@ describe('extractFileAccess', () => {
     expect(writes.map(w => w.path)).toEqual(['c.tsx'])
   })
 
+  it('classifies str_replace_based_edit_tool view as read-only', () => {
+    const steps = [
+      { response: { messages: [] }, toolResults: [
+        { toolName: 'str_replace_based_edit_tool', input: { command: 'view', path: 'viewed.tsx' }, output: 'content' },
+        { toolName: 'str_replace_based_edit_tool', input: { command: 'insert', path: 'edited.tsx' }, output: 'ok' },
+      ] },
+    ]
+
+    expect(extractFileAccess(steps, 'read').map(r => r.path)).toEqual(['viewed.tsx'])
+    expect(extractFileAccess(steps, 'write').map(w => w.path)).toEqual(['edited.tsx'])
+  })
+
+  it('confirmedOnly excludes a text-editor write that did not report success', () => {
+    const steps = [
+      { response: { messages: [] }, toolResults: [
+        { toolName: 'str_replace_based_edit_tool', input: { command: 'create', path: 'made.tsx' }, output: 'Successfully created made.tsx' },
+        { toolName: 'str_replace_based_edit_tool', input: { command: 'create', path: 'skipped.tsx' }, output: 'No upload available to fill skipped.tsx — do not create an empty file.' },
+      ] },
+    ]
+
+    // Ungated (staleness): both paths counted. Confirmed-only (artifacts): only the success.
+    expect(extractFileAccess(steps, 'write').map(w => w.path)).toEqual(['made.tsx', 'skipped.tsx'])
+    expect(extractFileAccess(steps, 'write', { confirmedOnly: true }).map(w => w.path)).toEqual(['made.tsx'])
+  })
+
+  it('confirmedOnly counts a binary auto-resolved create as a real write', () => {
+    // The binary upload path returns "Successfully created X (binary auto-resolved
+    // from uploads)" — a real write that must survive the confirmed-only gate.
+    const steps = [
+      { response: { messages: [] }, toolResults: [
+        { toolName: 'str_replace_based_edit_tool', input: { command: 'create', path: 'logo.png' }, output: 'Successfully created logo.png (binary auto-resolved from uploads)' },
+      ] },
+    ]
+
+    expect(extractFileAccess(steps, 'write', { confirmedOnly: true }).map(w => w.path)).toEqual(['logo.png'])
+  })
+
   it('falls back to the legacy `args` shape when `input` is absent', () => {
     const steps = [
       { response: { messages: [] }, toolResults: [

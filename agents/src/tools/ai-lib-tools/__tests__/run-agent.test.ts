@@ -55,6 +55,48 @@ describe('runAgent (non-blocking) + awaitAgents', () => {
     expect(out.results[0]).toMatchObject({ jobId: disp.jobId, status: 'success', summary: 'built' })
   })
 
+  it('dispatches workflow-init with a structured returnFormat and surfaces structuredOutput', async () => {
+    const dag = {
+      archetype: 'site',
+      northStar: { goals: ['launch'], audience: 'smbs', voice: 'friendly' },
+      steps: [{ id: 'foundation', title: 'Foundation', type: 'auto', dependsOn: [], ownedFiles: ['src/app.tsx'], verify: [{ kind: 'files_exist', spec: 'src/app.tsx' }] }],
+    }
+    runnerMock.execute.mockImplementation(async () => ({ summary: 'planned', artifacts: [], status: 'success', structuredOutput: dag }))
+
+    const disp = await runAgentAITool.execute!(
+      { agent: 'workflow-init', title: 'Plan', task: 'plan', inputs: {}, mode: 'background' },
+      { experimental_context: ctx } as never
+    ) as Record<string, unknown>
+    const out = await awaitAgentsAITool.execute!(
+      { jobIds: [disp.jobId as string] },
+      { experimental_context: ctx } as never
+    ) as { results: Array<Record<string, unknown>> }
+
+    // returnFormat is wired server-side at dispatch (6th positional arg to execute),
+    // and its schema validates the DAG shape (rejecting a malformed one).
+    const runOptions = runnerMock.execute.mock.calls[0][5] as {
+      returnFormat?: { schema: { safeParse: (v: unknown) => { success: boolean } } }
+    } | undefined
+    expect(runOptions?.returnFormat?.schema).toBeDefined()
+    expect(runOptions!.returnFormat!.schema.safeParse(dag).success).toBe(true)
+    expect(runOptions!.returnFormat!.schema.safeParse({ archetype: 'nope' }).success).toBe(false)
+
+    // The validated payload rides back on the envelope for the orchestrator.
+    expect(out.results[0].structuredOutput).toEqual(dag)
+  })
+
+  it('does not wire a returnFormat for agents without a structured contract', async () => {
+    const disp = await runAgentAITool.execute!(
+      { agent: 'builder', title: 'Home', task: 'build', inputs: {}, mode: 'background' },
+      { experimental_context: ctx } as never
+    ) as Record<string, unknown>
+    await awaitAgentsAITool.execute!(
+      { jobIds: [disp.jobId as string] },
+      { experimental_context: ctx } as never
+    )
+    expect(runnerMock.execute.mock.calls[0][5]).toBeUndefined()
+  })
+
   it('emits timeout details instead of late runner outputs after a timeout', async () => {
     vi.useFakeTimers()
     const emitted: Array<{ type: string; data: { event?: string; detail?: string } }> = []

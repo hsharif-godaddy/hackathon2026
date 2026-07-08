@@ -76,7 +76,7 @@ runAgent({
 awaitAgents([jobId])
 ```
 
-The sub-agent reads the archetype template and step-planning rules from the reference corpus, then returns a JSON object with `{ archetype, northStar, steps }`. Parse its summary as JSON and pass it directly to `workflow({ operation: "init", ...result })`.
+The sub-agent reads the archetype template and step-planning rules from the reference corpus, then returns the step DAG on the awaited result's `structuredOutput` field — a schema-validated `{ archetype, northStar, steps }` object. Do NOT parse the summary; pass `structuredOutput` directly to `workflow({ operation: "init", ...structuredOutput })`. The schema validates shape and static DAG rules only — always check the `init` call's return value, since it can still reject a well-formed payload (e.g. the workflow was already initialized, or the write failed).
 
 After init, the archetype summary is auto-injected into your context every turn (look for `<archetype_guidance>`).
 

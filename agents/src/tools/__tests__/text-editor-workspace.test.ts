@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ViewResult, TreeResult } from '../../workspace/files.js';
 import { DevSupervisorError } from '../../services/DevSupervisorClient.js';
-import { handleView, handleStrReplace, handleCreate, handleInsert } from '../text-editor-workspace.js';
+import { handleView, handleStrReplace, handleCreate, handleInsert, isSuccessfulEditResult } from '../text-editor-workspace.js';
 import { createStubWorkspaceFiles } from '../../workspace/__tests__/test-workspace-files.js';
 
 describe('text-editor-workspace', () => {
@@ -195,6 +195,29 @@ describe('text-editor-workspace', () => {
         line: 6,
         content: 'inserted line',
       });
+    });
+  });
+
+  // Guard: every handler's success return MUST be recognized by isSuccessfulEditResult,
+  // since artifact extraction (sub-agent-transcript) and ToolResultCompressionStrategy
+  // gate on it. A future success message that forgets the "Successfully" prefix would
+  // silently drop real writes from artifacts — fail here instead. (The binary
+  // auto-resolved create branch lives in text-editor.ts and is covered by its own
+  // isSuccessfulEditResult assertion in text-editor-create-guard-chain.test.ts.)
+  describe('success outputs are recognized by isSuccessfulEditResult', () => {
+    it('handleStrReplace success', async () => {
+      const files = createStubWorkspaceFiles({ edit: vi.fn().mockResolvedValue({ applied: 1 }) });
+      expect(isSuccessfulEditResult(await handleStrReplace(files, 'a.ts', 'old', 'new'))).toBe(true);
+    });
+
+    it('handleCreate success', async () => {
+      const files = createStubWorkspaceFiles({ write: vi.fn().mockResolvedValue({ bytesWritten: 1 }) });
+      expect(isSuccessfulEditResult(await handleCreate(files, 'a.ts', 'content'))).toBe(true);
+    });
+
+    it('handleInsert success', async () => {
+      const files = createStubWorkspaceFiles({ insert: vi.fn().mockResolvedValue({ lines: 1 }) });
+      expect(isSuccessfulEditResult(await handleInsert(files, 'a.ts', 1, 'text'))).toBe(true);
     });
   });
 });

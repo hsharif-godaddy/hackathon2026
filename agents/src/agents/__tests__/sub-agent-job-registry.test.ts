@@ -71,6 +71,21 @@ describe('SubAgentJobRegistry dispatch', () => {
     expect(res.usage).toEqual(usage)
   })
 
+  it('threads structuredOutput from the run result onto the envelope', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4 })
+    const structuredOutput = { verdict: 'pass', score: 9 }
+    const jobId = reg.dispatch({ agent: 'plan-review', title: 'Review' }, async () => ({ summary: 'd', artifacts: [], status: 'success', structuredOutput } as SubAgentResult))
+    const [res] = await reg.await([jobId])
+    expect(res.structuredOutput).toEqual(structuredOutput)
+  })
+
+  it('leaves structuredOutput absent on the envelope when the run did not produce one', async () => {
+    const reg = new SubAgentJobRegistry({ maxConcurrent: 4 })
+    const jobId = reg.dispatch({ agent: 'builder', title: 'Home' }, async () => ok('done'))
+    const [res] = await reg.await([jobId])
+    expect(res.structuredOutput).toBeUndefined()
+  })
+
   it('times out a hung job: aborts the worker and returns a timeout envelope (does not hang)', async () => {
     const reg = new SubAgentJobRegistry({ maxConcurrent: 4, taskTimeoutMs: 20 })
     let sawAbort = false

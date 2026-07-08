@@ -64,6 +64,14 @@ export const resultEnvelopeSchema = z.object({
   usage: usageSchema.optional().catch(undefined),
   durationMs: z.number().nonnegative().optional().catch(undefined),
   error: z.string().optional().catch(undefined),
+  // Generic container for a schema-validated payload a caller requested for this
+  // run (see `ReturnFormat` in sub-agent-runner). Mirrors the Claude Agent SDK's
+  // `ResultMessage.structured_output`: task-*specific* shape lives in the caller's
+  // per-call schema, NOT in fixed envelope fields — this stays deliberately
+  // `unknown`. Populated ONLY when a schema was requested; otherwise absent. Soft
+  // (`.catch`) so a malformed value degrades to `undefined` rather than failing
+  // the whole parse, matching the other soft fields above.
+  structuredOutput: z.unknown().optional().catch(undefined),
 })
 
 export type ResultEnvelope = z.infer<typeof resultEnvelopeSchema>
@@ -79,6 +87,7 @@ export interface ResultEnvelopeInput {
   usage?: SubAgentUsage
   durationMs?: number
   error?: string
+  structuredOutput?: unknown
 }
 
 /**

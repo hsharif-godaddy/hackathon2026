@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { z } from 'zod'
+import { AgentWrapper, createTool } from '@airo/ai-lib'
 import { SubAgentRunner, type SubAgentConfig, type SubAgentEvent } from '../sub-agent-runner.js'
 
 const mockStreamGenerate = vi.fn()
@@ -7,6 +9,9 @@ vi.mock('@airo/ai-lib', () => ({
   AgentWrapper: vi.fn().mockImplementation(function () {
     return { streamGenerate: mockStreamGenerate }
   }),
+  // Echo tool used for structured returns; the runner reads the payload off the
+  // tool call's input, so the real createTool behavior is irrelevant here.
+  createTool: vi.fn((_description: string, _schema: unknown, _execute: unknown) => ({ _tool: true })),
   getModel: vi.fn().mockResolvedValue({ id: 'mock-model' }),
 }))
 
@@ -47,6 +52,8 @@ function mockStreamResult(text: string, toolCalls: unknown[] = []): {
 describe('SubAgentRunner', () => {
   beforeEach(() => {
     mockStreamGenerate.mockReset()
+    vi.mocked(AgentWrapper).mockClear()
+    vi.mocked(createTool).mockClear()
   })
 
   it('constructs with a config', () => {
@@ -229,5 +236,248 @@ describe('SubAgentRunner', () => {
     const result = await runner.execute('work', {}, () => {})
 
     expect(result.artifacts).toEqual(['/app/index.ts'])
+  })
+
+  describe('structured returns (returnFormat: { schema })', () => {
+    const verdictSchema = z.object({ verdict: z.enum(['pass', 'fail']), score: z.number() })
+
+    it('wires a returnResult stop-after tool and injects the completion instruction', async () => {
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('Reviewed.', [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+
+      await runner.execute('review', {}, () => {}, undefined, undefined, { returnFormat: { schema: verdictSchema } })
+
+      const config = vi.mocked(AgentWrapper).mock.calls[0][0] as {
+        tools: Record<string, unknown>
+        stopAfterTools?: string[]
+        system: string
+      }
+      expect(config.stopAfterTools).toEqual(['returnResult'])
+      expect(config.tools).toHaveProperty('returnResult')
+      expect(config.system).toContain('returnResult')
+      // The synthetic tool is built from the caller's schema.
+      expect(vi.mocked(createTool)).toHaveBeenCalledWith(expect.any(String), verdictSchema, expect.any(Function))
+    })
+
+    it('reads the validated payload off the returnResult call and attaches structuredOutput', async () => {
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('Reviewed the plan.', [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.summary).toBe('Reviewed the plan.') // work-turn prose preserved as summary
+      expect(result.structuredOutput).toEqual({ verdict: 'pass', score: 9 })
+      expect(mockStreamGenerate).toHaveBeenCalledTimes(1) // no extra turn
+    })
+
+    it('reads the payload from `args` when the SDK names the field that way', async () => {
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('done', [{ toolName: 'returnResult', args: { verdict: 'fail', score: 2 }, result: { verdict: 'fail', score: 2 } }])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.structuredOutput).toEqual({ verdict: 'fail', score: 2 })
+    })
+
+    it('fails as a distinct error (not success) when the worker never returns a result', async () => {
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('I did some work but forgot to call the tool.', [
+          { toolName: 'str_replace_based_edit_tool', result: { path: '/app/x.ts' } },
+        ])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+      const events: SubAgentEvent[] = []
+
+      const result = await runner.execute('review', {}, (e) => events.push(e), undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('error')
+      expect(result.structuredOutput).toBeUndefined()
+      expect(result.summary).toContain('did not return a structured result')
+      // A structured failure surfaces `error` only — never a completed-then-error pair.
+      expect(events.some((e) => e.event === 'completed')).toBe(false)
+      expect(events.some((e) => e.event === 'error')).toBe(true)
+    })
+
+    it('errors (does not pass through) when the terminal returnResult call is schema-invalid', async () => {
+      // maxSteps exhausted on a malformed returnResult: the AI SDK surfaces the call in
+      // toolCalls with `invalid: true` and its schema-violating input but NO successful
+      // result (it never satisfied stopAfterTools). The runner must treat this as
+      // not-returned, not pass the invalid payload through as a success.
+      mockStreamGenerate.mockResolvedValue({
+        textStream: textStreamFrom('done'),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: {},
+          finishReason: 'stop',
+          toolCalls: [{ toolName: 'returnResult', input: { verdict: 'pass' }, invalid: true, error: 'missing score' }],
+        }),
+      })
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('error')
+      expect(result.summary).toContain('did not return a structured result')
+      expect(result.structuredOutput).toBeUndefined()
+    })
+
+    it('passes the SDK-validated payload through without re-validating (transform schemas round-trip)', async () => {
+      // The SDK validates+transforms the tool input before it reaches the runner, so
+      // the captured `input` is already the transformed shape (tags: string[]). A
+      // re-`safeParse` against the input-side schema (z.string()) would reject the
+      // array and falsely error; the runner must trust the SDK's validation instead.
+      const transformSchema = z.object({ tags: z.string().transform((s: string) => s.split(',')) })
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('done', [{ toolName: 'returnResult', input: { tags: ['a', 'b'] }, output: { tags: ['a', 'b'] } }])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: transformSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.structuredOutput).toEqual({ tags: ['a', 'b'] })
+    })
+
+    it('aggregates artifacts written in earlier steps when returnResult is the final step', async () => {
+      // A write lands in step 1; the terminal `returnResult` is alone in the final
+      // step. `finalResult.toolCalls` (last step) holds only returnResult, so
+      // last-step-only extraction reports zero artifacts. The editor returns a status
+      // STRING with the path only on its INPUT (as the real tool does), so the write is
+      // recovered from `session.filesWritten` (input-based), not from the result.
+      mockStreamGenerate.mockResolvedValue({
+        textStream: textStreamFrom('done'),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: {},
+          finishReason: 'stop',
+          toolCalls: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }],
+          steps: [
+            { response: { messages: [] }, toolResults: [{ toolName: 'str_replace_based_edit_tool', input: { command: 'str_replace', path: '/app/home.tsx' }, output: 'Successfully replaced text.' }] },
+            { response: { messages: [] }, toolResults: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }] },
+          ],
+        }),
+      })
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.artifacts).toEqual(['/app/home.tsx'])
+      expect(result.structuredOutput).toEqual({ verdict: 'pass', score: 9 })
+    })
+
+    it('does not report read-only editor view calls as structured-run artifacts', async () => {
+      mockStreamGenerate.mockResolvedValue({
+        textStream: textStreamFrom('done'),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: {},
+          finishReason: 'stop',
+          toolCalls: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }],
+          steps: [
+            { response: { messages: [] }, toolResults: [{ toolName: 'str_replace_based_edit_tool', input: { command: 'view', path: '/app/home.tsx' }, output: 'file contents' }] },
+            { response: { messages: [] }, toolResults: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }] },
+          ],
+        }),
+      })
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.artifacts).toEqual([])
+      expect(result.structuredOutput).toEqual({ verdict: 'pass', score: 9 })
+    })
+
+    it('does not report a create that wrote nothing (no matching upload) as an artifact', async () => {
+      // The `create` skip-branches return a non-success status string without writing;
+      // its input path must not surface as a produced artifact (only confirmed writes do).
+      mockStreamGenerate.mockResolvedValue({
+        textStream: textStreamFrom('done'),
+        getFinalResult: vi.fn().mockResolvedValue({
+          usage: {},
+          finishReason: 'stop',
+          toolCalls: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }],
+          steps: [
+            { response: { messages: [] }, toolResults: [
+              { toolName: 'str_replace_based_edit_tool', input: { command: 'create', path: '/app/made.tsx' }, output: 'Successfully created made.tsx' },
+              { toolName: 'str_replace_based_edit_tool', input: { command: 'create', path: '/app/skipped.tsx' }, output: 'No upload available to fill skipped.tsx — do not create an empty file.' },
+            ] },
+            { response: { messages: [] }, toolResults: [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }] },
+          ],
+        }),
+      })
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.artifacts).toEqual(['/app/made.tsx'])
+    })
+
+    it('keeps the summary non-empty when a structured run emits no closing prose', async () => {
+      mockStreamGenerate.mockResolvedValue(
+        mockStreamResult('', [{ toolName: 'returnResult', input: { verdict: 'pass', score: 9 }, output: { verdict: 'pass', score: 9 } }])
+      )
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('review', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('success')
+      expect(result.summary.trim().length).toBeGreaterThan(0)
+      expect(result.structuredOutput).toEqual({ verdict: 'pass', score: 9 })
+    })
+
+    it('wires no returnResult tool or stop condition for the default summary format', async () => {
+      mockStreamGenerate.mockResolvedValue(mockStreamResult('just prose'))
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('work', {}, () => {})
+
+      expect(result.status).toBe('success')
+      expect(result.structuredOutput).toBeUndefined()
+      const config = vi.mocked(AgentWrapper).mock.calls[0][0] as { tools: Record<string, unknown>; stopAfterTools?: string[] }
+      expect(config.stopAfterTools).toBeUndefined()
+      expect(config.tools).not.toHaveProperty('returnResult')
+    })
+
+    it('reports a truncated work turn as an error before checking structured output', async () => {
+      mockStreamGenerate.mockResolvedValue({
+        textStream: textStreamFrom('partial'),
+        getFinalResult: vi.fn().mockResolvedValue({ usage: {}, finishReason: 'length', toolCalls: [] }),
+      })
+      const runner = new SubAgentRunner(makeConfig())
+
+      const result = await runner.execute('work', {}, () => {}, undefined, undefined, {
+        returnFormat: { schema: verdictSchema },
+      })
+
+      expect(result.status).toBe('error')
+      expect(result.summary).toContain('finishReason: length')
+      expect(result.structuredOutput).toBeUndefined()
+    })
   })
 })

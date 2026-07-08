@@ -249,7 +249,11 @@ async function executeTextEditor(input: TextEditorInput, context: AgentContext |
 
     case 'create': {
       if (binaryCopied) {
-        return `Created ${basename(path)} (binary auto-resolved from uploads)`;
+        // "Successfully created" prefix so this real write is recognized as a
+        // successful edit by EDIT_SUCCESS_PREFIXES consumers (artifact extraction
+        // in sub-agent-transcript, ToolResultCompressionStrategy) — the bytes were
+        // already copied to disk by resolveSourceFile.
+        return `Successfully created ${basename(path)} (binary auto-resolved from uploads)`;
       }
       if (resolvedFileText == null) {
         throw new Error('create requires file_text');

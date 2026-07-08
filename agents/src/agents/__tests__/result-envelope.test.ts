@@ -30,6 +30,17 @@ describe('buildResultEnvelope', () => {
     expect(env.durationMs).toBe(1234)
   })
 
+  it('passes a generic structuredOutput payload through unchanged', () => {
+    const payload = { verdict: 'pass', nested: { score: 9, tags: ['a', 'b'] } }
+    const env = buildResultEnvelope({ jobId: 'j', agent: 'a', title: 't', status: 'success', structuredOutput: payload })
+    expect(env.structuredOutput).toEqual(payload)
+  })
+
+  it('leaves structuredOutput absent when none was provided', () => {
+    const env = buildResultEnvelope({ jobId: 'j', agent: 'a', title: 't', status: 'success' })
+    expect(env.structuredOutput).toBeUndefined()
+  })
+
   it('drops a malformed soft field instead of failing the whole parse', () => {
     const env = buildResultEnvelope({
       jobId: 'j',

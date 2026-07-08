@@ -19,6 +19,20 @@ export const EDIT_SUCCESS_PREFIXES = [
   'successfully inserted text',
 ] as const;
 
+/**
+ * True when a text-editor tool result reports a successful write. The `create`
+ * skip-branches (no matching upload, file left unchanged, transient copy error)
+ * and read/error outputs return other strings, so this lets callers tell a real
+ * write from a no-op/failed edit — e.g. artifact reporting must not count a
+ * `create` that wrote nothing. Matches {@link EDIT_SUCCESS_PREFIXES}
+ * case-insensitively (the same prefixes ToolResultCompressionStrategy gates on).
+ */
+export function isSuccessfulEditResult(output: unknown): boolean {
+  if (typeof output !== 'string') return false;
+  const lower: string = output.toLowerCase();
+  return EDIT_SUCCESS_PREFIXES.some((prefix: string): boolean => lower.startsWith(prefix));
+}
+
 /** Hard cap on snippet size — keeps error messages lean to reduce token waste on retries */
 const MAX_SNIPPET_CHARS = 5_000;
 

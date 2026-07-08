@@ -122,6 +122,9 @@ describe('text-editor create guard integration', function textEditorCreateGuardI
     );
 
     expect(result).toContain('binary auto-resolved from uploads');
+    // Must carry the "Successfully created" prefix so this real write is recognized
+    // by isSuccessfulEditResult (artifact extraction, ToolResultCompressionStrategy).
+    expect(result).toMatch(/^Successfully created /);
     expect(handleCreate).not.toHaveBeenCalled();
     expect(mockFiles.upload).toHaveBeenCalledWith({
       path: 'public/assets/logo.png',

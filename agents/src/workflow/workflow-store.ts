@@ -118,24 +118,10 @@ export function computeNextActions(state: WorkflowState): WorkflowStep[] {
   return eligible
 }
 
-export function validateOwnedFilesDisjoint(steps: WorkflowStep[]): string[] {
-  const errors: string[] = []
-  for (let i = 0; i < steps.length; i++) {
-    for (let j = i + 1; j < steps.length; j++) {
-      const a: WorkflowStep | undefined = steps[i]
-      const b: WorkflowStep | undefined = steps[j]
-      if (a === undefined || b === undefined) continue
-      // If one depends on the other, they can't run concurrently — skip
-      if (a.dependsOn.includes(b.id) || b.dependsOn.includes(a.id)) continue
-      // Check for overlapping files
-      const overlap: string[] = a.ownedFiles.filter((f: string) => b.ownedFiles.includes(f))
-      if (overlap.length > 0) {
-        errors.push(`Steps "${a.id}" and "${b.id}" share ownedFiles: ${overlap.join(', ')}`)
-      }
-    }
-  }
-  return errors
-}
+// Single source of truth for step-DAG semantics lives in step-validation.ts
+// (pure, dependency-free) so the workflow-init returnResult schema can share it.
+// Re-exported here for existing callers (workflow tool, index barrel).
+export { validateOwnedFilesDisjoint } from './step-validation.js'
 
 /**
  * Called by the orchestrator before its turn ends. Reverts any files owned by

@@ -13,25 +13,9 @@ import { runVerifyChecks } from '../../workflow/verify-runner.js'
 import { createForWorkspace } from '../../workspace/index.js'
 import { GitUtils } from '../../utils/git.js'
 import { AppRepository } from '../../database/repositories/AppRepository.js'
+import { StepInputSchema } from './workflow-schemas.js'
 
 const logger = Logger.create({ component: 'workflow-tool' })
-
-const VerifyCheckSchema = z.object({
-  kind: z.enum(['files_exist', 'tsc', 'route_renders', 'test', 'manual']),
-  spec: z.string(),
-})
-
-const StepInputSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  type: z.enum(['auto', 'gate', 'judgment']),
-  dependsOn: z.array(z.string()),
-  ownedFiles: z.array(z.string()),
-  verify: z.array(VerifyCheckSchema),
-  gate: z.object({
-    prompt: z.string(),
-  }).optional(),
-})
 
 const OperationSchema = z.object({
   operation: z.enum([
