@@ -133,12 +133,12 @@ describe('Header', () => {
     vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: true }));
     renderWithProviders(<Header location="homepage" />);
 
-    expect(screen.getByTestId('site-notifications-homepage')).toBeInTheDocument();
+    expect(screen.getByTestId(/^site-notifications-homepage/)).toBeInTheDocument();
   });
 
   it('should not render Notifications on homepage when not authenticated', () => {
     renderWithProviders(<Header location="homepage" />);
 
-    expect(screen.queryByTestId('site-notifications-homepage')).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/^site-notifications-homepage/)).not.toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useRef } from 'react';
 import Notifications from '@site/notifications';
 import Box from '@ux/box';
 import Tag from '@ux/tag';
@@ -40,6 +41,12 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
   const isMarketingPage = isHomepage || location.startsWith('landing');
   const godaddyUrl = 'https://www.godaddy.com';
   const bellAppKey = BELL_APP_KEYS[location];
+  
+  // Unique per mount so CDN bundle's `roots` Map (dom.tsx) never reuses a stale root across navigations.
+  const notifInstanceKeyRef = useRef<string>('');
+  if (!notifInstanceKeyRef.current) notifInstanceKeyRef.current = crypto.randomUUID();
+  const notifInstanceKey: string = notifInstanceKeyRef.current;
+
   return (
     <header data-testid="airo-header" className={clsx(
       "text-intents-ux-boxHighContrast-foregroundColor",
@@ -71,7 +78,7 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
               {showAuthenticatedUI && !isDevelopPage && <InviteFriends location={location} />}
               {!isDevelopPage && <DiscordLink location={location} />}
               {showAuthenticatedUI && bellAppKey && (
-                <Notifications key={bellAppKey} id={`site-notifications-${location}`} appKey={bellAppKey} />
+                <Notifications key={bellAppKey} id={`site-notifications-${location}-${notifInstanceKey}`} appKey={bellAppKey} />
               )}
               <UserMenu
                 onShowMockLogin={onShowMockLogin}
