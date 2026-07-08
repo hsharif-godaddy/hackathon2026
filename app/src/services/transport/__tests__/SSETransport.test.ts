@@ -554,6 +554,87 @@ describe('SSETransport', () => {
       t.destroy()
     })
 
+    it('onopen resets consecutiveErrors on successful polyfill reconnect', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 3,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      // Accumulate errors just below threshold.
+      lastEventSourceInstance?.onerror?.({ message: 'a' })
+      lastEventSourceInstance?.onerror?.({ message: 'b' })
+
+      // Polyfill reconnects successfully — fires onopen before any SSE event.
+      lastEventSourceInstance?.onopen?.({ type: 'open' })
+
+      // Without the reset, this third error would trip the threshold (2+1=3).
+      // With the reset, counter restarted at 0, so this is only error #1.
+      lastEventSourceInstance?.onerror?.({ message: 'c' })
+
+      expect(lastEventSourceInstance.close).not.toHaveBeenCalled()
+      expect(callbacks.onStateChange).not.toHaveBeenCalledWith('dormant')
+      t.destroy()
+    })
+
+    it('fleet reload: without onopen reset, 12 consecutive errors trip dormant (AIROBUILD-3552 pre-fix regression)', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 10,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      // Simulate polyfill retry storm during container restart (~1 retry/sec).
+      // Without the fix, 10+ consecutive onerror calls trip the threshold and
+      // the idle transport enters dormant permanently — stale "Update In Progress".
+      for (let i = 0; i < 12; i++) {
+        lastEventSourceInstance?.onerror?.({ message: `retry_${i}` })
+      }
+
+      // BUG (pre-fix): transport is now dormant, no recovery path.
+      expect(lastEventSourceInstance.close).toHaveBeenCalled()
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+      t.destroy()
+    })
+
+    it('fleet reload: idle session recovers when onopen fires before threshold (AIROBUILD-3552)', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 10,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      // Container is down — retries fail for ~8 seconds (8 errors at 1/sec).
+      for (let i = 0; i < 8; i++) {
+        lastEventSourceInstance?.onerror?.({ message: `retry_${i}` })
+      }
+
+      // Container comes back — polyfill's next retry succeeds, fires onopen.
+      lastEventSourceInstance?.onopen?.({ type: 'open' })
+
+      // Even after 8 more errors (a second outage), the transport survives
+      // because onopen reset the counter to 0 — total since last open is only 8.
+      for (let i = 0; i < 8; i++) {
+        lastEventSourceInstance?.onerror?.({ message: `retry2_${i}` })
+      }
+
+      expect(lastEventSourceInstance.close).not.toHaveBeenCalled()
+      expect(callbacks.onStateChange).not.toHaveBeenCalledWith('dormant')
+      t.destroy()
+    })
+
     it('does not reset circuit breaker without replay_complete even after other typed events', async () => {
       autoFireInitialize = false
       const t = new SSETransport({

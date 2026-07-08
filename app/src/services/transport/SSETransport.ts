@@ -592,6 +592,10 @@ export class SSETransport implements ChatTransport {
       },
     })
 
+    this.eventSource.onopen = () => {
+      this.consecutiveErrors = 0
+    }
+
     this.eventSource.onerror = (err: any) => {
       if (err?.code === 401 || err?.status === 401) {
         // 401 is an auth event, not a transport fault — refresh the token and
