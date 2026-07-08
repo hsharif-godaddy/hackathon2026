@@ -43,6 +43,7 @@ on:
           - 'SeoQualityS3Stack'
           - 'SupportplaneDynamoStack'
           - 'SupportplaneTranscriptIngestStack'
+          - 'SupportplaneTranscriptSyncStack'
           - 'TransactionalEventsKinesisStack'
           - 'TransactionalEventsKMSStack'
           - 'WatchtowerStack'

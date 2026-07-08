@@ -28,6 +28,7 @@ import { FeedbackL1TranscriptStack } from "../lib/feedback-l1-transcript-stack";
 import { SupportplaneDynamoStack } from "../lib/supportplane-dynamodb-stack";
 import { LangfuseExportsS3Stack } from "../lib/langfuse-exports-s3-stack";
 import { SupportplaneTranscriptIngestStack } from "../lib/supportplane-transcript-ingest-stack";
+import { SupportplaneTranscriptSyncStack } from "../lib/supportplane-transcript-sync-stack";
 
 /**
  * Main function to execute the CDK app
@@ -190,6 +191,20 @@ async function main() {
   // dev + prod only (mirrors the FeedbackL1TranscriptStack / SupportplaneDynamoStack gate).
   if (config.envName === 'dev' || config.envName === 'prod') {
     new SupportplaneTranscriptIngestStack(app, 'SupportplaneTranscriptIngestStack', { env });
+  }
+
+  // SupportPlane transcript sync Lambda — runs daily at 13:00 UTC via EventBridge
+  // cron (cron(0 13 * * ? *)), diffs the external CKP lighthouse S3 bucket against
+  // the internal transcripts bucket using a hash map (sync-state.json) stored in
+  // the internal bucket, copies new CSVs under uploads/, then enqueues one
+  // {bucket, key} job per file into the sp-transcript-ingest SQS queue.
+  // GD boundary blocks s3:PutBucketNotification so S3 event triggers are not
+  // used — EventBridge scheduled rules are not affected by that boundary.
+  // Prerequisite: CKP team must grant the sync Lambda role read access on
+  // gd-ckpetlbatch-prod-lighthouse-data via their bucket policy.
+  // dev + prod only (mirrors SupportplaneTranscriptIngestStack gate).
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new SupportplaneTranscriptSyncStack(app, 'SupportplaneTranscriptSyncStack', { env });
   }
 
   // KMS key for encrypting the transactional events Kinesis stream.
