@@ -6,13 +6,15 @@ import '@testing-library/jest-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-// Controllable switchboard value + develop-store state.
 let mockMultiUser: boolean | undefined = true;
+const mockSetActiveSettingsSection = vi.fn();
 const mockStoreState: Record<string, unknown> = {
   chatPaneWidth: 320,
   isChatPaneCollapsed: false,
+  isMobile: false,
   currentAppId: 'app-1',
   activeSettingsSection: 'project',
+  setActiveSettingsSection: mockSetActiveSettingsSection,
 };
 
 const mockReconcile = vi.fn();
@@ -22,7 +24,6 @@ vi.mock('@/hooks/useSwitchboard', () => ({
 }));
 
 vi.mock('@/hooks/useTranslations', () => ({
-  // Echo the defaultMessage so labels are assertable.
   useTranslations: () => (_id: string, _values?: unknown, defaultMessage?: string) =>
     defaultMessage ?? _id,
 }));
@@ -41,21 +42,28 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: (s: Record<string, unknown>) => unknown) => selector(mockStoreState),
 }));
 
-// Avoid loading the heavy CDS multiusersEsm bundle.
 vi.mock('@/app/[market]/develop/components/settings/TeamPanel', () => ({
   default: () => <div data-testid="team-panel-stub" />,
 }));
 
-// IconButton pulls UXCore — stub to a plain button that forwards the props we assert.
 vi.mock('@/app/[market]/develop/components/IconButton', () => ({
-  default: ({ label, onClick, 'data-testid': testId, 'aria-expanded': expanded }: any) => (
-    <button type="button" data-testid={testId} aria-expanded={expanded} onClick={onClick}>
+  default: ({ label, onClick, 'data-testid': testId }: any) => (
+    <button type="button" data-testid={testId} onClick={onClick}>
       {label}
     </button>
   ),
 }));
 
-import ShareAccess from './ShareAccess';
+import ShareAccess, { ShareAccessButton } from './ShareAccess';
+
+function renderWithButton() {
+  return render(
+    <>
+      <ShareAccessButton />
+      <ShareAccess />
+    </>
+  );
+}
 
 describe('ShareAccess', () => {
   beforeEach(() => {
@@ -70,58 +78,50 @@ describe('ShareAccess', () => {
       mockMultiUser = false;
       const { container } = render(<ShareAccess />);
       expect(container).toBeEmptyDOMElement();
-      expect(screen.queryByTestId('share-access-button')).not.toBeInTheDocument();
     });
 
-    it('renders nothing when aab-multi-user is undefined (SSR / flag absent)', () => {
+    it('renders nothing when aab-multi-user is undefined', () => {
       mockMultiUser = undefined;
       const { container } = render(<ShareAccess />);
       expect(container).toBeEmptyDOMElement();
     });
 
     it('renders the toolbar button when aab-multi-user is true', () => {
-      render(<ShareAccess />);
+      renderWithButton();
       expect(screen.getByTestId('share-access-button')).toBeInTheDocument();
     });
   });
 
-  describe('open / close', () => {
-    it('opens the overlay on button click and fires reconcile on open', () => {
-      render(<ShareAccess />);
-      expect(screen.queryByTestId('share-access-fullpage')).not.toBeInTheDocument();
-
-      fireEvent.click(screen.getByTestId('share-access-button'));
+  describe('canvas behavior', () => {
+    it('opens the canvas when activeSettingsSection is TEAM', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      renderWithButton();
 
       expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
-      expect(screen.getByTestId('share-access-close')).toBeInTheDocument();
-      // Reconcile-on-open with the current app id.
       expect(mockReconcile).toHaveBeenCalledWith('app-1');
     });
 
-    it('closes when the close button is clicked', () => {
-      render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
-      expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
+    it('does NOT have a close button', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      renderWithButton();
 
-      fireEvent.click(screen.getByTestId('share-access-close'));
-      expect(screen.queryByTestId('share-access-fullpage')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('share-access-close')).not.toBeInTheDocument();
     });
 
-    it('closes on Escape', () => {
-      render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
+    it('does NOT close on Escape', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      renderWithButton();
       expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
 
       fireEvent.keyDown(window, { key: 'Escape' });
-      expect(screen.queryByTestId('share-access-fullpage')).not.toBeInTheDocument();
+      expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
     });
 
-    it('dismisses on a pointerdown outside the team UI', () => {
-      render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
+    it('dismisses on pointerdown outside the team UI (navigation away)', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      renderWithButton();
       expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
 
-      // An element that matches none of the KEEP_OPEN selectors → dismiss.
       const outside = document.createElement('div');
       document.body.appendChild(outside);
       fireEvent.pointerDown(outside);
@@ -130,34 +130,38 @@ describe('ShareAccess', () => {
       document.body.removeChild(outside);
     });
 
-    it('does NOT dismiss on a pointerdown inside the overlay (close button)', () => {
-      render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
+    it('does NOT dismiss on pointerdown inside the team UI', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      renderWithButton();
 
-      // Pointerdown on the close button is "inside" — overlay stays open
-      // (the click handler, not the outside-dismiss, governs closing).
-      fireEvent.pointerDown(screen.getByTestId('share-access-close'));
+      fireEvent.pointerDown(screen.getByTestId('share-access-fullpage'));
       expect(screen.getByTestId('share-access-fullpage')).toBeInTheDocument();
     });
   });
 
   describe('reconcile lifecycle', () => {
-    it('fires a single reconcile on open and once more on close (catches a just-made revoke)', () => {
-      render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
-      expect(mockReconcile).toHaveBeenCalledTimes(1); // open: single reconcile
+    it('fires reconcile on open and on close', () => {
+      mockStoreState.activeSettingsSection = 'team';
+      const { unmount } = render(<ShareAccess />);
+      expect(mockReconcile).toHaveBeenCalledTimes(1);
 
-      fireEvent.click(screen.getByTestId('share-access-close'));
-      // Close fires one more reconcile so a revoke made right before closing is
-      // mirrored immediately. Ongoing convergence is still TeamPanel's poll.
+      unmount();
       expect(mockReconcile).toHaveBeenCalledTimes(2);
     });
 
     it('does not reconcile when there is no current app id', () => {
       mockStoreState.currentAppId = undefined;
+      mockStoreState.activeSettingsSection = 'team';
       render(<ShareAccess />);
-      fireEvent.click(screen.getByTestId('share-access-button'));
       expect(mockReconcile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ShareAccessButton', () => {
+    it('calls setActiveSettingsSection(TEAM) on click', () => {
+      renderWithButton();
+      fireEvent.click(screen.getByTestId('share-access-button'));
+      expect(mockSetActiveSettingsSection).toHaveBeenCalledWith('team');
     });
   });
 });

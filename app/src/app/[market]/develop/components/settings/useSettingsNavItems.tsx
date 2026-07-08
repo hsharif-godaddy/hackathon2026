@@ -10,7 +10,6 @@ import SettingsIcon from '@ux/icon/settings';
 import ShieldIcon from '@ux/icon/shield';
 import SocialIcon from '@ux/icon/social';
 import UserLockedIcon from '@ux/icon/user-locked';
-import Users3Icon from '@ux/icon/users3';
 import WorldIcon from '@ux/icon/world';
 
 import { SettingsSection } from '@/app/[market]/develop/components/types';
@@ -50,7 +49,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
     (state) => !!(state.currentAppId && state.publishStates[state.currentAppId]?.isSecurityAnalysisRunning)
   );
 
-  const multiUser = useSwitchboard('aab-multi-user');
   const project = useSwitchboard('appbuilder-settings-project');
   const domain = useSwitchboard('appbuilder-settings-domain');
   const backups = useSwitchboard('appbuilder-settings-backups');
@@ -78,10 +76,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const isSsoNavVisible = useDevelopPageStore(
     (state) => !!state.site?.ssoRequired || !!state.site?.ssoOverrideAllowed,
   );
-  // On desktop, the team / "Users" management UI lives in the develop-header
-  // "Share access" popover (see ShareAccess.tsx). On mobile the header popover is
-  // hidden, so we surface the Team item inside Settings instead.
-
   const handleFeedbackClick = () => {
     localStorage.removeItem(`airo-feedback-shown:${FEEDBACK_ID}`);
     openFeedbackModal(FEEDBACK_ID, 'Settings');
@@ -165,13 +159,6 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       label: 'SEO',
       icon: <WorldIcon />,
       disabled: false,
-    }] : []),
-    ...(isMobile && multiUser === true ? [{
-      id: SettingsSection.TEAM,
-      label: t('builder_share_access_label', undefined, 'Share access'),
-      icon: <Users3Icon />,
-      disabled: false,
-      testId: 'settings-nav-team',
     }] : []),
     {
       id: SettingsSection.FEEDBACK,

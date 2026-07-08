@@ -13,12 +13,14 @@ import text from '@ux/text'
 
 import ModelSelector from '@/app/[market]/develop/components/settings/ModelSelector'
 import SettingsSection from '@/app/[market]/develop/components/settings/SettingsSection'
+import { SettingsSection as SettingsSectionId } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useDownloadApp } from '@/hooks/useDownloadApp'
 import { usePaywallModal } from '@/hooks/usePaywallModal'
 import { PurgeErrorCode, PurgeStatus, usePurgeCache } from '@/hooks/usePurgeCache'
 import { useSwitchboard } from '@/hooks/useSwitchboard';
 import { useTranslations } from '@/hooks/useTranslations'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 import { getRootDomain } from '@/utils/getRootDomain';
 import { generateClickEID, logAiroHQEvent } from '@/utils/instrumentation'
 
@@ -63,6 +65,8 @@ export default function ProjectPanel() {
   const delegationUrl = `https://sso.${rootDomain}/access`;
 
   const isTeamEnabled = useSwitchboard('appbuilder-settings-team');
+  const isMultiUserEnabled = useSwitchboard('aab-multi-user');
+  const setActiveSettingsSection = useDevelopPageStore((state) => state.setActiveSettingsSection);
   const { trigger: triggerPurge, status: purgeStatus, errorCode: purgeErrorCode } = usePurgeCache(appId)
 
   const [purgeToast, setPurgeToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -198,6 +202,22 @@ export default function ProjectPanel() {
               />
             }
           />
+          {isMultiUserEnabled === true && (
+            <ProjectActionCard
+              title={t('builder_share_access_label', undefined, 'Share access')}
+              description={t('builder_share_access_description', undefined, 'Invite team members with a GoDaddy account to collaborate on your apps.')}
+              button={
+                <Button
+                  design="secondary"
+                  size="sm"
+                  text={t('builder_share_access_label', undefined, 'Share access')}
+                  icon={<Users3Icon />}
+                  onClick={() => setActiveSettingsSection(SettingsSectionId.TEAM)}
+                  data-testid="project-share-access-button"
+                />
+              }
+            />
+          )}
           {isTeamEnabled && (
             <ProjectActionCard
               title={t('builder_settings_team_title')}

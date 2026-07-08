@@ -27,7 +27,7 @@ import { EditNudgeTooltip } from '@/app/[market]/develop/components/EditNudgeToo
 import { MOBILE_MODE_EID_MAP, VIEW_MODE_EID_MAP } from '@/app/[market]/develop/components/headerEids';
 import IconButton from '@/app/[market]/develop/components/IconButton';
 import { InboxUnresolvedBadge } from '@/app/[market]/develop/components/layout/InboxUnresolvedBadge';
-import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess';
+import ShareAccess, { ShareAccessButton } from '@/app/[market]/develop/components/layout/ShareAccess';
 import ShareLink from '@/app/[market]/develop/components/layout/ShareLink';
 import DeviceSelector from '@/app/[market]/develop/components/preview/DeviceSelector'
 import { PreviewNudgeTooltip } from '@/app/[market]/develop/components/PreviewNudgeTooltip';
@@ -342,8 +342,8 @@ export default function DevelopHeader({
                   </span>
                 </>
               )}
-              <ShareAccess />
               <ShareLink />
+              <ShareAccessButton />
 
               {/* Always show Upgrade/Publish/UserMenu */}
               <ButtonGroup>
@@ -390,6 +390,7 @@ export default function DevelopHeader({
         </div>
       )}
       {paywallModal}
+      <ShareAccess />
     </header>
   )
 }

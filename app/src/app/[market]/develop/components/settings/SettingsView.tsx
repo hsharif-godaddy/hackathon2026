@@ -1,9 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import React, { useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import ArrowLeftIcon from '@ux/icon/arrow-left'
+import React from 'react'
 
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
@@ -13,7 +11,6 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useSeoSettingsEnabled } from '@/hooks/useSeoSettingsEnabled'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { useTranslations } from '@/hooks/useTranslations'
 
 // Only one panel renders at a time, so lazy-load each to keep the initial
 // develop page bundle small (AnalyticsPanel alone pulls in recharts ~500KB gz).
@@ -33,36 +30,6 @@ const GitHubPanel = dynamic(() => import('@/app/[market]/develop/components/sett
 const SsoPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SsoPanel'), { loading: () => <PanelSkeleton /> })
 const VisualScanPanel = dynamic(() => import('@/app/[market]/develop/components/settings/VisualScanPanel'), { loading: () => <PanelSkeleton /> })
 const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
-const TeamPanel = dynamic(() => import('@/app/[market]/develop/components/settings/TeamPanel'), { loading: () => <SettingsLoadingState fullPage /> })
-
-function TeamPanelWithBackButton({ onBack }: { onBack: () => void }): React.ReactElement {
-  const t = useTranslations()
-
-  useEffect(() => {
-    document.body.classList.add('share-access-open')
-    return () => document.body.classList.remove('share-access-open')
-  }, [])
-
-  const canPortal: boolean = typeof document !== 'undefined'
-
-  return (
-    <>
-      {canPortal && createPortal(
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={t('builder_common_back', undefined, 'Back')}
-          data-testid="team-panel-back"
-          className="fixed top-3 left-3 z-[1001] flex items-center gap-1 rounded-full border border-intents-ux-box-borderColor bg-intents-ux-box-backgroundColor px-3 py-2 shadow-md"
-        >
-          <ArrowLeftIcon className="size-2.5" />
-        </button>,
-        document.body
-      )}
-      <TeamPanel />
-    </>
-  )
-}
 
 export default function SettingsView() {
   const { activeSettingsSection, setActiveSettingsSection } = useChatTabs()
@@ -79,7 +46,6 @@ export default function SettingsView() {
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
   const isSeoEnabled = useSeoSettingsEnabled();
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
-  const isMultiUserEnabled = useSwitchboard('aab-multi-user');
 
   const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
 
@@ -127,9 +93,6 @@ export default function SettingsView() {
       case SettingsSection.ANALYTICS:
         if (isAnalyticsEnabled === undefined) return sectionSkeleton;
         return isAnalyticsEnabled ? <AnalyticsPanel /> : null;
-      case SettingsSection.TEAM:
-        if (isMultiUserEnabled === undefined) return sectionSkeleton;
-        return isMultiUserEnabled ? <TeamPanelWithBackButton onBack={() => setActiveSettingsSection(SettingsSection.PROJECT)} /> : null;
       case SettingsSection.FEEDBACK:
       default:
         if (isProjectEnabled === undefined) return sectionSkeleton;

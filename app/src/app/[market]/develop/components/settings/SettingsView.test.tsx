@@ -1,9 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
 
 import { SettingsSection } from '@/app/[market]/develop/components/types'
 
@@ -29,16 +28,12 @@ const mockSwitchboardResults: Record<string, boolean | undefined> = {}
 vi.mock('@/hooks/useSwitchboard', () => ({
   useSwitchboard: (feature: string) => {
     if (feature in mockSwitchboardResults) return mockSwitchboardResults[feature]
-    return false
+    return true
   },
 }))
 
 vi.mock('@/hooks/useTranslations', () => ({
   useTranslations: () => (key: string, _values?: unknown, fallback?: string) => fallback || key,
-}))
-
-vi.mock('@/app/[market]/develop/components/settings/TeamPanel', () => ({
-  default: () => <div data-testid="team-panel-mock">TeamPanel</div>,
 }))
 
 vi.mock('@/app/[market]/develop/components/PanelSkeleton', () => ({
@@ -53,82 +48,30 @@ vi.mock('@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettin
   default: () => null,
 }))
 
-let mockActiveSection: SettingsSection = SettingsSection.TEAM
+vi.mock('@/app/[market]/develop/components/settings/ProjectPanel', () => ({
+  default: () => <div data-testid="project-panel-mock">ProjectPanel</div>,
+}))
 
-describe('SettingsView — TEAM section', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+let mockActiveSection: SettingsSection = SettingsSection.PROJECT
+
+describe('SettingsView', () => {
+  it('renders ProjectPanel when section is PROJECT', async () => {
+    mockActiveSection = SettingsSection.PROJECT
+    mockSwitchboardResults['appbuilder-settings-project'] = true
+
+    const { default: SettingsView } = await import('./SettingsView')
+    render(<SettingsView />)
+
+    expect(await screen.findByTestId('project-panel-mock')).toBeInTheDocument()
+  })
+
+  it('falls through to ProjectPanel (default) when section is TEAM', async () => {
     mockActiveSection = SettingsSection.TEAM
-    for (const key of Object.keys(mockSwitchboardResults)) {
-      delete mockSwitchboardResults[key]
-    }
-    document.body.classList.remove('share-access-open')
-  })
-
-  it('renders TeamPanel when aab-multi-user is enabled and section is TEAM', async () => {
-    mockSwitchboardResults['aab-multi-user'] = true
+    mockSwitchboardResults['appbuilder-settings-project'] = true
 
     const { default: SettingsView } = await import('./SettingsView')
     render(<SettingsView />)
 
-    expect(await screen.findByTestId('team-panel-mock')).toBeInTheDocument()
-  })
-
-  it('renders skeleton when aab-multi-user is undefined (loading)', async () => {
-    mockSwitchboardResults['aab-multi-user'] = undefined
-
-    const { default: SettingsView } = await import('./SettingsView')
-    render(<SettingsView />)
-
-    expect(screen.getByTestId('panel-skeleton')).toBeInTheDocument()
-    expect(screen.queryByTestId('team-panel-mock')).not.toBeInTheDocument()
-  })
-
-  it('renders nothing when aab-multi-user is false', async () => {
-    mockSwitchboardResults['aab-multi-user'] = false
-
-    const { default: SettingsView } = await import('./SettingsView')
-    render(<SettingsView />)
-
-    expect(screen.queryByTestId('team-panel-mock')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('panel-skeleton')).not.toBeInTheDocument()
-  })
-
-  it('portals a back button to document.body when TEAM is active', async () => {
-    mockSwitchboardResults['aab-multi-user'] = true
-
-    const { default: SettingsView } = await import('./SettingsView')
-    render(<SettingsView />)
-
-    const backButton = screen.getByTestId('team-panel-back')
-    expect(backButton).toBeInTheDocument()
-    expect(backButton.parentElement).toBe(document.body)
-  })
-
-  it('back button navigates to PROJECT section', async () => {
-    mockSwitchboardResults['aab-multi-user'] = true
-
-    const { default: SettingsView } = await import('./SettingsView')
-    render(<SettingsView />)
-
-    const backButton = screen.getByTestId('team-panel-back')
-    await act(async () => {
-      await userEvent.click(backButton)
-    })
-
-    expect(mockSetActiveSettingsSection).toHaveBeenCalledWith(SettingsSection.PROJECT)
-  })
-
-  it('adds share-access-open class to body on mount', async () => {
-    mockSwitchboardResults['aab-multi-user'] = true
-
-    const { default: SettingsView } = await import('./SettingsView')
-    const { unmount } = render(<SettingsView />)
-
-    expect(document.body.classList.contains('share-access-open')).toBe(true)
-
-    unmount()
-
-    expect(document.body.classList.contains('share-access-open')).toBe(false)
+    expect(await screen.findByTestId('project-panel-mock')).toBeInTheDocument()
   })
 })

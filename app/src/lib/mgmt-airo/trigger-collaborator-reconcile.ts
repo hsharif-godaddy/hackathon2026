@@ -129,6 +129,7 @@ async function doReconcile(appId: string, attempt: number): Promise<void> {
       keepalive: true,
     });
     if (!resp.ok) {
+      logger.warn('collaborator.reconcile.trigger_http_error', { appId, status: resp.status, attempt });
       return;
     }
     const body = await resp.json();

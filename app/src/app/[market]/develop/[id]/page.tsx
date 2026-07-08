@@ -14,6 +14,7 @@ import { useBuilderLayout } from '@/app/[market]/commander/useBuilderLayout'
 import ChatPane from '@/app/[market]/develop/components/chat/ChatPane'
 import ChatPaneLoader, { ImageReloadLoaderPhase, ResumeLoaderPhase } from '@/app/[market]/develop/components/chat/ChatPaneLoader'
 import ChatToolbar from '@/app/[market]/develop/components/chat/ChatToolbar'
+import { CollaboratorAccessRevoked } from '@/app/[market]/develop/components/CollaboratorAccessRevoked'
 import DevelopSkeleton from '@/app/[market]/develop/components/DevelopSkeleton'
 import { ImmersiveLayout } from '@/app/[market]/develop/components/ImmersiveLayout'
 import DevelopHeader from '@/app/[market]/develop/components/layout/Header'
@@ -62,6 +63,7 @@ import { useAppDetails } from '@/hooks/useAppDetails'
 import { useAppHibernation } from '@/hooks/useAppHibernation'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useChatTransport } from '@/hooks/useChatTransport'
+import { useCollaboratorAccessCheck } from '@/hooks/useCollaboratorAccessCheck'
 import { useCreditsDeeplinkWithStore } from '@/hooks/useCreditsDeeplinkWithStore'
 import { useDomainConnectCallbackConsumer } from '@/hooks/useDomainConnectCallbackConsumer'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -745,6 +747,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
 
   // Sync responsive state (isMobile) with store using useMediaQuery
   useSyncResponsiveState()
+
+  const { revoked: collaboratorAccessRevoked } = useCollaboratorAccessCheck()
 
   // All initialization is now handled by useInitialization hook
 
@@ -1499,6 +1503,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
         onDragEnter={handleDragEnter}
       >
         <PostPublishGoLiveModal appId={appId} />
+        {collaboratorAccessRevoked && <CollaboratorAccessRevoked />}
         {/* Build-complete celebration lives at the layout root (not inside the immersive
             wizard, which unmounts the instant the phase turns `ready`) so it survives the
             hand-off to the builder. */}

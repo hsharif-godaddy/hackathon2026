@@ -379,8 +379,8 @@
 .cds-team-portal {
   position: fixed !important;
   /* Inset to the develop content area (header + chat panel stay visible).
-     ShareAccess publishes --sa-top (header height) and --sa-inline-start (chat
-     panel offset); both default to 0 -> full screen if unset. */
+     ShareAccess.tsx publishes --sa-top (header height) and --sa-inline-start
+     (chat panel offset); both default to 0 -> full screen if unset (mobile). */
   inset-block-start: var(--sa-top, 0) !important;
   inset-block-end: 0 !important;
   inset-inline-start: var(--sa-inline-start, 0) !important;
@@ -470,11 +470,11 @@
   margin-top: auto;
 }
 
-/* (#2/#3) While the Share access overlay is open, keep develop chrome above it.
+/* (#2/#3) While the Team canvas is active, keep develop chrome above it.
    Develop tooltips/growls are body-portaled with z:auto, so the team portal
-   (z-1000) and close button (z-1001) otherwise cover any that overlap the
-   content area (e.g. a top-right header-icon tooltip, the "saved" growl).
-   Scoped to body.share-access-open (toggled by ShareAccess) so it's inert
+   (z-1000) otherwise covers any that overlap the content area (e.g. a
+   top-right header-icon tooltip, the "saved" growl). Scoped to
+   body.share-access-open (toggled by ShareAccess.tsx) so it's inert
    otherwise. */
 body.share-access-open .ux-tooltip,
 body.share-access-open .develop-header-tooltip,
@@ -483,23 +483,23 @@ body.share-access-open [class*='growl'] {
   z-index: 1100 !important;
 }
 
-/* Keep paywall / upgrade / purchase (disrupt) modals above the Users overlay
+/* Keep paywall / upgrade / purchase (disrupt) modals above the Team canvas
    when both are open. The disrupt modal is z:auto inside #UpgradeLibraryPortal /
    .cds-paywall-portal (z-1000, same as the team portal), so without this it
-   renders behind Users by DOM order. Scoped to body.share-access-open. */
+   renders behind Team by DOM order. Scoped to body.share-access-open. */
 body.share-access-open #UpgradeLibraryPortal,
 body.share-access-open .cds-paywall-portal {
   z-index: 1100 !important;
 }
 
-/* Keep transient popovers/menus above the Users overlay. shadcn PopoverContent
+/* Keep transient popovers/menus above the Team canvas. shadcn PopoverContent
    (the publish "We couldn't publish" card, the top-right user menu, the Upgrade
    benefits card) is body-portaled, but its [data-slot=popover-content] node is
    position:static — z-index there is a no-op. The positioned layer is Radix's
    [data-radix-popper-content-wrapper] (position:fixed, z:auto), so we lift THAT.
    @ux flyouts (e.g. the active-user row "…" menu) are body-portaled too. The team
-   portal (z-1000) and its close button (z-1001) otherwise cover them. Scoped to
-   body.share-access-open so it's inert otherwise. */
+   portal (z-1000) otherwise covers them. Scoped to body.share-access-open so
+   it's inert otherwise. */
 body.share-access-open [data-radix-popper-content-wrapper],
 body.share-access-open .ux-flyout {
   z-index: 1100 !important;
@@ -508,7 +508,7 @@ body.share-access-open .ux-flyout {
 /* The team bundle's confirmation modals (e.g. "remove user") are @ux/disrupt
    dialogs whose backdrop (.ux-disrupt-backdrop, position:fixed) is body-portaled
    with z:auto — so it renders BEHIND the team portal (z-1000) and the dialog is
-   unreachable. Lift it above the portal while the Users overlay is open. (The
+   unreachable. Lift it above the portal while the Team canvas is active. (The
    paywall disrupt is already lifted via #UpgradeLibraryPortal/.cds-paywall-portal
    above; this covers the bundle's own bare disrupt backdrop.) */
 body.share-access-open .ux-disrupt-backdrop {

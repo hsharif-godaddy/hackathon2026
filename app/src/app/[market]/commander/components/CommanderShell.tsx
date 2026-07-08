@@ -9,6 +9,7 @@ import { useCanvasSync } from '@/app/[market]/commander/canvas/useCanvasSync'
 import CanvasActionsDock from '@/app/[market]/commander/components/chat/CanvasActionsDock'
 import { CommanderPosition } from '@/app/[market]/commander/types'
 import AutomationsPanel from '@/app/[market]/develop/components/automations/AutomationsPanel'
+import ShareAccess from '@/app/[market]/develop/components/layout/ShareAccess'
 import BrandBookView from '@/app/[market]/develop/components/preview/brand-book'
 import { DesignKitPanels } from '@/app/[market]/develop/components/preview/design-kit-wizard/DesignKitPanels'
 import { useIsDesignKitWizardProfile } from '@/app/[market]/develop/components/preview/design-kit-wizard/isDesignKitWizardProfile'
@@ -129,6 +130,7 @@ export function CommanderShell({
             />
           )}
         </div>
+        <ShareAccess />
       </CommanderCanvasActionProvider>
     )
   }
@@ -189,6 +191,7 @@ export function CommanderShell({
 
       {/* Commander needs to be after content to ensure it's on top of the content while breaking z-index rules */}
       <Commander appId={appId} chatPane={chatPaneNode} />
+      <ShareAccess />
     </CommanderCanvasActionProvider>
   )
 }
