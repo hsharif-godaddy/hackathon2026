@@ -455,8 +455,8 @@ func TestFleetReloadRunsBeforeValidate(t *testing.T) {
 	cases := []struct {
 		env, reload, afterDeploy, beforeValidate string
 	}{
-		{"test", "fleet-reload-test", "build-images", "e2e-test"},
-		{"prod", "fleet-reload-prod", "upsert-reload-preprov", "e2e-prod"},
+		{"test", "fleet-reload-test", "build-images", "simulation-eval-test"},
+		{"prod", "fleet-reload-prod", "upsert-reload-preprov", "e2e-v2-prod"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.env, func(t *testing.T) {

@@ -81,7 +81,7 @@ pipeline:
               pattern: 'MOST_SPECIFIC_IMMUTABLE_TAG_SUFFIX=(pi-[a-f0-9]+-ext-[a-f0-9]+)'
 
         # --- Fleet reload — last deploy step, BEFORE the validate group, so
-        # e2e/regression/sim-eval exercise the reloaded fleet. Advisory: surfaced
+        # host-paas/health-check/sim-eval exercise the reloaded fleet. Advisory: surfaced
         # in Slack, never fails the release. tlaOnly omitted in dev (no TLA apps).
         - id: fleet-reload-test
           name: Fleet Reload (Test)
@@ -101,15 +101,16 @@ pipeline:
             activeUserThresholdMinutes: '60'
             # tlaOnly omitted → default false (dev has no TLA apps)
 
-        # --- E2E + regression + manual checklist run in parallel after deploy group finishes ---
-        # e2e and regression dispatch as two independent playwright-e2e.yml runs (separate run URLs,
-        # independent retry) rather than one combined e2e-then-regression run.
-        - id: e2e-test
-          name: E2E Tests
+        # --- health-check, PaaS e2e, sim-eval + manual checklist run in parallel
+        # after deploy group finishes. host-paas-e2e runs in test (not prod-dark):
+        # deployment hasn't reached prod yet; playwright-e2e routes test env to
+        # host-paas-e2e-test (integration branch).
+        - id: host-paas-e2e
+          name: PaaS E2E (Test)
           group: validate
           advisory: true # surfaced for the reviewer; does not block the prod gate
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          host_paas: true # this run also fans out host-paas e2e → split Slack into "AAB e2e" + "PaaS e2e"
+          test_summary: true
+          host_paas: true # split Slack into "AAB e2e" + "PaaS e2e"
           repo: gdcorp-partners/airo-app-builder
           workflow: playwright-e2e.yml
           active_run_check: false
@@ -118,19 +119,6 @@ pipeline:
             environment: test
             test_filter: e2e
             run_host_paas_e2e: true
-
-        - id: regression-test
-          name: Regression Tests
-          group: validate
-          advisory: true # surfaced for the reviewer; does not block the prod gate
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          repo: gdcorp-partners/airo-app-builder
-          workflow: playwright-e2e.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: test
-            test_filter: regression
 
         - id: health-check-test
           name: Health Check (Test)
@@ -175,10 +163,8 @@ pipeline:
     # the build's commit SHA via a cohort-less Release Group, then advisory dark e2e/regression
     # against the dark URL so the approver reviews a live, already-tested dark build. dark_url +
     # katanaSelector are DERIVED by the release-manager from the pinned {{commit}} (see runProdDark /
-    # darkURL), not scraped. e2e-test/regression-test still run in the TEST phase above (vs
-    # test-godaddy.com); the dark e2e/regression here additionally validate the DARK prod build — on a
-    # run_dark=true release e2e/regression run against both targets (the static config can't
-    # conditionally drop the test stages). The dark RG TEARDOWN is NOT a stage here — runProd calls
+    # darkURL), not scraped. dark-e2e/regression are the sole automated AAB e2e/regression
+    # checks against the dark build. The dark RG TEARDOWN is NOT a stage here — runProd calls
     # teardownDarkRG (a no-op when run_dark was off), so the prod env stays a clean classic flow.
     prod-dark:
       requires: test
@@ -346,7 +332,7 @@ pipeline:
             batchConcurrency: '5'
 
         # --- Fleet reload — last deploy step, BEFORE the validate group, so
-        # e2e/regression exercise the reloaded fleet. Advisory: surfaced in Slack,
+        # health-check/e2e-v2 exercise the reloaded fleet. Advisory: surfaced in Slack,
         # never fails the release. tlaOnly=true (prod TLA apps).
         - id: fleet-reload-prod
           name: Fleet Reload (Prod)
@@ -366,39 +352,11 @@ pipeline:
             activeUserThresholdMinutes: '60'
             tlaOnly: 'true'
 
-        # --- E2E + regression + manual checklist run in parallel. These are
-        # advisory: prod is already live by this point (images promoted, app
-        # promoted), so a failing prod smoke test is surfaced in Slack but does
-        # NOT block — the GitHub release tag is still cut. Failure withholds
-        # nothing operationally; it just signals the live deploy needs a look. ---
-        - id: e2e-prod
-          name: E2E Tests (Prod)
-          group: validate-prod
-          advisory: true # prod already live; failure does not withhold the release tag
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          repo: gdcorp-partners/airo-app-builder
-          workflow: playwright-e2e.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: prod
-            test_filter: e2e
-
-        - id: regression-prod
-          name: Regression Tests (Prod)
-          group: validate-prod
-          advisory: true # prod already live; failure does not withhold the release tag
-          test_summary: true # render per-suite counts + failed tests from the run's e2e-summary artifact
-          repo: gdcorp-partners/airo-app-builder
-          workflow: playwright-e2e.yml
-          active_run_check: false
-          ref: '{{branch}}'
-          inputs:
-            environment: prod
-            test_filter: regression
-
-        # Shadow run of the split + parallel-safe e2e-v2 suite alongside the
-        # canonical e2e/regression stages above. Advisory while we build a
+        # --- e2e-v2 shadow + health-check + manual checklist run in parallel.
+        # Advisory: prod is already live by this point (images promoted, app
+        # promoted), so failures are surfaced in Slack but do NOT block — the
+        # GitHub release tag is still cut. ---
+        # Shadow run of the split + parallel-safe e2e-v2 suite. Advisory while we build a
         # green track record on prod (see tests/e2e/REFACTOR_PLAN.md); once
         # stable, the canonical stage flips to e2e-v2 and this is removed.
         # No test_summary: playwright-e2e-v2.yml does not emit the e2e-summary

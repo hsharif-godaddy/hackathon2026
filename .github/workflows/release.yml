@@ -291,9 +291,10 @@ jobs:
           {
             echo "## Approve prod deployment"
             echo
-            echo "Review the **test-phase** summary (per-stage results, incl. the e2e + regression"
-            echo "suites) and, on a run_dark=true release, the **dark-phase** summary + the live dark"
-            echo "build (dark URL in the Slack thread), then approve to start the fleet-wide promote."
+            echo "Review the **test-phase** summary (deploy, PaaS e2e, health-check, sim-eval) and, on a"
+            echo "run_dark=true release, the **dark-phase** summary (dark e2e + regression + the"
+            echo "live dark build — dark URL in the Slack thread), then approve to start the"
+            echo "fleet-wide promote."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------

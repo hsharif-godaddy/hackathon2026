@@ -95,7 +95,7 @@ type Stage struct {
 	// peer top-level lines — "AAB e2e" (with its per-test failures) and "PaaS e2e"
 	// (pass/fail only; its per-test failures live in the hosting-web-apps jobs of
 	// the same run, reached via View Run) — instead of one combined stage line.
-	// Set on e2e-test.
+	// Set on host-paas-e2e.
 	HostPaas      bool              `yaml:"host_paas"`
 	Inputs        map[string]string `yaml:"inputs"`
 	Outputs       map[string]Output `yaml:"outputs"`

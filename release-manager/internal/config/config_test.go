@@ -762,9 +762,9 @@ func TestValidateStagesAdvisoryActualConfig(t *testing.T) {
 
 	advisoryStages := []string{
 		// test phase
-		"e2e-test", "regression-test", "health-check-test", "simulation-eval-test",
+		"health-check-test", "host-paas-e2e", "simulation-eval-test",
 		// prod phase
-		"e2e-prod", "regression-prod", "health-check-prod",
+		"health-check-prod",
 		// prod-dark phase (opt-in via run_dark) — surfaced in Slack, must NOT gate the promote
 		"dark-create-rg", "dark-e2e", "dark-regression",
 	}
@@ -811,12 +811,12 @@ func TestHostPaasStageActualConfig(t *testing.T) {
 		}
 	}
 
-	// Only the test-phase e2e stage fans out host-paas e2e, so only it splits the
+	// host-paas-e2e runs in the test phase (deployment hasn't reached prod yet).
 	// Slack report into peer "AAB e2e" + "PaaS e2e" lines.
-	if !hostPaas["e2e-test"] {
-		t.Error("e2e-test must set host_paas:true (it dispatches run_host_paas_e2e)")
+	if !hostPaas["host-paas-e2e"] {
+		t.Error("host-paas-e2e must set host_paas:true (it dispatches run_host_paas_e2e)")
 	}
-	for _, id := range []string{"regression-test", "e2e-prod", "regression-prod"} {
+	for _, id := range []string{"dark-e2e", "dark-regression", "e2e-v2-prod"} {
 		if hostPaas[id] {
 			t.Errorf("%q must NOT set host_paas (it does not run the host-paas suite)", id)
 		}

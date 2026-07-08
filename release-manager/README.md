@@ -37,7 +37,7 @@ aws sso login --profile airobuild-dev-private-sso
 | `--dry-run`              | `-n`  | Run full pipeline without triggering any workflows (read-only)                                             |
 | `--auto-approve`         |       | Skip interactive confirmations (combine with `--dry-run`)                                                  |
 | `--branch`               |       | Branch to build from (default: `main`)                                                                     |
-| `--fail-stage`           |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage e2e-prod`) |
+| `--fail-stage`           |       | Stage ID to simulate failure in dry-run (repeatable, e.g. `--fail-stage deploy-app --fail-stage dark-e2e`) |
 | `--no-slack`             |       | Disable Slack notifications                                                                                |
 | `--force-lock`           |       | Break through an existing deploy lock held by another operator                                             |
 | `--rollback-artifact-id` |       | Override the previous-good app artifact ID (skips the GitHub lookup for it)                                |
@@ -108,10 +108,10 @@ pipeline:
 2. **Deploy lock** — acquires an SSM Parameter Store lock to prevent concurrent deploys
 3. **Rollback snapshot** — fetches current production state from GitHub for verification
 4. **Release notes + commit pinning** — resolves the target branch to a specific commit SHA, then lists merged PRs since the last production deploy. The pinned SHA is stored and used by all subsequent stages, ensuring deterministic builds even if the branch advances during the deploy.
-5. **Test deployment** — deploys app + builds images in parallel, then E2E + regression tests + manual checklist
+5. **Test deployment** — deploys app + builds images in parallel, then PaaS E2E + health-check + sim-eval + manual checklist
 6. **Dark phase** _(on by default; a manual dispatch can opt out with `run_dark=false`; scheduled runs always run it)_ — before the gate, **promotes the agent/preview/publish images to the prod ECR first** (so the bind has real images to reference), dark-deploys the build to prod via Katana `dark_release` (0% traffic), binds those images to the build's commit SHA via a cohort-less Release Group, and runs advisory dark E2E + regression against the dark URL, so the approver reviews a live, already-tested dark build
 7. **Production gate** — confirmation prompt before prod deploy (the awaiting-approval Slack CTA + approver ping fire from the last pre-gate phase: test when `run_dark` is off, dark when on)
-8. **Production deployment** — rolls back the dark Release Group first if one was created, then promotes images (**skipped when the dark phase already promoted them**), then promotes app + upserts pre-prov in parallel, then E2E + regression tests + prod checklist
+8. **Production deployment** — rolls back the dark Release Group first if one was created, then promotes images (**skipped when the dark phase already promoted them**), then promotes app + upserts pre-prov in parallel, then e2e-v2 shadow + health-check + prod checklist
 9. **Completion** — offers Done or Rollback options
 
 > **GHA dispatch toggles** (`.github/workflows/release.yml`): `run_dark` (default on) runs the dark phase above — uncheck to skip (scheduled runs always run it); `notify_slack` (default on) — uncheck to run silently, in which case the would-be Slack messages are printed to the GHA run log instead of posted.
