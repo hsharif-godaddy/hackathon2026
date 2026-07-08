@@ -79,10 +79,9 @@ export function checkBmsMigration(
     return { useBms: false, bmsBudgetId: undefined, reason: 'no-subscription' };
   }
 
-  if (!subscription.bmsBudgetId) {
-    return { useBms: false, bmsBudgetId: undefined, reason: 'no-bms-budget-id' };
-  }
-
+  // Check migration attribute FIRST — before the bmsBudgetId guard — so that a
+  // migration-in-progress user who also has no bmsBudgetId is never misclassified
+  // as 'no-bms-budget-id' and accidentally routed to the degraded BMS path.
   const migrationAttr = subscription.attributes?.find(attr => attr.key === ATTRIBUTE_KEYS.BMS_MIGRATION);
   const hasMigrationAttribute = migrationAttr !== undefined;
   const rawMigrationDate = migrationAttr?.value?.migrationDate;
@@ -101,9 +100,16 @@ export function checkBmsMigration(
     return { useBms: true, bmsBudgetId: subscription.bmsBudgetId, path: 'existing-user' };
   }
 
-  // NEW user (no migration attribute at all) — requires budgetServiceEnabled flag
+  // NEW user (no migration attribute at all)
+  // Requires budgetServiceEnabled flag — check this first so that if the flag is
+  // off we return the accurate reason (new-user-flag-disabled) rather than
+  // no-bms-budget-id, which implies we expected a budget but it's missing.
   if (!flags.budgetServiceEnabled) {
     return { useBms: false, bmsBudgetId: undefined, reason: 'new-user-flag-disabled' };
+  }
+  // Flag is on — we expected a budget. If it's missing, provisioning failed → degrade.
+  if (!subscription.bmsBudgetId) {
+    return { useBms: false, bmsBudgetId: undefined, reason: 'no-bms-budget-id' };
   }
   return { useBms: true, bmsBudgetId: subscription.bmsBudgetId, path: 'new-user' };
 }

@@ -282,11 +282,11 @@ describe('GET /api/credits/grants', () => {
       const request = new NextRequest('http://localhost/api/credits/grants?subscriptionId=sub-123');
       const authContext = createAuthContext('jwt-token');
 
-      // Subscription has migration attribute but no bmsBudgetId
+      // Subscription has migration attribute with migrationDate=null → migration in progress, not ready for BMS
       mockClient.getSubscription.mockResolvedValue({
         id: 'sub-123',
         bmsBudgetId: null,
-        attributes: [{ key: 'bms-migration', value: { migrationDate: '2026-05-05T00:00:00Z' } }],
+        attributes: [{ key: 'bms-migration', value: { migrationDate: null } }],
       });
       mockClient.getCreditGrants.mockResolvedValue(MOCK_GRANTS);
 

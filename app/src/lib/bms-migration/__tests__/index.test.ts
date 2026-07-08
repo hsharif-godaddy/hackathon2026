@@ -120,13 +120,15 @@ describe('checkBmsMigration', () => {
   });
 
   describe('when bmsBudgetId is missing', () => {
-    const flags = { budgetServiceEnabled: true, bmsExistingEnabled: true };
+    // no-bms-budget-id only fires for NEW users (no migration attribute) when
+    // budgetServiceEnabled=true — i.e. we expected a budget but provisioning failed.
 
-    it('should return useBms=false with reason', () => {
+    it('should return no-bms-budget-id for new user when budgetServiceEnabled=true and bmsBudgetId is null', () => {
       const subscription = {
         bmsBudgetId: null,
-        attributes: [{ key: 'bms-migration', value: { migrationDate: MIGRATION_DATE } }],
+        attributes: [], // no bms-migration attribute → new user
       };
+      const flags = { budgetServiceEnabled: true, bmsExistingEnabled: false };
 
       const result = checkBmsMigration(subscription, flags);
 
@@ -134,16 +136,49 @@ describe('checkBmsMigration', () => {
       expect(result.reason).toBe('no-bms-budget-id');
     });
 
-    it('should return useBms=false when bmsBudgetId is undefined', () => {
+    it('should return no-bms-budget-id for new user when budgetServiceEnabled=true and bmsBudgetId is undefined', () => {
       const subscription = {
         bmsBudgetId: undefined,
-        attributes: [{ key: 'bms-migration', value: { migrationDate: MIGRATION_DATE } }],
+        attributes: [],
       };
+      const flags = { budgetServiceEnabled: true, bmsExistingEnabled: false };
 
       const result = checkBmsMigration(subscription, flags);
 
       expect(result.useBms).toBe(false);
       expect(result.reason).toBe('no-bms-budget-id');
+    });
+
+    it('should return new-user-flag-disabled (not no-bms-budget-id) when budgetServiceEnabled=false — flag checked before bmsBudgetId', () => {
+      // Regression: flag is checked first so that bmsExistingEnabled-only subscriptions
+      // with no bmsBudgetId return the accurate reason rather than entering the degraded path.
+      const subscription = {
+        bmsBudgetId: null,
+        attributes: [],
+      };
+      const flags = { budgetServiceEnabled: false, bmsExistingEnabled: true };
+
+      const result = checkBmsMigration(subscription, flags);
+
+      expect(result.useBms).toBe(false);
+      expect(result.reason).toBe('new-user-flag-disabled');
+      expect(result.reason).not.toBe('no-bms-budget-id');
+    });
+
+    it('should return migration-in-progress (not no-bms-budget-id) when migration is in progress and bmsBudgetId is null', () => {
+      // Regression: migration attribute is checked BEFORE bmsBudgetId guard so that
+      // in-progress users are never accidentally routed to the degraded BMS path.
+      const subscription = {
+        bmsBudgetId: null,
+        attributes: [{ key: 'bms-migration', value: { migrationDate: null } }],
+      };
+      const flags = { budgetServiceEnabled: true, bmsExistingEnabled: true };
+
+      const result = checkBmsMigration(subscription, flags);
+
+      expect(result.useBms).toBe(false);
+      expect(result.reason).toBe('migration-in-progress');
+      expect(result.reason).not.toBe('no-bms-budget-id');
     });
   });
 

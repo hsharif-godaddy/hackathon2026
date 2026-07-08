@@ -729,6 +729,34 @@ export const POST = withCustomerAuth(async (request: NextRequest, authContext: C
             migrationDate: getMigrationDate(subscription),
             reason: bmsResult.path,
           });
+        } else if (bmsResult.reason === 'no-bms-budget-id') {
+          // Reaches here only for NEW users (no bms-migration attribute, budgetServiceEnabled
+          // flag on) where budget creation failed at provisioning time. The subscription is
+          // intended to be on BMS but bmsBudgetId was never written.
+          //
+          // EXISTING users (migration complete) can never reach here because migration
+          // completion atomically sets both migrationDate AND bmsBudgetId — if migrationDate
+          // is present, bmsBudgetId is guaranteed present too.
+          //
+          // MIGRATION-IN-PROGRESS users can never reach here either — checkBmsMigration
+          // checks the migration attribute BEFORE !bmsBudgetId, so they always return
+          // reason='migration-in-progress' and fall to the else below (legacy grants).
+          //
+          // NOTE: "BMS down at prompt time" is NOT handled here. That scenario is handled
+          // in Phase 2: performBudgetPreCheck fails-open → budgetSessionId stays undefined
+          // → build-metadata sees missing budgetSessionId → degraded prefix applied there.
+          //
+          // Preserve budgetServiceEnabled=true so the agents service routes the user to
+          // the degraded BMS path (airo-builder:degraded:*) rather than legacy grants.
+          // bmsBudgetId stays undefined → performBudgetPreCheck logs budget.precheck.skipped
+          // → returns null → build-metadata sets user='airo-builder:degraded:<subId>'.
+          budgetServiceEnabled = true;
+          logger.warn('agent-token.bms-degraded-no-budget-id', {
+            siteId: body.siteId,
+            customerId: user.customerId,
+            subscriptionId,
+            reason: 'bmsBudgetId missing from subscription — routing to degraded BMS path',
+          });
         } else {
           budgetServiceEnabled = false;
           logger.info('agent-token.bms-disabled', {
