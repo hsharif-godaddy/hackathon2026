@@ -137,5 +137,5 @@ export const GET = withCustomerAuth(
     );
     return response;
   },
-  { level: 3 },
+  { level: 2 },
 );
