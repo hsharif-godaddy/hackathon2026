@@ -58,6 +58,44 @@ func decodeJSON(t *testing.T, w *httptest.ResponseRecorder, v any) {
 	}
 }
 
+func TestCreateAttributeDuplicateReturnsConflict(t *testing.T) {
+	srv := newTestServer(t)
+	body, _ := json.Marshal(map[string]any{
+		"key":   "aab-whats-new-airo-controls",
+		"value": map[string]any{"desktop": map[string]any{"viewCount": 1}},
+	})
+
+	firstReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/airo/v1/attributes/user/customer-1",
+		bytes.NewReader(body),
+	)
+	firstReq = setMuxVars(
+		firstReq,
+		map[string]string{"ownerType": "user", "ownerId": "customer-1"},
+	)
+	firstRecorder := httptest.NewRecorder()
+	srv.CreateAttribute(firstRecorder, firstReq)
+	if firstRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", firstRecorder.Code, firstRecorder.Body.String())
+	}
+
+	secondReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/airo/v1/attributes/user/customer-1",
+		bytes.NewReader(body),
+	)
+	secondReq = setMuxVars(
+		secondReq,
+		map[string]string{"ownerType": "user", "ownerId": "customer-1"},
+	)
+	secondRecorder := httptest.NewRecorder()
+	srv.CreateAttribute(secondRecorder, secondReq)
+	if secondRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", secondRecorder.Code, secondRecorder.Body.String())
+	}
+}
+
 // --- GetApp ---
 
 func TestGetAppHandler(t *testing.T) {

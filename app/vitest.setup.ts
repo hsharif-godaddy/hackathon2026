@@ -40,12 +40,6 @@ vi.mock('@godaddy/gasket-auth', async () => {
   }
 })
 
-// next/font/google has no real implementation under Vitest (no Next.js font pipeline)
-vi.mock('next/font/google', () => ({
-  Fraunces: function mockFraunces() {
-    return { className: 'vitest-mock-font-fraunces', variable: '--font-mock-fraunces' };
-  },
-}))
 
 // jsdom provides sessionStorage and localStorage, but we need to ensure they're cleared between tests
 // This will be handled in beforeEach hooks in individual test files

@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -911,6 +912,51 @@ func TestList_RoundTripsImageDigestAndLifecycleState(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("ListAppsByCustomer did not return the test app")
+	}
+}
+
+func TestAttributeCRUD(t *testing.T) {
+	db := newTestDB(t)
+
+	_, err := db.GetAttribute("user", "customer-1", "aab-whats-new-airo-controls")
+	if err != ErrAttributeNotFound {
+		t.Fatalf("expected ErrAttributeNotFound, got %v", err)
+	}
+
+	created, err := db.CreateAttribute("user", "customer-1", "aab-whats-new-airo-controls", map[string]any{
+		"desktop": map[string]any{"completedAt": "2026-07-06T12:00:00Z"},
+	})
+	if err != nil {
+		t.Fatalf("CreateAttribute: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected non-empty attribute ID")
+	}
+
+	got, err := db.GetAttribute("user", "customer-1", "aab-whats-new-airo-controls")
+	if err != nil {
+		t.Fatalf("GetAttribute: %v", err)
+	}
+	if got.ID != created.ID {
+		t.Fatalf("expected id %s, got %s", created.ID, got.ID)
+	}
+	if got.Value["desktop"].(map[string]any)["completedAt"] != "2026-07-06T12:00:00Z" {
+		t.Fatalf("unexpected value: %#v", got.Value)
+	}
+
+	updated, err := db.UpdateAttribute(created.ID, map[string]any{
+		"mobile": map[string]any{"lastViewedAt": "2026-07-06T13:00:00Z"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateAttribute: %v", err)
+	}
+	if updated.Value["mobile"].(map[string]any)["lastViewedAt"] != "2026-07-06T13:00:00Z" {
+		t.Fatalf("unexpected updated value: %#v", updated.Value)
+	}
+
+	_, err = db.CreateAttribute("user", "customer-1", "aab-whats-new-airo-controls", map[string]any{})
+	if !errors.Is(err, ErrAttributeAlreadyExists) {
+		t.Fatalf("expected ErrAttributeAlreadyExists, got %v", err)
 	}
 }
 

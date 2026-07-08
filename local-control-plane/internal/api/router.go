@@ -223,6 +223,10 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "Access denied: not subscription owner")
 		return
 	}
+	if errors.Is(err, store.ErrAttributeAlreadyExists) {
+		writeError(w, http.StatusConflict, "attribute already exists")
+		return
+	}
 	writeError(w, http.StatusInternalServerError, err.Error())
 }
 

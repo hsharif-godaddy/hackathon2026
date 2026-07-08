@@ -131,6 +131,7 @@ registerTrackEventBus()
 // Lazy-load features that are conditionally rendered or behind user interaction
 const AnalyticsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/Analytics/AnalyticsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
 const AppIntroTour = dynamic(() => import('@/app/[market]/develop/components/tour/AppIntroTour').then(m => ({ default: m.AppIntroTour })), { ssr: false })
+const AiroControlsWhatsNewModalGate = dynamic(() => import('@/app/[market]/components/WhatsNewModal/AiroControlsWhatsNewModalGate'), { ssr: false })
 const AppNotFound = dynamic(() => import('@/app/[market]/develop/components/AppNotFound'))
 const MediaPanel = dynamic(() => import('@/app/[market]/develop/components/media/MediaPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.MEDIAS} /> })
 const PostPublishGoLiveModal = dynamic(() => import('@/components/layout/PostPublishGoLiveModal'))
@@ -1890,6 +1891,10 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
             origin={feedbackOrigin || undefined}
             initialStep={feedbackInitialStep ?? undefined}
           />
+        )}
+
+        {layout === BuilderLayout.Commander && (
+          <AiroControlsWhatsNewModalGate enabled={init.isReady} />
         )}
 
         <AppIntroTour

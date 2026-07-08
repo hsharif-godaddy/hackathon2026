@@ -11,6 +11,12 @@ var ErrSubscriptionNotOwned = errors.New("access denied: not subscription owner"
 // ErrAppNotFound is returned when an app ID does not match any row.
 var ErrAppNotFound = errors.New("app not found")
 
+// ErrAttributeNotFound is returned when an attribute lookup misses.
+var ErrAttributeNotFound = errors.New("attribute not found")
+
+// ErrAttributeAlreadyExists is returned when an attribute key already exists for an owner.
+var ErrAttributeAlreadyExists = errors.New("attribute already exists")
+
 type App struct {
 	ID                    string            `json:"id"`
 	SubscriptionID        string            `json:"subscriptionId"`
@@ -72,6 +78,16 @@ type Subscription struct {
 	Plan          string `json:"plan"`
 	CreatedAt     string `json:"createdAt"`
 	UpdatedAt     string `json:"updatedAt"`
+}
+
+type Attribute struct {
+	ID        string         `json:"id"`
+	OwnerType string         `json:"ownerType"`
+	OwnerID   string         `json:"ownerId"`
+	Key       string         `json:"key"`
+	Value     map[string]any `json:"value"`
+	CreatedAt string         `json:"createdAt"`
+	UpdatedAt string         `json:"updatedAt"`
 }
 
 const (

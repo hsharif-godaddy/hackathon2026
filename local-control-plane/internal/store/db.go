@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -14,12 +15,21 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 const nanoidAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+func isUniqueConstraintError(err error) bool {
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed: attributes.owner_type")
+}
 
 // appIDLength is the length of a generated app id (see generateAppID).
 const appIDLength = 10
@@ -223,6 +233,19 @@ func (d *DB) migrate() error {
 		return fmt.Errorf("create deployments table: %w", err)
 	}
 
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS attributes (
+		id TEXT PRIMARY KEY,
+		owner_type TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		key TEXT NOT NULL,
+		value TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(owner_type, owner_id, key)
+	)`); err != nil {
+		return fmt.Errorf("create attributes table: %w", err)
+	}
+
 	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS automations (
 		id TEXT PRIMARY KEY,
 		app_id TEXT NOT NULL,
@@ -255,6 +278,112 @@ func (d *DB) migrate() error {
 	}
 
 	return nil
+}
+
+func (d *DB) GetAttribute(ownerType, ownerID, key string) (*Attribute, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	row := d.db.QueryRow(
+		`SELECT id, owner_type, owner_id, key, value, created_at, updated_at
+		 FROM attributes WHERE owner_type = ? AND owner_id = ? AND key = ?`,
+		ownerType, ownerID, key,
+	)
+	return scanAttribute(row)
+}
+
+func (d *DB) CreateAttribute(ownerType, ownerID, key string, value map[string]any) (*Attribute, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	idPart, err := generateNanoid(8)
+	if err != nil {
+		return nil, fmt.Errorf("generate attribute ID: %w", err)
+	}
+	id := "local-attr-" + idPart
+	now := time.Now().UTC().Format(time.RFC3339)
+	valueJSON, err := json.Marshal(valueOrEmpty(value))
+	if err != nil {
+		return nil, fmt.Errorf("marshal attribute value: %w", err)
+	}
+
+	if _, err := d.db.Exec(
+		`INSERT INTO attributes (id, owner_type, owner_id, key, value, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, ownerType, ownerID, key, string(valueJSON), now, now,
+	); err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, fmt.Errorf("insert attribute: %w", ErrAttributeAlreadyExists)
+		}
+		return nil, fmt.Errorf("insert attribute: %w", err)
+	}
+
+	return &Attribute{
+		ID:        id,
+		OwnerType: ownerType,
+		OwnerID:   ownerID,
+		Key:       key,
+		Value:     valueOrEmpty(value),
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+func (d *DB) UpdateAttribute(id string, value map[string]any) (*Attribute, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	valueJSON, err := json.Marshal(valueOrEmpty(value))
+	if err != nil {
+		return nil, fmt.Errorf("marshal attribute value: %w", err)
+	}
+	result, err := d.db.Exec(
+		`UPDATE attributes SET value = ?, updated_at = ? WHERE id = ?`,
+		string(valueJSON), now, id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update attribute: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("read attribute rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, ErrAttributeNotFound
+	}
+
+	row := d.db.QueryRow(
+		`SELECT id, owner_type, owner_id, key, value, created_at, updated_at
+		 FROM attributes WHERE id = ?`,
+		id,
+	)
+	return scanAttribute(row)
+}
+
+func scanAttribute(row interface{ Scan(dest ...any) error }) (*Attribute, error) {
+	var attr Attribute
+	var valueJSON string
+	if err := row.Scan(&attr.ID, &attr.OwnerType, &attr.OwnerID, &attr.Key, &valueJSON, &attr.CreatedAt, &attr.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAttributeNotFound
+		}
+		return nil, fmt.Errorf("scan attribute: %w", err)
+	}
+	if err := json.Unmarshal([]byte(valueJSON), &attr.Value); err != nil {
+		return nil, fmt.Errorf("unmarshal attribute value: %w", err)
+	}
+	if attr.Value == nil {
+		attr.Value = map[string]any{}
+	}
+	return &attr, nil
+}
+
+func valueOrEmpty(value map[string]any) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	return value
 }
 
 // CreateApp inserts a new app record and returns the generated ID.

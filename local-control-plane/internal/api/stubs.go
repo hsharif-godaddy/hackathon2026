@@ -599,10 +599,18 @@ func (s *Server) GetJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// Attribute stubs
-
 func (s *Server) GetAttribute(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotFound, "attribute not found (stub)")
+	vars := mux.Vars(r)
+	attr, err := s.DB.GetAttribute(vars["ownerType"], vars["ownerId"], vars["key"])
+	if err != nil {
+		if errors.Is(err, store.ErrAttributeNotFound) {
+			writeError(w, http.StatusNotFound, "attribute not found")
+			return
+		}
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, attr)
 }
 
 func (s *Server) CreateAttribute(w http.ResponseWriter, r *http.Request) {
@@ -612,18 +620,21 @@ func (s *Server) CreateAttribute(w http.ResponseWriter, r *http.Request) {
 		Key   string         `json:"key"`
 		Value map[string]any `json:"value"`
 	}
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Key) == "" {
+		writeError(w, http.StatusBadRequest, "key is required")
+		return
+	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":        "local-attr-001",
-		"ownerType": vars["ownerType"],
-		"ownerId":   vars["ownerId"],
-		"key":       body.Key,
-		"value":     body.Value,
-		"createdAt": now,
-		"updatedAt": now,
-	})
+	attr, err := s.DB.CreateAttribute(vars["ownerType"], vars["ownerId"], body.Key, body.Value)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, attr)
 }
 
 func (s *Server) UpdateAttribute(w http.ResponseWriter, r *http.Request) {
@@ -632,18 +643,21 @@ func (s *Server) UpdateAttribute(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Value map[string]any `json:"value"`
 	}
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id":        vars["attributeId"],
-		"ownerType": "user",
-		"ownerId":   customerIDFromRequest(r),
-		"key":       "unknown",
-		"value":     body.Value,
-		"createdAt": now,
-		"updatedAt": now,
-	})
+	attr, err := s.DB.UpdateAttribute(vars["attributeId"], body.Value)
+	if err != nil {
+		if errors.Is(err, store.ErrAttributeNotFound) {
+			writeError(w, http.StatusNotFound, "attribute not found")
+			return
+		}
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, attr)
 }
 
 // GetPIECustomer stubs the GoDaddy PIE customer proxy endpoint called by
