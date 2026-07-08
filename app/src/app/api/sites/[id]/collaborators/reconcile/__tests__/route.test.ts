@@ -46,8 +46,7 @@ vi.mock('@/lib/mgmt-airo/resolve-owner-paid-plan', () => ({
   resolveOwnerPaidPlan: mockResolveOwnerPaidPlan,
 }));
 
-// withCustomerAuth wrapper — injects a fixed authed context. The handler is the
-// second arg; the real wrapper applies { level: 3 }, which is irrelevant here.
+// withCustomerAuth wrapper — injects a fixed authed context.
 vi.mock('@/lib/customer-auth', () => ({
   withCustomerAuth: (handler: any) => async (request: NextRequest, ...args: any[]) =>
     handler(request, { jwt: 'test-jwt', user: { customerId: 'owner-1' } }, ...args),

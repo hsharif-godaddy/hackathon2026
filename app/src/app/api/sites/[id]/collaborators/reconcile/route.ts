@@ -119,5 +119,4 @@ export const POST = withCustomerAuth(
 
     return NextResponse.json({ success: true, ...result });
   },
-  { level: 3 }
 );
