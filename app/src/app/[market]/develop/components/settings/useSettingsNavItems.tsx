@@ -5,6 +5,7 @@ import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
+import MegaphoneIcon from '@ux/icon/megaphone';
 import ProductsIcon from '@ux/icon/products';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
@@ -13,6 +14,7 @@ import SocialIcon from '@ux/icon/social';
 import UserLockedIcon from '@ux/icon/user-locked';
 import WorldIcon from '@ux/icon/world';
 
+import { useOpenMarketingCampaign } from '@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign';
 import { SettingsSection } from '@/app/[market]/develop/components/types';
 import { FEEDBACK_ID } from '@/components/feedback/utils';
 import GitHubIcon from '@/components/icons/GitHubIcon';
@@ -65,6 +67,11 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
   const showDomainSettingsItem = isMobile || !isTopLevelDomainEnabled;
+
+  // Marketing Campaigns opens via a custom onClick (same pattern as Feedback), not a
+  // settings-canvas section. useOpenMarketingCampaign opens a commander canvas when canvas
+  // tabs are enabled, otherwise it just switches ViewMode.MARKETING with no canvas involved.
+  const { openList: openMarketingCampaigns, isEnabled: isCampaignsEnabled } = useOpenMarketingCampaign();
 
   // Auth-at-Edge SSO entry visibility — driven entirely by the per-app
   // `ssoRequired` flag from the upstream app GET (admin-controlled in
@@ -161,6 +168,13 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <UserLockedIcon />,
       disabled: false,
       testId: 'settings-nav-sso',
+    }] : []),
+    ...(isCampaignsEnabled ? [{
+      id: SettingsSection.MARKETING,
+      label: t('builder_settings_nav_marketing'),
+      icon: <MegaphoneIcon />,
+      disabled: false,
+      onClick: openMarketingCampaigns,
     }] : []),
     ...(seo ? [{
       id: SettingsSection.SEO,

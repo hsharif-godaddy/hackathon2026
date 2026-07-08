@@ -5,7 +5,7 @@ import Button from '@ux/button'
 import GraphIcon from '@ux/icon/graph'
 import PlusIcon from '@ux/icon/plus'
 
-import { useSettingsNavItems } from '@/app/[market]/develop/components/settings/useSettingsNavItems'
+import { SettingsNavItem, useSettingsNavItems } from '@/app/[market]/develop/components/settings/useSettingsNavItems'
 import { SettingsSection } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
@@ -49,10 +49,14 @@ export function CommanderCanvasMenu() {
     ]
   }, [baseItems, isAnalyticsEnabled, t])
 
-  const handleSelect = (section: SettingsSection) => {
-    logClickEvent(`commander.canvas_menu.${section}`, clickContext)()
-    setActiveSettingsSection(section)
-    openCanvasSettings()
+  const handleSelect = (item: SettingsNavItem): void => {
+    logClickEvent(`commander.canvas_menu.${item.id}`, clickContext)()
+    if (item.onClick) {
+      item.onClick()
+    } else {
+      setActiveSettingsSection(item.id)
+      openCanvasSettings()
+    }
     setOpen(false)
   }
 
@@ -80,7 +84,7 @@ export function CommanderCanvasMenu() {
               disabled={item.disabled}
               className="!justify-start"
               data-testid={`commander-canvas-menu-${item.id}`}
-              onClick={() => handleSelect(item.id)}
+              onClick={() => handleSelect(item)}
             />
           ))}
         </div>

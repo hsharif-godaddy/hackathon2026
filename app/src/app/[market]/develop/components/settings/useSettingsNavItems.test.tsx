@@ -16,6 +16,16 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
   useDevelopPageStore: (selector: any) => selector(mockDevelopStore),
 }));
 
+const mockCampaignHook = {
+  openList: vi.fn(),
+  openDetail: vi.fn(),
+  isEnabled: false,
+};
+
+vi.mock('@/app/[market]/develop/components/settings/Campaigns/useOpenMarketingCampaign', () => ({
+  useOpenMarketingCampaign: () => mockCampaignHook,
+}));
+
 const mockSwitchboardResults: Record<string, boolean | undefined> = {};
 
 vi.mock('@/hooks/useSwitchboard', () => ({
@@ -36,6 +46,7 @@ describe('useSettingsNavItems', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDevelopStore.isMobile = false;
+    mockCampaignHook.isEnabled = false;
     localStorage.clear();
     // Clear per-test overrides
     for (const key of Object.keys(mockSwitchboardResults)) {
@@ -212,6 +223,41 @@ describe('useSettingsNavItems', () => {
     feedbackItem?.onClick?.();
 
     expect(localStorage.getItem('airo-feedback-shown:airo#app-builder')).toBeNull();
+  });
+
+  it('should define the marketing settings section route value', () => {
+    expect(SettingsSection.MARKETING).toBe('marketing');
+  });
+
+  it('should include campaigns item when enabled', () => {
+    mockCampaignHook.isEnabled = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const campaignsItem = result.current.find(item => item.id === SettingsSection.MARKETING);
+    expect(campaignsItem).toBeDefined();
+    expect(campaignsItem?.label).toBe('builder_settings_nav_marketing');
+    expect(campaignsItem?.disabled).toBe(false);
+  });
+
+  it('should not include campaigns item when disabled', () => {
+    mockCampaignHook.isEnabled = false;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const campaignsItem = result.current.find(item => item.id === SettingsSection.MARKETING);
+    expect(campaignsItem).toBeUndefined();
+  });
+
+  it('should call openList when campaigns onClick called', () => {
+    mockCampaignHook.isEnabled = true;
+
+    const { result } = renderHookWithProviders(() => useSettingsNavItems());
+
+    const campaignsItem = result.current.find(item => item.id === SettingsSection.MARKETING);
+    campaignsItem?.onClick?.();
+
+    expect(mockCampaignHook.openList).toHaveBeenCalled();
   });
 
   it('should NOT include a team item in the settings nav', () => {
