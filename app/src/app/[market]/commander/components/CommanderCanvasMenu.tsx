@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react'
 import Button from '@ux/button'
 import GraphIcon from '@ux/icon/graph'
-import PlusIcon from '@ux/icon/plus'
 
+import { CanvasMenuTrigger } from '@/app/[market]/commander/canvas/CanvasMenuTrigger'
 import { SettingsNavItem, useSettingsNavItems } from '@/app/[market]/develop/components/settings/useSettingsNavItems'
 import { SettingsSection } from '@/app/[market]/develop/components/types'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
@@ -63,13 +63,11 @@ export function CommanderCanvasMenu() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
+        <CanvasMenuTrigger
+          open={open}
           data-testid="commander-canvas-menu-trigger"
-          design="tertiary"
-          size="sm"
-          icon={<PlusIcon />}
-          aria-label={t('builder_commander_canvas_menu_label')}
-          onClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
+          label={t('builder_commander_open_canvas')}
+          onOpenClick={() => logClickEvent('commander.canvas_menu.open', clickContext)()}
         />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[220px] p-1">

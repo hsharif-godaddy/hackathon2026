@@ -3,52 +3,13 @@
  */
 import '@testing-library/jest-dom'
 
-import { forwardRef, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 
 import { useCommanderStore } from '@/stores/useCommanderStore'
 import { renderWithProviders } from '@/tests/test-utils'
 import { CanvasMenu } from './CanvasMenu'
 import { CANVAS_MENU_ORDER, CanvasId, DEFAULT_OPEN_CANVAS_IDS, PINNED_CANVAS_ID } from './registry'
-
-vi.mock('@ux/tooltip', () => ({
-  default: ({ children, id }: { children: ReactNode; id?: string }) => (
-    <div data-testid="tooltip" id={id} role="tooltip">{children}</div>
-  ),
-}))
-
-vi.mock('@ux/button', () => ({
-  default: forwardRef(function MockButton(
-    {
-      icon,
-      onClick,
-      onMouseEnter,
-      onMouseLeave,
-      ...rest
-    }: {
-      icon?: ReactNode
-      onClick?: () => void
-      onMouseEnter?: () => void
-      onMouseLeave?: () => void
-      [key: string]: unknown
-    },
-    ref: React.Ref<HTMLButtonElement>,
-  ) {
-    return (
-      <button
-        ref={ref}
-        type="button"
-        onClick={onClick}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-        {...rest}
-      >
-        {icon}
-      </button>
-    )
-  }),
-}))
 
 const switchboardValues: Record<string, unknown> = {}
 
@@ -111,6 +72,22 @@ describe('CanvasMenu', () => {
       .toBeInTheDocument()
   })
 
+  it('renders the open-canvas label on the add-canvas trigger', () => {
+    renderWithProviders(<CanvasMenu />)
+
+    expect(screen.getByTestId('commander-canvas-tabs-menu-trigger'))
+      .toHaveTextContent('builder_commander_open_canvas')
+  })
+
+  it('marks the trigger as expanded while the menu is open', async () => {
+    await openMenu()
+
+    expect(screen.getByTestId('commander-canvas-tabs-menu-trigger')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
   it('hides the menu trigger on desktop when all available canvases are already open', () => {
     resetCommanderStore([...CANVAS_MENU_ORDER])
 
@@ -118,36 +95,5 @@ describe('CanvasMenu', () => {
 
     expect(screen.queryByTestId('commander-canvas-tabs-menu-trigger'))
       .not.toBeInTheDocument()
-  })
-})
-
-describe('tooltip', () => {
-  it('shows tooltip on mouse enter when the menu is closed', function showTooltip() {
-    renderWithProviders(<CanvasMenu />)
-
-    const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
-
-    fireEvent.mouseEnter(trigger)
-    expect(screen.getByRole('tooltip')).toBeInTheDocument()
-  })
-
-  it('hides tooltip on mouse leave', function hideTooltip() {
-    renderWithProviders(<CanvasMenu />)
-
-    const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
-    fireEvent.mouseEnter(trigger)
-    fireEvent.mouseLeave(trigger)
-
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
-  })
-
-  it('does not show tooltip while the popover is open', async function hideTooltipWhenOpen() {
-    await openMenu()
-
-    const trigger = screen.getByTestId('commander-canvas-tabs-menu-trigger')
-    fireEvent.mouseEnter(trigger)
-
-    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 })
