@@ -1,6 +1,5 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 import Growl from '@ux/growl'
 
@@ -21,9 +20,7 @@ export function useOpenMarketingCampaign(): UseOpenMarketingCampaignResult {
   const t: ReturnType<typeof useTranslations> = useTranslations()
   const isEnabled: boolean = useSwitchboard('appbuilder-marketing-campaigns') === true
   const isCanvasTabsEnabled: boolean = useCommanderCanvasTabsEnabled()
-  const pathname: string | null = usePathname()
-  const isCommanderRoute: boolean = pathname?.includes('/commander/') ?? false
-  const useCanvasTabs: boolean = isCanvasTabsEnabled && isCommanderRoute
+  const useCanvasTabs: boolean = isCanvasTabsEnabled
   const openMarketingList: () => void = useDevelopPageStore((state) => state.openMarketingList)
   const openMarketingDetail: (campaignId: string) => void = useDevelopPageStore((state) => state.openMarketingDetail)
 

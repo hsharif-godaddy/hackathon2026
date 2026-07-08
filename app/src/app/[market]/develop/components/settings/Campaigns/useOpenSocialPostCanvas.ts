@@ -1,6 +1,5 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
 import { useCallback } from 'react'
 import Growl from '@ux/growl'
 
@@ -20,16 +19,14 @@ interface UseOpenSocialPostCanvasResult {
 }
 
 export function useOpenSocialPostCanvas(): UseOpenSocialPostCanvasResult {
-  const t = useTranslations()
-  const isEnabled = useSwitchboard('appbuilder-marketing-campaigns') === true
-  const isCanvasTabsEnabled = useCommanderCanvasTabsEnabled()
-  const pathname = usePathname()
-  const isCommanderRoute = pathname?.includes('/commander/') ?? false
-  const useCanvasTabs = isCanvasTabsEnabled && isCommanderRoute
-  const activeCanvasId = useCommanderStore((state) => state.activeCanvasId)
-  const openMarketingSocialPost = useDevelopPageStore((state) => state.openMarketingSocialPost)
+  const t: ReturnType<typeof useTranslations> = useTranslations()
+  const isEnabled: boolean = useSwitchboard('appbuilder-marketing-campaigns') === true
+  const isCanvasTabsEnabled: boolean = useCommanderCanvasTabsEnabled()
+  const useCanvasTabs: boolean = isCanvasTabsEnabled
+  const activeCanvasId: CanvasId = useCommanderStore((state) => state.activeCanvasId)
+  const openMarketingSocialPost: (post: SocialPostData, origin: MarketingSocialOrigin) => void = useDevelopPageStore((state) => state.openMarketingSocialPost)
 
-  const notifyDisabled = useCallback(() => {
+  const notifyDisabled: () => void = useCallback((): void => {
     Growl.addGrowlMessage({
       id: 'marketing-campaigns-disabled',
       title: translateCampaignKey(t, CAMPAIGN_KEYS.disabledForAccount),
@@ -38,13 +35,13 @@ export function useOpenSocialPostCanvas(): UseOpenSocialPostCanvasResult {
     })
   }, [t])
 
-  const open = useCallback((post: SocialPostData, origin: MarketingSocialOrigin): void => {
+  const open: (post: SocialPostData, origin: MarketingSocialOrigin) => void = useCallback((post: SocialPostData, origin: MarketingSocialOrigin): void => {
     if (!isEnabled) {
       notifyDisabled()
       return
     }
-    const nextOrigin = useCanvasTabs && origin.source === 'chat'
-      ? { ...origin, previousCanvasId: activeCanvasId ?? null }
+    const nextOrigin: MarketingSocialOrigin = useCanvasTabs && origin.source === 'chat'
+      ? { ...origin, previousCanvasId: activeCanvasId }
       : origin
     if (useCanvasTabs) {
       useCommanderStore.getState().openCanvas(CanvasId.SettingsCampaigns)
@@ -54,11 +51,11 @@ export function useOpenSocialPostCanvas(): UseOpenSocialPostCanvasResult {
     openMarketingSocialPost(post, nextOrigin)
   }, [activeCanvasId, isEnabled, notifyDisabled, openMarketingSocialPost, useCanvasTabs])
 
-  const openFromCampaign = useCallback((post: SocialPostData, campaignId: string): void => {
+  const openFromCampaign: (post: SocialPostData, campaignId: string) => void = useCallback((post: SocialPostData, campaignId: string): void => {
     open(post, { source: 'campaign', campaignId })
   }, [open])
 
-  const openFromChat = useCallback((post: SocialPostData): void => {
+  const openFromChat: (post: SocialPostData) => void = useCallback((post: SocialPostData): void => {
     open(post, { source: 'chat', previousCanvasId: null })
   }, [open])
 

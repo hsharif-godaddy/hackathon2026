@@ -7,6 +7,7 @@ import type React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
+import { CanvasId } from '@/app/[market]/commander/canvas/registry';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
@@ -71,6 +72,10 @@ vi.mock('@/app/[market]/develop/components/preview/inbox/Inbox', () => ({
   ),
 }));
 
+vi.mock('@/app/[market]/develop/components/settings/Campaigns/MarketingCanvasPane', () => ({
+  default: () => <div data-testid="marketing-canvas-pane">Marketing Canvas</div>,
+}));
+
 // Mock stores
 const mockServerPollingStore = {
   getServerState: vi.fn(function () { return { isReady: true, url: 'http://localhost:3000' }; }),
@@ -111,6 +116,14 @@ vi.mock('@/stores/useDevelopPageStore', () => {
 
 vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
+}));
+
+const mockCommanderStore: { activeCanvasId: CanvasId } = { activeCanvasId: CanvasId.Preview };
+let mockCanvasTabsEnabled = false;
+
+vi.mock('@/stores/useCommanderStore', () => ({
+  useCommanderStore: (selector: any) => selector(mockCommanderStore),
+  useCommanderCanvasTabsEnabled: () => mockCanvasTabsEnabled,
 }));
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
@@ -256,6 +269,8 @@ describe('PreviewPane', () => {
     mockGitHistoryData = { commits: [] };
     mockGitStore.getSelectedCommitHash = vi.fn(function () { return null; });
     mockDevelopPageStore.isVersionHistoryOpen = false;
+    mockCanvasTabsEnabled = false;
+    mockCommanderStore.activeCanvasId = CanvasId.Preview;
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
@@ -913,6 +928,40 @@ describe('PreviewPane', () => {
     expect(screen.queryByText('builder_preview_resuming_message')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('domain-panel')).toBeInTheDocument();
+    });
+  });
+
+  it('should render MarketingCanvasPane when viewMode is MARKETING and marketing campaigns flag enabled', async () => {
+    mockDevelopPageStore.viewMode = ViewMode.MARKETING;
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = true;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('marketing-canvas-pane')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('preview-iframe')).not.toBeInTheDocument();
+  });
+
+  it('should not render MarketingCanvasPane when viewMode is MARKETING but marketing campaigns flag disabled', () => {
+    mockDevelopPageStore.viewMode = ViewMode.MARKETING;
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = false;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    expect(screen.queryByTestId('marketing-canvas-pane')).not.toBeInTheDocument();
+  });
+
+  it('should activate the Marketing overlay when canvas tabs are enabled and activeCanvasId is SettingsCampaigns', async () => {
+    mockCanvasTabsEnabled = true;
+    mockCommanderStore.activeCanvasId = CanvasId.SettingsCampaigns;
+    mockSwitchboardResults['appbuilder-marketing-campaigns'] = true;
+
+    renderWithProviders(<PreviewPane onPreviewRefresh={vi.fn()} />);
+
+    await waitFor(() => {
+      const overlay: HTMLElement = screen.getByTestId('marketing-canvas-pane').parentElement as HTMLElement;
+      expect(overlay).toHaveAttribute('aria-hidden', 'false');
     });
   });
 

@@ -333,6 +333,9 @@ export default function PreviewPane({
   const isInboxOverlayActive = isCanvasTabsEnabled
     ? activeCanvasId === CanvasId.Inbox
     : viewMode === ViewMode.INBOX
+  const isMarketingOverlayActive = isCanvasTabsEnabled
+    ? activeCanvasId === CanvasId.SettingsCampaigns
+    : viewMode === ViewMode.MARKETING
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
   const selectedDeviceId = useDevelopPageStore((state) => state.selectedDeviceId)
   const setPreviewViewMode = useDevelopPageStore((state) => state.setPreviewViewMode)
@@ -442,7 +445,7 @@ export default function PreviewPane({
   if (viewMode === ViewMode.BRAND) hasMountedBrandRef.current = true
   if (isDomainOverlayActive) hasMountedDomainRef.current = true
   if (isInboxOverlayActive) hasMountedInboxRef.current = true
-  if (viewMode === ViewMode.MARKETING) hasMountedMarketingRef.current = true
+  if (isMarketingOverlayActive) hasMountedMarketingRef.current = true
 
   // State preservation for iframe navigation and scroll position
   const [pendingStateRestore, setPendingStateRestore] = useState<{
@@ -1410,7 +1413,7 @@ export default function PreviewPane({
     )
   }
 
-  if (isMarketingCampaignsEnabled && viewMode === ViewMode.MARKETING && !canvasTabsOverlayMode) {
+  if (isMarketingCampaignsEnabled && isMarketingOverlayActive && !canvasTabsOverlayMode) {
     return (
       <div className="h-full flex flex-col">
         <ErrorBoundary>
@@ -1640,11 +1643,11 @@ export default function PreviewPane({
 
                 {isCanvasTabsEnabled && isMarketingCampaignsEnabled && hasMountedMarketingRef.current && (
                   <div
-                    aria-hidden={viewMode !== ViewMode.MARKETING}
-                    inert={viewMode !== ViewMode.MARKETING || undefined}
+                    aria-hidden={!isMarketingOverlayActive}
+                    inert={!isMarketingOverlayActive || undefined}
                     className={clsx(
                       'absolute inset-0 w-full h-full z-10 rounded-lg md:rounded-b-none overflow-auto bg-intents-ux-box-backgroundColor border transition-opacity duration-200',
-                      viewMode === ViewMode.MARKETING
+                      isMarketingOverlayActive
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}
