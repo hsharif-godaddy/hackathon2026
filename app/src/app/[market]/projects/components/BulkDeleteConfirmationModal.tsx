@@ -29,6 +29,7 @@ export default function BulkDeleteConfirmationModal({
       description={t('builder_projects_bulk_delete_body')}
       onClose={onClose}
       testId="bulk-delete-confirmation-modal"
+      applyAiroTheme={false}
       footer={
         <ProjectsActionModalFooter
           onCancel={onClose}

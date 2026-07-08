@@ -244,7 +244,8 @@ export default function AcceptTransferDialog({ onClose, onAccepted }: AcceptTran
       }
       onClose={handleClose}
       footer={footer}
-      testId="accept-transfer-dialog"
+      testId="accept-transfer-modal"
+      applyAiroTheme={false}
     >
       {step === 'input' && (
         <TextInput

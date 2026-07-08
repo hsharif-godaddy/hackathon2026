@@ -492,6 +492,7 @@ export default function ProjectCard({
           title={t('builder_apps_rename_title')}
           onClose={closeRename}
           testId="project-rename-modal"
+          applyAiroTheme={false}
           footer={
             <ProjectsActionModalFooter
               onCancel={closeRename}

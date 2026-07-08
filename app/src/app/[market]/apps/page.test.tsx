@@ -69,7 +69,7 @@ vi.mock('@/components/layout/AppInactivityAlert', () => ({
 
 vi.mock('@/app/[market]/apps/components/AcceptTransferDialog', () => ({
   default: ({ onClose }: { onClose: () => void }) => (
-    <div data-testid="accept-transfer-dialog">
+    <div data-testid="accept-transfer-modal">
       <button onClick={onClose}>Close</button>
     </div>
   ),
