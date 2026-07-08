@@ -15,6 +15,7 @@ import { useCampaignStatsList } from '@/app/[market]/develop/components/settings
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
+import { useImpression } from '@/hooks/useImpression'
 import { useTranslations } from '@/hooks/useTranslations'
 import { logClickEvent } from '@/utils/instrumentation'
 
@@ -41,6 +42,8 @@ export default function CampaignListView({ campaigns, loading, onSelectCampaign 
     logClickEvent('settings.campaigns.create')()
     focusChatWithCreateCampaignPrompt(t)
   }, [t])
+
+  useImpression('settings.campaigns.view', { enabled: Boolean(appId) && !loading })
 
   if (!appId) {
     return (

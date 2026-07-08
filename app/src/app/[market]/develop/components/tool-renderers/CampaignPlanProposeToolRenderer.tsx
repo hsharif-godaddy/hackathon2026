@@ -6,8 +6,10 @@ import { ChoiceList } from '@airo-ux/pattern-library/input/choice-list'
 import { useSendUserMessage } from '@/app/[market]/develop/components/chat/ChatContext'
 import type { DefaultToolRendererProps } from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
 import DefaultToolRenderer from '@/app/[market]/develop/components/tool-renderers/DefaultToolRenderer'
+import { useImpression } from '@/hooks/useImpression'
 import { useTranslations } from '@/hooks/useTranslations'
 import { useIsActivelyStreaming, useIsLoading } from '@/stores/useStreamingConversationStore'
+import { logClickEvent } from '@/utils/instrumentation'
 
 interface PlannedAsset {
   assetType: 'landing-page' | 'banner' | 'blog' | 'social' | 'email' | 'ad'
@@ -65,6 +67,8 @@ export default function CampaignPlanProposeToolRenderer({
   const widgetData = ((result as ToolResult)?.output ?? (result as ToolResult))?.widgetData
   const plan = widgetData?.plan
 
+  useImpression('chat.campaignPlan.view', { enabled: Boolean(plan) })
+
   const handleComplete = useCallback((selections: Record<string, string | string[] | null>) => {
     if (isProcessing || submitted || !sendUserMessage) return
     const sel = selections['0']
@@ -72,6 +76,7 @@ export default function CampaignPlanProposeToolRenderer({
     setSubmitted(true)
     const selected = Array.isArray(sel) ? sel[0] : sel
     if (selected === '1') {
+      logClickEvent('chat.campaignPlan.approve')()
       sendUserMessage('Approve — generate the content', { isActionRequest: true })
     } else {
       sendUserMessage(selected, { isActionRequest: true })

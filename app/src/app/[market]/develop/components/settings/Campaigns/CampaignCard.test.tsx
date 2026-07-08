@@ -3,14 +3,20 @@
  */
 import '@testing-library/jest-dom'
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 
 import { CAMPAIGN_KEYS } from '@/app/[market]/develop/components/settings/Campaigns/copy'
 import { CAMPAIGN_DEFAULT_MESSAGES } from '@/lib/translations/campaign-defaults'
 import { renderWithProviders } from '@/tests/test-utils'
+import { logClickEvent } from '@/utils/instrumentation'
 import CampaignCard from './CampaignCard'
 import type { Campaign } from './types'
+
+vi.mock('@/utils/instrumentation', () => ({
+  logClickEvent: vi.fn(() => vi.fn()),
+  logImpressionEvent: vi.fn(() => vi.fn()),
+}))
 
 const mockCampaign: Campaign = {
   id: 'camp-1',
@@ -24,6 +30,10 @@ const mockCampaign: Campaign = {
 }
 
 describe('CampaignCard', function cardTests() {
+  beforeEach(function resetMocks() {
+    vi.clearAllMocks()
+  })
+
   it('renders campaign summary and details action', function summary() {
     renderWithProviders(<CampaignCard campaign={mockCampaign} onDetails={vi.fn()} />)
 
@@ -38,6 +48,20 @@ describe('CampaignCard', function cardTests() {
     renderWithProviders(<CampaignCard campaign={mockCampaign} onDetails={onDetails} />)
 
     screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] }).click()
+    expect(onDetails).toHaveBeenCalledOnce()
+  })
+
+  it('fires logClickEvent settings.campaigns.details with campaignId and calls onDetails when See details is clicked', function detailsInstrumented() {
+    const innerFn = vi.fn()
+    vi.mocked(logClickEvent).mockReturnValue(innerFn)
+    const onDetails = vi.fn()
+
+    renderWithProviders(<CampaignCard campaign={mockCampaign} onDetails={onDetails} />)
+
+    screen.getByRole('button', { name: CAMPAIGN_DEFAULT_MESSAGES[CAMPAIGN_KEYS.seeDetails] }).click()
+
+    expect(logClickEvent).toHaveBeenCalledWith('settings.campaigns.details', { campaignId: 'camp-1' })
+    expect(innerFn).toHaveBeenCalledOnce()
     expect(onDetails).toHaveBeenCalledOnce()
   })
 })

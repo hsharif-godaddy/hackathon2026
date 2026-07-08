@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useIntl } from 'react-intl'
 import Box from '@ux/box'
 import Button from '@ux/button'
@@ -25,6 +25,7 @@ import {
 import { formatCampaignScheduleRange } from '@/app/[market]/develop/components/settings/Campaigns/dates'
 import type { Campaign, CampaignLeadsRow, CampaignStats, CampaignStatus } from '@/app/[market]/develop/components/settings/Campaigns/types'
 import { useTranslations } from '@/hooks/useTranslations'
+import { logClickEvent } from '@/utils/instrumentation'
 
 interface CampaignCardProps {
   campaign: Campaign
@@ -82,6 +83,11 @@ export default function CampaignCard({
       ? translateCampaignKey(t, CAMPAIGN_KEYS.statsError)
       : null
 
+  const handleDetails = useCallback(() => {
+    logClickEvent('settings.campaigns.details', { campaignId: campaign.id })()
+    onDetails()
+  }, [campaign.id, onDetails])
+
   return (
     <Card
       id={`campaign-card-${campaign.id}`}
@@ -99,7 +105,7 @@ export default function CampaignCard({
           <Button
             design="secondary"
             size="small"
-            onClick={onDetails}
+            onClick={handleDetails}
             text={translateCampaignKey(t, CAMPAIGN_KEYS.seeDetails)}
           />
         </Box>
