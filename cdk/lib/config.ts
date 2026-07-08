@@ -540,7 +540,10 @@ const prodConfig: Config = {
       'airobuilde-budget-service-prod-Regional-WebACL',
       'airobuilde-app-prod-ecs-Regional-WebACL',
       'airobuilde-console-prod-Regional-WebACL',
-      'prod-airo-stripe-gateway-allowlist',
+      'airobuilde-notification-service-prod-Regional-WebACL',
+      'airobuilde-airo-builder-risq-prod-Regional-WebACL',
+      'airobuilde-blog-prod-Regional-WebACL',
+      'airobuilde-aab-experiment-tracker-prod-Regional-WebACL',
     ],
     alarmThresholds: {
       alb5xxThreshold: 20,
