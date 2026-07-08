@@ -1,12 +1,155 @@
 import { logger } from '@/lib/request-context'
-import type { GoogleBusinessProfile, GoogleReview, SocialConnection, SocialPublishResult } from '@/types/social'
-import { FacebookMediaType, SocialPlatform, SocialPlatformKey } from '@/types/social'
+import type {
+  GoogleAdsAssetFieldType,
+  GoogleAdsAssetGroup,
+  GoogleAdsCampaign,
+  GoogleAdsCampaignMetrics,
+  GoogleAdsCampaignStatus,
+  GoogleAdsConversionAction,
+  GoogleAdsCustomer,
+  GoogleBusinessProfile,
+  GoogleReview,
+  SocialConnection,
+  SocialPublishResult,
+} from '@/types/social'
+import {
+  FacebookMediaType,
+  GoogleAdsAssetGroupStatus,
+  GoogleAdsAssetType,
+  GoogleAdsConversionActionStatus,
+  GoogleAdsConversionActionType,
+  GoogleAdsConversionCategory,
+  GoogleAdsConversionCountingType,
+  SocialPlatform,
+  SocialPlatformKey,
+} from '@/types/social'
 import { getRootDomain } from '@/utils/getRootDomain'
 import { validatePlatformScheduleTime } from '@/utils/social/scheduling'
 
 const SOCIAL_V2_BASE_URL = `https://social-v2.api.${getRootDomain() || 'godaddy.com'}`
 const SOCIAL_AUTH_BASE_URL = `https://social-auth.api.${getRootDomain() || 'godaddy.com'}`
 const FB_API_VERSION = 'v23.0'
+const GOOGLE_ADS_API_VERSION = 'v22'
+
+/**
+ * Validates and sanitizes a Google Ads customer ID
+ * Customer IDs must be numeric (10 digits)
+ * @throws Error if customer ID is invalid
+ */
+export function validateCustomerId(customerId: string): string {
+  const sanitized: string = customerId.replace(/[^0-9]/g, '')
+  if (!/^\d{10}$/.test(sanitized)) {
+    throw new Error('Invalid Google Ads customer ID format')
+  }
+  return sanitized
+}
+
+/**
+ * Validates and sanitizes a Google Ads resource name
+ * Format: "resource_type/id" or "customers/id/resource_type/id"
+ * (e.g., "customers/1234567890" or "customers/1234567890/campaigns/9876543210")
+ * @throws Error if resource name is invalid
+ */
+export function validateResourceName(resourceName: string): string {
+  // Allow patterns like:
+  // - "customers/1234567890"
+  // - "customers/1234567890/campaigns/9876543210"
+  // - "customers/1234567890/assetGroups/9876543210"
+  if (resourceName.length > 256) {
+    throw new Error('Invalid Google Ads resource name format')
+  }
+  const segments: string[] = resourceName.split('/')
+  if (segments.length < 2 || segments.length % 2 !== 0) {
+    throw new Error('Invalid Google Ads resource name format')
+  }
+  for (let i = 0; i < segments.length; i++) {
+    const valid: boolean = i % 2 === 0
+      ? /^[a-z_]+$/.test(segments[i])
+      : /^[0-9]+$/.test(segments[i])
+    if (!valid) {
+      throw new Error('Invalid Google Ads resource name format')
+    }
+  }
+  return resourceName
+}
+
+/**
+ * Google Ads API Response Types
+ * These types represent the raw JSON responses from the Google Ads API proxy
+ */
+
+interface GoogleAdsApiCampaignResult {
+  campaign: {
+    id: string
+    resourceName: string
+    name: string
+    status: string
+    advertisingChannelType: string
+    biddingStrategyType: string
+    campaignBudget: string
+    startDate?: string
+    endDate?: string
+    urlExpansionOptOut?: boolean
+  }
+}
+
+interface GoogleAdsApiAssetGroupResult {
+  assetGroup: {
+    id: string
+    resourceName: string
+    campaign: string
+    name: string
+    status: string
+    finalUrls: string[]
+    finalMobileUrls?: string[]
+  }
+}
+
+interface GoogleAdsApiMetricsResult {
+  campaign: {
+    id: string
+    name: string
+  }
+  metrics: {
+    impressions: number
+    clicks: number
+    costMicros: number
+    conversions: number
+    conversionsValue: number
+    averageCpc: number
+    ctr: number
+  }
+}
+
+interface GoogleAdsApiConversionActionResult {
+  conversionAction: {
+    id: string
+    resourceName: string
+    name: string
+    status: string
+    category: string
+    type: string
+    countingType: string
+    valueSettings?: {
+      defaultValue: number
+    }
+    clickThroughLookbackWindowDays: number
+  }
+}
+
+interface GoogleAdsAssetCreateData {
+  name?: string
+  type: GoogleAdsAssetType
+  imageAsset?: {
+    data: string
+  }
+  textAsset?: {
+    text: string
+  }
+  youtubeVideoAsset?: {
+    youtubeVideoId: string
+  }
+}
 
 /**
  * Instagram Graph API media creation request body (immediate posts only)
@@ -691,6 +834,963 @@ export class SocialV2Client {
     }
 
     return response.json()
+  }
+
+  /**
+   * ================================================================
+   * Google Ads API Methods (Performance Max)
+   * ================================================================
+   *
+   * Required OAuth Scopes:
+   * - https://www.googleapis.com/auth/adwords (Google Ads API access)
+   *
+   * These methods proxy calls to Google Ads API through the social-v2
+   * service. Authentication is handled separately via OAuth flow managed by
+   * the auth team. All methods require a valid userTokenId.
+   *
+   * Resource Hierarchy:
+   * - Customer (account) → Campaign → Asset Group → Assets
+   * - Customer → Conversion Actions
+   *
+   * API Documentation:
+   * - https://developers.google.com/google-ads/api/docs/performance-max/overview
+   * - https://developers.google.com/google-ads/api/reference/rpc/v22/overview  <- Substitute the latest version as needed (GOOGLE_ADS_API_VERSION)
+   * 
+   * See ./docs/GoogleAds-implementation.md for more details on the implementation and usage of these methods.
+   */
+
+  /**
+   * List accessible Google Ads customer accounts
+   * Supports Manager (MCC) accounts with multiple customers
+   *
+   * @param userTokenId - OAuth token ID for authentication
+   * @param developerToken - Google Ads developer token for API access
+   * @returns Array of customer accounts accessible by the token
+   */
+  async listGoogleAdsCustomers(userTokenId: string, developerToken: string): Promise<GoogleAdsCustomer[]> {
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers:listAccessibleCustomers`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to list Google Ads customers: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return data.resourceNames?.map((resourceName: string) => ({
+      resourceName,
+      id: resourceName.split('/')[1] || '',
+    })) || []
+  }
+
+  /**
+   * Get detailed information for a specific Google Ads customer
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   */
+  async getGoogleAdsCustomer(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string
+  ): Promise<GoogleAdsCustomer> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    const query = `
+      SELECT
+        customer.id,
+        customer.resource_name,
+        customer.descriptive_name,
+        customer.currency_code,
+        customer.time_zone,
+        customer.manager
+      FROM customer
+      WHERE customer.id = ${validatedCustomerId}
+    `
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/googleAds:search`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Google Ads customer: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const customer = data.results?.[0]?.customer
+
+    if (!customer) {
+      throw new Error(`Customer ${customerId} not found`)
+    }
+
+    return {
+      id: customer.id,
+      resourceName: customer.resourceName,
+      descriptiveName: customer.descriptiveName,
+      currencyCode: customer.currencyCode,
+      timeZone: customer.timeZone,
+      manager: customer.manager || false,
+    }
+  }
+
+  /**
+   * List Performance Max campaigns for a customer
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param includeRemoved - Whether to include removed campaigns (default: false)
+   */
+  async getGoogleAdsCampaigns(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    includeRemoved = false
+  ): Promise<GoogleAdsCampaign[]> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    const statusFilter = includeRemoved
+      ? ''
+      : "AND campaign.status != 'REMOVED'"
+
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.resource_name,
+        campaign.name,
+        campaign.status,
+        campaign.advertising_channel_type,
+        campaign.bidding_strategy_type,
+        campaign.campaign_budget,
+        campaign.start_date,
+        campaign.end_date,
+        campaign.url_expansion_opt_out
+      FROM campaign
+      WHERE campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+      ${statusFilter}
+      ORDER BY campaign.id DESC
+    `
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/googleAds:search`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Google Ads campaigns: ${response.status}`)
+    }
+
+    const data: { results?: GoogleAdsApiCampaignResult[] } = await response.json()
+
+    return (data.results || []).map((result: GoogleAdsApiCampaignResult) => ({
+      id: result.campaign.id,
+      resourceName: result.campaign.resourceName,
+      name: result.campaign.name,
+      status: result.campaign.status as GoogleAdsCampaignStatus,
+      advertisingChannelType: 'PERFORMANCE_MAX' as const,
+      biddingStrategy: result.campaign.biddingStrategyType as 'MAXIMIZE_CONVERSIONS' | 'MAXIMIZE_CONVERSION_VALUE' | 'TARGET_ROAS',
+      budget: {
+        resourceName: result.campaign.campaignBudget,
+        amountMicros: 0, // Requires separate budget query
+      },
+      urlExpansionOptOut: result.campaign.urlExpansionOptOut,
+      startDate: result.campaign.startDate,
+      endDate: result.campaign.endDate,
+    }))
+  }
+
+  /**
+   * Create a Performance Max campaign
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Campaign creation parameters
+   * @returns Created campaign resource name
+   */
+  async createGoogleAdsCampaign(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      name: string
+      budgetAmountMicros: number
+      biddingStrategy?: 'MAXIMIZE_CONVERSIONS' | 'MAXIMIZE_CONVERSION_VALUE' | 'TARGET_ROAS'
+      targetRoas?: number
+      startDate?: string
+      endDate?: string
+    }
+  ): Promise<{ resourceName: string; campaignId: string }> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    // Step 1: Create campaign budget
+    const budgetOperation = {
+      create: {
+        name: `${params.name} Budget`,
+        amountMicros: params.budgetAmountMicros,
+        deliveryMethod: 'STANDARD',
+      },
+    }
+
+    const budgetUrl = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/campaignBudgets:mutate`
+
+    const budgetResponse = await fetch(budgetUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [budgetOperation] }),
+    })
+
+    if (!budgetResponse.ok) {
+      throw new Error(`Failed to create campaign budget: ${budgetResponse.status}`)
+    }
+
+    const budgetData = await budgetResponse.json()
+    const budgetResourceName = budgetData.results?.[0]?.resourceName
+
+    if (!budgetResourceName) {
+      throw new Error('Failed to create campaign budget: missing resource name in response')
+    }
+
+    // Step 2: Create Performance Max campaign
+    const campaignOperation = {
+      create: {
+        name: params.name,
+        status: 'ENABLED',
+        advertisingChannelType: 'PERFORMANCE_MAX',
+        campaignBudget: budgetResourceName,
+        biddingStrategyType: params.biddingStrategy || 'MAXIMIZE_CONVERSIONS',
+        ...(params.targetRoas && { targetRoas: params.targetRoas }),
+        ...(params.startDate && { startDate: params.startDate }),
+        ...(params.endDate && { endDate: params.endDate }),
+        urlExpansionOptOut: false,
+      },
+    }
+
+    const campaignUrl = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/campaigns:mutate`
+
+    const campaignResponse = await fetch(campaignUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [campaignOperation] }),
+    })
+
+    if (!campaignResponse.ok) {
+      const errorText = await campaignResponse.text()
+      throw new Error(`Failed to create Google Ads campaign: ${campaignResponse.status} - ${errorText}`)
+    }
+
+    const campaignData = await campaignResponse.json()
+    const resourceName = campaignData.results?.[0]?.resourceName
+
+    if (!resourceName) {
+      throw new Error('Failed to create campaign: missing resource name in response')
+    }
+
+    const campaignId: string = resourceName.split('/')[3]
+    if (!campaignId) {
+      throw new Error('Failed to extract campaign ID from resource name')
+    }
+
+    return { resourceName, campaignId }
+  }
+
+  /**
+   * Update a Performance Max campaign
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param campaignId - Campaign ID to update
+   * @param updates - Fields to update
+   */
+  async updateGoogleAdsCampaign(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    campaignId: string,
+    updates: {
+      name?: string
+      status?: GoogleAdsCampaignStatus
+    }
+  ): Promise<void> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+    const validatedCampaignId: string = campaignId.replace(/[^0-9]/g, '')
+    if (!validatedCampaignId) {
+      throw new Error('Invalid campaign ID format')
+    }
+
+    const resourceName = `customers/${validatedCustomerId}/campaigns/${validatedCampaignId}`
+
+    const operation = {
+      update: {
+        resourceName,
+        ...updates,
+      },
+      updateMask: Object.keys(updates).join(','),
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/campaigns:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to update Google Ads campaign: ${response.status} - ${errorText}`)
+    }
+  }
+
+  /**
+   * Remove a Performance Max campaign (soft delete - sets status to REMOVED)
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param campaignId - Campaign ID to remove
+   */
+  async deleteGoogleAdsCampaign(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    campaignId: string
+  ): Promise<void> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+    const validatedCampaignId: string = campaignId.replace(/[^0-9]/g, '')
+    if (!validatedCampaignId) {
+      throw new Error('Invalid campaign ID format')
+    }
+
+    const resourceName = `customers/${validatedCustomerId}/campaigns/${validatedCampaignId}`
+
+    const operation = {
+      remove: resourceName,
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/campaigns:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete Google Ads campaign: ${response.status}`)
+    }
+  }
+
+  /**
+   * List asset groups for a Performance Max campaign
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param campaignId - Campaign ID
+   */
+  async getGoogleAdsAssetGroups(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    campaignId: string
+  ): Promise<GoogleAdsAssetGroup[]> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+    const validatedCampaignId: string = campaignId.replace(/[^0-9]/g, '')
+    if (!validatedCampaignId) {
+      throw new Error('Invalid campaign ID format')
+    }
+
+    const campaignResourceName = `customers/${validatedCustomerId}/campaigns/${validatedCampaignId}`
+    const validatedResourceName: string = validateResourceName(campaignResourceName)
+
+    const query = `
+      SELECT
+        asset_group.id,
+        asset_group.resource_name,
+        asset_group.campaign,
+        asset_group.name,
+        asset_group.status,
+        asset_group.final_urls,
+        asset_group.final_mobile_urls
+      FROM asset_group
+      WHERE asset_group.campaign = '${validatedResourceName}'
+      AND asset_group.status != 'REMOVED'
+    `
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/googleAds:search`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Google Ads asset groups: ${response.status}`)
+    }
+
+    const data: { results?: GoogleAdsApiAssetGroupResult[] } = await response.json()
+
+    return (data.results || []).map((result: GoogleAdsApiAssetGroupResult) => ({
+      id: result.assetGroup.id,
+      resourceName: result.assetGroup.resourceName,
+      campaign: result.assetGroup.campaign,
+      name: result.assetGroup.name,
+      status: result.assetGroup.status as GoogleAdsAssetGroupStatus,
+      finalUrls: result.assetGroup.finalUrls || [],
+      finalMobileUrls: result.assetGroup.finalMobileUrls || [],
+    }))
+  }
+
+  /**
+   * Create an asset group for a Performance Max campaign
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Asset group creation parameters
+   */
+  async createGoogleAdsAssetGroup(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      campaignId: string
+      name: string
+      finalUrls: string[]
+      finalMobileUrls?: string[]
+    }
+  ): Promise<{ resourceName: string; assetGroupId: string }> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+    const validatedCampaignId: string = params.campaignId.replace(/[^0-9]/g, '')
+    if (!validatedCampaignId) {
+      throw new Error('Invalid campaign ID format')
+    }
+
+    const campaignResourceName = `customers/${validatedCustomerId}/campaigns/${validatedCampaignId}`
+
+    const operation = {
+      create: {
+        name: params.name,
+        campaign: campaignResourceName,
+        status: 'ENABLED',
+        finalUrls: params.finalUrls,
+        ...(params.finalMobileUrls && { finalMobileUrls: params.finalMobileUrls }),
+      },
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/assetGroups:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to create Google Ads asset group: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const resourceName = data.results?.[0]?.resourceName
+
+    if (!resourceName) {
+      throw new Error('Failed to create asset group: missing resource name in response')
+    }
+
+    const assetGroupId: string = resourceName.split('/')[3]
+    if (!assetGroupId) {
+      throw new Error('Failed to extract asset group ID from resource name')
+    }
+
+    return { resourceName, assetGroupId }
+  }
+
+  /**
+   * Upload an asset (image, text, or video) to Google Ads
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Asset upload parameters
+   */
+  async uploadGoogleAdsAsset(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      type: GoogleAdsAssetType
+      name?: string
+      // For IMAGE type
+      imageData?: string        // Base64 encoded image
+      // For TEXT type
+      text?: string
+      // For VIDEO type
+      youtubeVideoId?: string
+    }
+  ): Promise<{ resourceName: string; assetId: string }> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    const assetData: GoogleAdsAssetCreateData = {
+      name: params.name,
+      type: params.type,
+    }
+
+    if (params.type === GoogleAdsAssetType.IMAGE && params.imageData) {
+      assetData.imageAsset = {
+        data: params.imageData,
+      }
+    } else if (params.type === GoogleAdsAssetType.TEXT && params.text) {
+      assetData.textAsset = {
+        text: params.text,
+      }
+    } else if (params.type === GoogleAdsAssetType.VIDEO && params.youtubeVideoId) {
+      assetData.youtubeVideoAsset = {
+        youtubeVideoId: params.youtubeVideoId,
+      }
+    }
+
+    const operation: { create: GoogleAdsAssetCreateData } = {
+      create: assetData,
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/assets:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to upload Google Ads asset: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const resourceName = data.results?.[0]?.resourceName
+
+    if (!resourceName) {
+      throw new Error('Failed to upload asset: missing resource name in response')
+    }
+
+    const assetId: string = resourceName.split('/')[3]
+    if (!assetId) {
+      throw new Error('Failed to extract asset ID from resource name')
+    }
+
+    return { resourceName, assetId }
+  }
+
+  /**
+   * Link an asset to an asset group with a specific field type
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Asset linking parameters
+   */
+  async linkGoogleAdsAssetToGroup(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      assetGroupId: string
+      assetId: string
+      fieldType: GoogleAdsAssetFieldType
+    }
+  ): Promise<void> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+    const validatedAssetGroupId: string = params.assetGroupId.replace(/[^0-9]/g, '')
+    const validatedAssetId: string = params.assetId.replace(/[^0-9]/g, '')
+
+    if (!validatedAssetGroupId) {
+      throw new Error('Invalid asset group ID format')
+    }
+    if (!validatedAssetId) {
+      throw new Error('Invalid asset ID format')
+    }
+
+    const assetGroupResourceName = `customers/${validatedCustomerId}/assetGroups/${validatedAssetGroupId}`
+    const assetResourceName = `customers/${validatedCustomerId}/assets/${validatedAssetId}`
+
+    const operation = {
+      create: {
+        assetGroup: assetGroupResourceName,
+        asset: assetResourceName,
+        fieldType: params.fieldType,
+      },
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/assetGroupAssets:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to link asset to group: ${response.status} - ${errorText}`)
+    }
+  }
+
+  /**
+   * Get performance metrics for Performance Max campaigns
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Reporting parameters
+   */
+  async getGoogleAdsCampaignMetrics(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      campaignIds?: string[]      // Specific campaigns, or all if omitted
+      startDate: string            // YYYY-MM-DD
+      endDate: string              // YYYY-MM-DD
+    }
+  ): Promise<GoogleAdsCampaignMetrics[]> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    // Validate and sanitize campaign IDs
+    const validatedCampaignIds: string[] = params.campaignIds?.map((id: string) => {
+      const sanitized: string = id.replace(/[^0-9]/g, '')
+      if (!sanitized) {
+        throw new Error('Invalid campaign ID format')
+      }
+      return sanitized
+    }) || []
+
+    // Validate date format (YYYY-MM-DD)
+    const dateRegex: RegExp = /^\d{4}-\d{2}-\d{2}$/
+    if (!dateRegex.test(params.startDate) || !dateRegex.test(params.endDate)) {
+      throw new Error('Invalid date format. Expected YYYY-MM-DD')
+    }
+
+    const campaignFilter: string = validatedCampaignIds.length
+      ? `AND campaign.id IN (${validatedCampaignIds.join(',')})`
+      : ''
+
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.cost_micros,
+        metrics.conversions,
+        metrics.conversions_value,
+        metrics.average_cpc,
+        metrics.ctr
+      FROM campaign
+      WHERE campaign.advertising_channel_type = 'PERFORMANCE_MAX'
+      AND campaign.status != 'REMOVED'
+      ${campaignFilter}
+      AND segments.date BETWEEN '${params.startDate}' AND '${params.endDate}'
+      ORDER BY campaign.id
+    `
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/googleAds:search`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get campaign metrics: ${response.status}`)
+    }
+
+    const data: { results?: GoogleAdsApiMetricsResult[] } = await response.json()
+
+    // Group by campaign and aggregate metrics
+    const metricsMap = new Map<string, GoogleAdsCampaignMetrics>()
+
+    for (const result of (data.results || [])) {
+      const campaignId: string = result.campaign.id
+
+      if (!metricsMap.has(campaignId)) {
+        metricsMap.set(campaignId, {
+          campaignId,
+          campaignName: result.campaign.name,
+          impressions: 0,
+          clicks: 0,
+          costMicros: 0,
+          conversions: 0,
+          conversionValue: 0,
+          averageCpc: 0,
+          ctr: 0,
+          dateRange: {
+            startDate: params.startDate,
+            endDate: params.endDate,
+          },
+        })
+      }
+
+      const metrics = metricsMap.get(campaignId)!
+      metrics.impressions += result.metrics.impressions || 0
+      metrics.clicks += result.metrics.clicks || 0
+      metrics.costMicros += result.metrics.costMicros || 0
+      metrics.conversions += result.metrics.conversions || 0
+      metrics.conversionValue += result.metrics.conversionsValue || 0
+    }
+
+    // Calculate averages
+    return Array.from(metricsMap.values()).map(m => ({
+      ...m,
+      averageCpc: m.clicks > 0 ? m.costMicros / m.clicks : 0,
+      ctr: m.impressions > 0 ? m.clicks / m.impressions : 0,
+    }))
+  }
+
+  /**
+   * List conversion actions for a customer
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   */
+  async getGoogleAdsConversionActions(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string
+  ): Promise<GoogleAdsConversionAction[]> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    const query = `
+      SELECT
+        conversion_action.id,
+        conversion_action.resource_name,
+        conversion_action.name,
+        conversion_action.status,
+        conversion_action.category,
+        conversion_action.type,
+        conversion_action.counting_type,
+        conversion_action.value_settings.default_value,
+        conversion_action.click_through_lookback_window_days
+      FROM conversion_action
+      WHERE conversion_action.status != 'REMOVED'
+    `
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/googleAds:search`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to get conversion actions: ${response.status}`)
+    }
+
+    const data: { results?: GoogleAdsApiConversionActionResult[] } = await response.json()
+
+    return (data.results || []).map((result: GoogleAdsApiConversionActionResult) => ({
+      id: result.conversionAction.id,
+      resourceName: result.conversionAction.resourceName,
+      name: result.conversionAction.name,
+      status: result.conversionAction.status as GoogleAdsConversionActionStatus,
+      category: result.conversionAction.category as GoogleAdsConversionCategory,
+      type: result.conversionAction.type as GoogleAdsConversionActionType,
+      countingType: result.conversionAction.countingType as GoogleAdsConversionCountingType,
+      valueMicros: result.conversionAction.valueSettings?.defaultValue,
+      clickThroughLookbackWindowDays: result.conversionAction.clickThroughLookbackWindowDays,
+    }))
+  }
+
+  /**
+   * Create a conversion action with tracking tag
+   *
+   * @param userTokenId - OAuth token ID
+   * @param developerToken - Google Ads developer token for API access
+   * @param customerId - Google Ads customer ID
+   * @param params - Conversion action parameters
+   */
+  async createGoogleAdsConversionAction(
+    userTokenId: string,
+    developerToken: string,
+    customerId: string,
+    params: {
+      name: string
+      category: GoogleAdsConversionCategory
+      valueMicros?: number
+      countingType?: 'ONE_PER_CLICK' | 'MANY_PER_CLICK'
+    }
+  ): Promise<{
+    resourceName: string
+    conversionActionId: string
+    tagSnippets: {
+      globalSiteTag: string
+      eventSnippet: string
+    }
+  }> {
+    const validatedCustomerId: string = validateCustomerId(customerId)
+
+    const operation = {
+      create: {
+        name: params.name,
+        category: params.category,
+        type: 'WEBPAGE',
+        status: 'ENABLED',
+        countingType: params.countingType || 'ONE_PER_CLICK',
+        ...(params.valueMicros && {
+          valueSettings: {
+            defaultValue: params.valueMicros,
+            alwaysUseDefaultValue: true,
+          },
+        }),
+        tagSnippets: [
+          {
+            type: 'WEBPAGE',
+            pageFormat: 'HTML',
+          },
+        ],
+      },
+    }
+
+    const url = `${SOCIAL_V2_BASE_URL}/google/proxy/googleads/${GOOGLE_ADS_API_VERSION}/customers/${validatedCustomerId}/conversionActions:mutate`
+
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'X-Token-Id': userTokenId,
+        'developer-token': developerToken,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ operations: [operation] }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to create conversion action: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const resourceName = data.results?.[0]?.resourceName
+
+    if (!resourceName) {
+      throw new Error('Failed to create conversion action: missing resource name in response')
+    }
+
+    const conversionActionId: string = resourceName.split('/')[3]
+    if (!conversionActionId) {
+      throw new Error('Failed to extract conversion action ID from resource name')
+    }
+
+    // Extract tag snippets from response
+    const tagSnippets = data.results?.[0]?.tagSnippets
+    if (!tagSnippets?.globalSiteTag || !tagSnippets?.eventSnippet) {
+      throw new Error('Failed to create conversion action: missing tag snippets in response')
+    }
+
+    return {
+      resourceName,
+      conversionActionId,
+      tagSnippets: {
+        globalSiteTag: tagSnippets.globalSiteTag,
+        eventSnippet: tagSnippets.eventSnippet,
+      },
+    }
   }
 
   async createConnection(params: {

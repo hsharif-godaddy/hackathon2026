@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { FacebookMediaType, SocialPlatform } from '@/types/social'
-import { SocialV2Client } from './social'
+import {
+  FacebookMediaType,
+  GoogleAdsAssetFieldType,
+  GoogleAdsAssetType,
+  GoogleAdsCampaignStatus,
+  GoogleAdsConversionCategory,
+  SocialPlatform,
+} from '@/types/social'
+import { SocialV2Client, validateCustomerId, validateResourceName } from './social'
 
 global.fetch = vi.fn()
 
@@ -513,6 +520,1232 @@ describe('SocialV2Client', () => {
 
       expect(result).toBeNull()
       vi.useRealTimers()
+    })
+  })
+
+  describe('Google Ads API', () => {
+    const MOCK_GOOGLE_ADS = {
+      userTokenId: 'token-google-ads-123',
+      developerToken: 'dev-token-test-456',
+      customerId: '1234567890',
+      campaignId: '9876543210',
+      assetGroupId: '1111111111',
+      assetId: '2222222222',
+      conversionActionId: '3333333333',
+    } as const
+
+    describe('listGoogleAdsCustomers', () => {
+      it('calls the correct endpoint with POST method', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            resourceNames: [
+              'customers/1234567890',
+              'customers/9876543210',
+            ],
+          })
+        )
+
+        await client.listGoogleAdsCustomers(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken)
+
+        expect(fetch).toHaveBeenCalledWith(
+          expect.stringContaining('/google/proxy/googleads/v22/customers:listAccessibleCustomers'),
+          expect.objectContaining({
+            method: 'POST',
+            credentials: 'include',
+            headers: expect.objectContaining({
+              'X-Token-Id': MOCK_GOOGLE_ADS.userTokenId,
+              'developer-token': MOCK_GOOGLE_ADS.developerToken,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            }),
+          })
+        )
+      })
+
+      it('extracts customer IDs from resource names', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            resourceNames: [
+              'customers/1234567890',
+              'customers/9876543210',
+            ],
+          })
+        )
+
+        const result = await client.listGoogleAdsCustomers(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken)
+
+        expect(result).toEqual([
+          { resourceName: 'customers/1234567890', id: '1234567890' },
+          { resourceName: 'customers/9876543210', id: '9876543210' },
+        ])
+      })
+
+      it('returns empty array when no resource names', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({}))
+
+        const result = await client.listGoogleAdsCustomers(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken)
+
+        expect(result).toEqual([])
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(401))
+
+        await expect(
+          client.listGoogleAdsCustomers(MOCK_GOOGLE_ADS.userTokenId)
+        ).rejects.toThrow('Failed to list Google Ads customers: 401')
+      })
+    })
+
+    describe('getGoogleAdsCustomer', () => {
+      it('sends GAQL query to search endpoint', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                customer: {
+                  id: '1234567890',
+                  resourceName: 'customers/1234567890',
+                  descriptiveName: 'Test Account',
+                  currencyCode: 'USD',
+                  timeZone: 'America/Los_Angeles',
+                  manager: false,
+                },
+              },
+            ],
+          })
+        )
+
+        await client.getGoogleAdsCustomer(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId)
+
+        const callArgs = vi.mocked(fetch).mock.calls[0]
+        expect(callArgs[0]).toContain(`/customers/${MOCK_GOOGLE_ADS.customerId}/googleAds:search`)
+        expect(callArgs[1]).toMatchObject({
+          method: 'POST',
+          body: expect.stringContaining('SELECT'),
+        })
+      })
+
+      it('returns customer details', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                customer: {
+                  id: '1234567890',
+                  resourceName: 'customers/1234567890',
+                  descriptiveName: 'Test Account',
+                  currencyCode: 'USD',
+                  timeZone: 'America/Los_Angeles',
+                  manager: true,
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsCustomer(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId
+        )
+
+        expect(result).toEqual({
+          id: '1234567890',
+          resourceName: 'customers/1234567890',
+          descriptiveName: 'Test Account',
+          currencyCode: 'USD',
+          timeZone: 'America/Los_Angeles',
+          manager: true,
+        })
+      })
+
+      it('throws when customer not found', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        await expect(
+          client.getGoogleAdsCustomer(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId)
+        ).rejects.toThrow('Customer 1234567890 not found')
+      })
+    })
+
+    describe('getGoogleAdsCampaigns', () => {
+      it('queries Performance Max campaigns', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                campaign: {
+                  id: '9876543210',
+                  resourceName: 'customers/1234567890/campaigns/9876543210',
+                  name: 'Test PMax Campaign',
+                  status: 'ENABLED',
+                  advertisingChannelType: 'PERFORMANCE_MAX',
+                  biddingStrategyType: 'MAXIMIZE_CONVERSIONS',
+                  campaignBudget: 'customers/1234567890/campaignBudgets/111',
+                  urlExpansionOptOut: false,
+                  startDate: '2026-01-01',
+                  endDate: '2026-12-31',
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsCampaigns(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId
+        )
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toMatchObject({
+          id: '9876543210',
+          name: 'Test PMax Campaign',
+          status: 'ENABLED',
+          advertisingChannelType: 'PERFORMANCE_MAX',
+        })
+      })
+
+      it('filters out REMOVED campaigns by default', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        await client.getGoogleAdsCampaigns(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId)
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.query).toContain("campaign.status != 'REMOVED'")
+      })
+
+      it('includes REMOVED campaigns when includeRemoved is true', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        await client.getGoogleAdsCampaigns(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          true
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.query).not.toContain("campaign.status != 'REMOVED'")
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(403))
+
+        await expect(
+          client.getGoogleAdsCampaigns(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId)
+        ).rejects.toThrow('Failed to get Google Ads campaigns: 403')
+      })
+    })
+
+    describe('createGoogleAdsCampaign', () => {
+      it('creates budget first, then campaign', async () => {
+        vi.mocked(fetch)
+          .mockResolvedValueOnce(
+            mockResponse({
+              results: [{ resourceName: 'customers/1234567890/campaignBudgets/111' }],
+            })
+          )
+          .mockResolvedValueOnce(
+            mockResponse({
+              results: [{ resourceName: 'customers/1234567890/campaigns/9876543210' }],
+            })
+          )
+
+        const result = await client.createGoogleAdsCampaign(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            name: 'New Campaign',
+            budgetAmountMicros: 10000000,
+          }
+        )
+
+        expect(fetch).toHaveBeenCalledTimes(2)
+        expect(getFetchUrlAt(0)).toContain('/campaignBudgets:mutate')
+        expect(getFetchUrlAt(1)).toContain('/campaigns:mutate')
+        expect(result).toEqual({
+          resourceName: 'customers/1234567890/campaigns/9876543210',
+          campaignId: '9876543210',
+        })
+      })
+
+      it('includes optional parameters when provided', async () => {
+        vi.mocked(fetch)
+          .mockResolvedValueOnce(
+            mockResponse({
+              results: [{ resourceName: 'customers/1234567890/campaignBudgets/111' }],
+            })
+          )
+          .mockResolvedValueOnce(
+            mockResponse({
+              results: [{ resourceName: 'customers/1234567890/campaigns/9876543210' }],
+            })
+          )
+
+        await client.createGoogleAdsCampaign(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+          name: 'New Campaign',
+          budgetAmountMicros: 10000000,
+          biddingStrategy: 'TARGET_ROAS',
+          targetRoas: 4.5,
+          startDate: '2026-07-01',
+          endDate: '2026-12-31',
+        })
+
+        const campaignBody = JSON.parse(vi.mocked(fetch).mock.calls[1][1]?.body as string)
+        expect(campaignBody.operations[0].create).toMatchObject({
+          name: 'New Campaign',
+          biddingStrategyType: 'TARGET_ROAS',
+          targetRoas: 4.5,
+          startDate: '2026-07-01',
+          endDate: '2026-12-31',
+        })
+      })
+
+      it('throws on budget creation failure', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(400))
+
+        await expect(
+          client.createGoogleAdsCampaign(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            name: 'New Campaign',
+            budgetAmountMicros: 10000000,
+          })
+        ).rejects.toThrow('Failed to create campaign budget: 400')
+      })
+
+      it('throws when budget resource name is missing (orphaned budget concern)', async () => {
+        // Budget "succeeds" but returns empty response
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({ results: [{}] })
+        )
+
+        await expect(
+          client.createGoogleAdsCampaign(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            name: 'New Campaign',
+            budgetAmountMicros: 10000000,
+          })
+        ).rejects.toThrow('Failed to create campaign budget: missing resource name in response')
+      })
+
+      it('throws when campaign creation fails after budget succeeds (orphaned budget)', async () => {
+        // Step 1: Budget creation succeeds
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/campaignBudgets/99999' }],
+          })
+        )
+        // Step 2: Campaign creation fails
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          text: async () => 'Invalid campaign configuration',
+        } as Response)
+
+        await expect(
+          client.createGoogleAdsCampaign(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            name: 'New Campaign',
+            budgetAmountMicros: 10000000,
+          })
+        ).rejects.toThrow('Failed to create Google Ads campaign: 400 - Invalid campaign configuration')
+
+        // Verify budget was created (2 fetch calls)
+        expect(fetch).toHaveBeenCalledTimes(2)
+      })
+
+      it('throws when campaign resource name is missing in response', async () => {
+        // Budget succeeds
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/campaignBudgets/99999' }],
+          })
+        )
+        // Campaign "succeeds" but returns empty response
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({ results: [{}] })
+        )
+
+        await expect(
+          client.createGoogleAdsCampaign(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            name: 'New Campaign',
+            budgetAmountMicros: 10000000,
+          })
+        ).rejects.toThrow('Failed to create campaign: missing resource name in response')
+      })
+    })
+
+    describe('updateGoogleAdsCampaign', () => {
+      it('sends update operation with updateMask', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({}))
+
+        await client.updateGoogleAdsCampaign(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          MOCK_GOOGLE_ADS.campaignId,
+          { name: 'Updated Name', status: GoogleAdsCampaignStatus.PAUSED }
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0]).toMatchObject({
+          update: {
+            resourceName: `customers/${MOCK_GOOGLE_ADS.customerId}/campaigns/${MOCK_GOOGLE_ADS.campaignId}`,
+            name: 'Updated Name',
+            status: 'PAUSED',
+          },
+          updateMask: 'name,status',
+        })
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          text: async () => 'Invalid status',
+        } as Response)
+
+        await expect(
+          client.updateGoogleAdsCampaign(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            MOCK_GOOGLE_ADS.campaignId,
+            { status: GoogleAdsCampaignStatus.PAUSED }
+          )
+        ).rejects.toThrow('Failed to update Google Ads campaign: 400 - Invalid status')
+      })
+    })
+
+    describe('deleteGoogleAdsCampaign', () => {
+      it('sends remove operation', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({}))
+
+        await client.deleteGoogleAdsCampaign(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          MOCK_GOOGLE_ADS.campaignId
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0]).toEqual({
+          remove: `customers/${MOCK_GOOGLE_ADS.customerId}/campaigns/${MOCK_GOOGLE_ADS.campaignId}`,
+        })
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(403))
+
+        await expect(
+          client.deleteGoogleAdsCampaign(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            MOCK_GOOGLE_ADS.campaignId
+          )
+        ).rejects.toThrow('Failed to delete Google Ads campaign: 403')
+      })
+    })
+
+    describe('getGoogleAdsAssetGroups', () => {
+      it('queries asset groups for a campaign', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                assetGroup: {
+                  id: '1111111111',
+                  resourceName: 'customers/1234567890/assetGroups/1111111111',
+                  campaign: 'customers/1234567890/campaigns/9876543210',
+                  name: 'Asset Group 1',
+                  status: 'ENABLED',
+                  finalUrls: ['https://example.com'],
+                  finalMobileUrls: ['https://m.example.com'],
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsAssetGroups(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          MOCK_GOOGLE_ADS.campaignId
+        )
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toMatchObject({
+          id: '1111111111',
+          name: 'Asset Group 1',
+          status: 'ENABLED',
+          finalUrls: ['https://example.com'],
+        })
+      })
+
+      it('filters by campaign resource name in query', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        await client.getGoogleAdsAssetGroups(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          MOCK_GOOGLE_ADS.campaignId
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.query).toContain(
+          `asset_group.campaign = 'customers/${MOCK_GOOGLE_ADS.customerId}/campaigns/${MOCK_GOOGLE_ADS.campaignId}'`
+        )
+      })
+    })
+
+    describe('createGoogleAdsAssetGroup', () => {
+      it('creates asset group with required fields', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/assetGroups/1111111111' }],
+          })
+        )
+
+        const result = await client.createGoogleAdsAssetGroup(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            campaignId: MOCK_GOOGLE_ADS.campaignId,
+            name: 'New Asset Group',
+            finalUrls: ['https://example.com'],
+          }
+        )
+
+        expect(result).toEqual({
+          resourceName: 'customers/1234567890/assetGroups/1111111111',
+          assetGroupId: '1111111111',
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toMatchObject({
+          name: 'New Asset Group',
+          campaign: `customers/${MOCK_GOOGLE_ADS.customerId}/campaigns/${MOCK_GOOGLE_ADS.campaignId}`,
+          finalUrls: ['https://example.com'],
+          status: 'ENABLED',
+        })
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          text: async () => 'Permission denied',
+        } as Response)
+
+        await expect(
+          client.createGoogleAdsAssetGroup(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              campaignId: MOCK_GOOGLE_ADS.campaignId,
+              name: 'New Asset Group',
+              finalUrls: ['https://example.com'],
+            }
+          )
+        ).rejects.toThrow('Failed to create Google Ads asset group: 403 - Permission denied')
+      })
+
+      it('throws when resource name is missing in response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({ results: [{}] })
+        )
+
+        await expect(
+          client.createGoogleAdsAssetGroup(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              campaignId: MOCK_GOOGLE_ADS.campaignId,
+              name: 'New Asset Group',
+              finalUrls: ['https://example.com'],
+            }
+          )
+        ).rejects.toThrow('Failed to create asset group: missing resource name in response')
+      })
+
+      it('includes optional mobile URLs when provided', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/assetGroups/1111111111' }],
+          })
+        )
+
+        await client.createGoogleAdsAssetGroup(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+          campaignId: MOCK_GOOGLE_ADS.campaignId,
+          name: 'New Asset Group',
+          finalUrls: ['https://example.com'],
+          finalMobileUrls: ['https://m.example.com'],
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create.finalMobileUrls).toEqual(['https://m.example.com'])
+      })
+    })
+
+    describe('uploadGoogleAdsAsset', () => {
+      it('uploads IMAGE asset with base64 data', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/assets/2222222222' }],
+          })
+        )
+
+        const result = await client.uploadGoogleAdsAsset(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            type: GoogleAdsAssetType.IMAGE,
+            name: 'Marketing Image',
+            imageData: 'base64encodeddata',
+          }
+        )
+
+        expect(result).toEqual({
+          resourceName: 'customers/1234567890/assets/2222222222',
+          assetId: '2222222222',
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toMatchObject({
+          name: 'Marketing Image',
+          type: 'IMAGE',
+          imageAsset: { data: 'base64encodeddata' },
+        })
+      })
+
+      it('uploads TEXT asset', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/assets/2222222222' }],
+          })
+        )
+
+        await client.uploadGoogleAdsAsset(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+          type: GoogleAdsAssetType.TEXT,
+          text: 'Headline text',
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toMatchObject({
+          type: 'TEXT',
+          textAsset: { text: 'Headline text' },
+        })
+      })
+
+      it('uploads VIDEO asset with YouTube video ID', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [{ resourceName: 'customers/1234567890/assets/2222222222' }],
+          })
+        )
+
+        await client.uploadGoogleAdsAsset(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+          type: GoogleAdsAssetType.VIDEO,
+          youtubeVideoId: 'dQw4w9WgXcQ',
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toMatchObject({
+          type: 'VIDEO',
+          youtubeVideoAsset: { youtubeVideoId: 'dQw4w9WgXcQ' },
+        })
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          text: async () => 'Invalid asset data',
+        } as Response)
+
+        await expect(
+          client.uploadGoogleAdsAsset(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            type: GoogleAdsAssetType.IMAGE,
+            imageData: 'base64data',
+          })
+        ).rejects.toThrow('Failed to upload Google Ads asset: 400 - Invalid asset data')
+      })
+
+      it('throws when resource name is missing in response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({ results: [{}] })
+        )
+
+        await expect(
+          client.uploadGoogleAdsAsset(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId, {
+            type: GoogleAdsAssetType.IMAGE,
+            imageData: 'base64data',
+          })
+        ).rejects.toThrow('Failed to upload asset: missing resource name in response')
+      })
+    })
+
+    describe('linkGoogleAdsAssetToGroup', () => {
+      it('creates asset group asset link', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({}))
+
+        await client.linkGoogleAdsAssetToGroup(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            assetGroupId: MOCK_GOOGLE_ADS.assetGroupId,
+            assetId: MOCK_GOOGLE_ADS.assetId,
+            fieldType: GoogleAdsAssetFieldType.HEADLINE,
+          }
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toEqual({
+          assetGroup: `customers/${MOCK_GOOGLE_ADS.customerId}/assetGroups/${MOCK_GOOGLE_ADS.assetGroupId}`,
+          asset: `customers/${MOCK_GOOGLE_ADS.customerId}/assets/${MOCK_GOOGLE_ADS.assetId}`,
+          fieldType: 'HEADLINE',
+        })
+
+        expect(getLastFetchUrl()).toContain('/assetGroupAssets:mutate')
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          text: async () => 'Asset not found',
+        } as Response)
+
+        await expect(
+          client.linkGoogleAdsAssetToGroup(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              assetGroupId: MOCK_GOOGLE_ADS.assetGroupId,
+              assetId: MOCK_GOOGLE_ADS.assetId,
+              fieldType: GoogleAdsAssetFieldType.HEADLINE,
+            }
+          )
+        ).rejects.toThrow('Failed to link asset to group: 404 - Asset not found')
+      })
+
+      it('throws when asset group ID is non-numeric', async () => {
+        await expect(
+          client.linkGoogleAdsAssetToGroup(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              assetGroupId: 'abc',
+              assetId: MOCK_GOOGLE_ADS.assetId,
+              fieldType: GoogleAdsAssetFieldType.HEADLINE,
+            }
+          )
+        ).rejects.toThrow('Invalid asset group ID format')
+        expect(fetch).not.toHaveBeenCalled()
+      })
+
+      it('throws when asset ID is non-numeric', async () => {
+        await expect(
+          client.linkGoogleAdsAssetToGroup(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              assetGroupId: MOCK_GOOGLE_ADS.assetGroupId,
+              assetId: 'abc',
+              fieldType: GoogleAdsAssetFieldType.HEADLINE,
+            }
+          )
+        ).rejects.toThrow('Invalid asset ID format')
+        expect(fetch).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('getGoogleAdsCampaignMetrics', () => {
+      it('queries campaign metrics with date range', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                campaign: { id: '9876543210', name: 'Test Campaign' },
+                metrics: {
+                  impressions: 1000,
+                  clicks: 50,
+                  costMicros: 5000000,
+                  conversions: 5,
+                  conversionsValue: 500,
+                  averageCpc: 100000,
+                  ctr: 0.05,
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsCampaignMetrics(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            startDate: '2026-06-01',
+            endDate: '2026-06-30',
+          }
+        )
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toMatchObject({
+          campaignId: '9876543210',
+          campaignName: 'Test Campaign',
+          impressions: 1000,
+          clicks: 50,
+          costMicros: 5000000,
+          conversions: 5,
+          conversionValue: 500,
+          dateRange: {
+            startDate: '2026-06-01',
+            endDate: '2026-06-30',
+          },
+        })
+      })
+
+      it('calculates averages correctly', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                campaign: { id: '1', name: 'Campaign 1' },
+                metrics: {
+                  impressions: 1000,
+                  clicks: 100,
+                  costMicros: 10000000,
+                  conversions: 0,
+                  conversionsValue: 0,
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsCampaignMetrics(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            startDate: '2026-06-01',
+            endDate: '2026-06-30',
+          }
+        )
+
+        expect(result[0].averageCpc).toBe(100000) // 10000000 / 100
+        expect(result[0].ctr).toBe(0.1) // 100 / 1000
+      })
+
+      it('filters by campaign IDs when provided', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        await client.getGoogleAdsCampaignMetrics(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            campaignIds: ['111', '222'],
+            startDate: '2026-06-01',
+            endDate: '2026-06-30',
+          }
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.query).toContain('AND campaign.id IN (111,222)')
+      })
+
+      it('aggregates metrics across multiple result rows', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                campaign: { id: '1', name: 'Campaign 1' },
+                metrics: { impressions: 500, clicks: 25, costMicros: 2500000, conversions: 2, conversionsValue: 200 },
+              },
+              {
+                campaign: { id: '1', name: 'Campaign 1' },
+                metrics: { impressions: 500, clicks: 25, costMicros: 2500000, conversions: 3, conversionsValue: 300 },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsCampaignMetrics(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            startDate: '2026-06-01',
+            endDate: '2026-06-30',
+          }
+        )
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toMatchObject({
+          impressions: 1000,
+          clicks: 50,
+          costMicros: 5000000,
+          conversions: 5,
+          conversionValue: 500,
+        })
+      })
+    })
+
+    describe('getGoogleAdsConversionActions', () => {
+      it('queries conversion actions', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                conversionAction: {
+                  id: '3333333333',
+                  resourceName: 'customers/1234567890/conversionActions/3333333333',
+                  name: 'Purchase',
+                  status: 'ENABLED',
+                  category: 'PURCHASE',
+                  type: 'WEBPAGE',
+                  countingType: 'ONE_PER_CLICK',
+                  valueSettings: { defaultValue: 50000000 },
+                  clickThroughLookbackWindowDays: 30,
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.getGoogleAdsConversionActions(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId
+        )
+
+        expect(result).toHaveLength(1)
+        expect(result[0]).toMatchObject({
+          id: '3333333333',
+          name: 'Purchase',
+          category: 'PURCHASE',
+          type: 'WEBPAGE',
+          countingType: 'ONE_PER_CLICK',
+          valueMicros: 50000000,
+        })
+      })
+
+      it('returns empty array when results is empty', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ results: [] }))
+
+        const result = await client.getGoogleAdsConversionActions(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId
+        )
+
+        expect(result).toEqual([])
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(mockFailedResponse(401))
+
+        await expect(
+          client.getGoogleAdsConversionActions(MOCK_GOOGLE_ADS.userTokenId, MOCK_GOOGLE_ADS.developerToken, MOCK_GOOGLE_ADS.customerId)
+        ).rejects.toThrow('Failed to get conversion actions: 401')
+      })
+    })
+
+    describe('createGoogleAdsConversionAction', () => {
+      it('creates conversion action with tag snippets', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                resourceName: 'customers/1234567890/conversionActions/3333333333',
+                tagSnippets: {
+                  globalSiteTag: '<script>gtag...</script>',
+                  eventSnippet: '<script>gtag("event"...</script>',
+                },
+              },
+            ],
+          })
+        )
+
+        const result = await client.createGoogleAdsConversionAction(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            name: 'Purchase',
+            category: GoogleAdsConversionCategory.PURCHASE,
+            valueMicros: 50000000,
+            countingType: 'ONE_PER_CLICK',
+          }
+        )
+
+        expect(result).toEqual({
+          resourceName: 'customers/1234567890/conversionActions/3333333333',
+          conversionActionId: '3333333333',
+          tagSnippets: {
+            globalSiteTag: '<script>gtag...</script>',
+            eventSnippet: '<script>gtag("event"...</script>',
+          },
+        })
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create).toMatchObject({
+          name: 'Purchase',
+          category: 'PURCHASE',
+          type: 'WEBPAGE',
+          status: 'ENABLED',
+          countingType: 'ONE_PER_CLICK',
+          valueSettings: {
+            defaultValue: 50000000,
+            alwaysUseDefaultValue: true,
+          },
+        })
+      })
+
+      it('uses default counting type when not provided', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                resourceName: 'customers/1234567890/conversionActions/3333333333',
+                tagSnippets: {
+                  globalSiteTag: '<script>gtag...</script>',
+                  eventSnippet: '<script>gtag("event"...</script>',
+                },
+              },
+            ],
+          })
+        )
+
+        await client.createGoogleAdsConversionAction(
+          MOCK_GOOGLE_ADS.userTokenId,
+          MOCK_GOOGLE_ADS.developerToken,
+          MOCK_GOOGLE_ADS.customerId,
+          {
+            name: 'Lead',
+            category: GoogleAdsConversionCategory.LEAD,
+          }
+        )
+
+        const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)
+        expect(body.operations[0].create.countingType).toBe('ONE_PER_CLICK')
+      })
+
+      it('throws on non-ok response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          text: async () => 'Invalid conversion action',
+        } as Response)
+
+        await expect(
+          client.createGoogleAdsConversionAction(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              name: 'Purchase',
+              category: GoogleAdsConversionCategory.PURCHASE,
+            }
+          )
+        ).rejects.toThrow('Failed to create conversion action: 400 - Invalid conversion action')
+      })
+
+      it('throws when resource name is missing in response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({ results: [{}] })
+        )
+
+        await expect(
+          client.createGoogleAdsConversionAction(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              name: 'Purchase',
+              category: GoogleAdsConversionCategory.PURCHASE,
+            }
+          )
+        ).rejects.toThrow('Failed to create conversion action: missing resource name in response')
+      })
+
+      it('throws when tag snippets are missing in response', async () => {
+        vi.mocked(fetch).mockResolvedValueOnce(
+          mockResponse({
+            results: [
+              {
+                resourceName: 'customers/1234567890/conversionActions/3333333333',
+                tagSnippets: {
+                  globalSiteTag: '<script>gtag...</script>',
+                  // eventSnippet missing
+                },
+              },
+            ],
+          })
+        )
+
+        await expect(
+          client.createGoogleAdsConversionAction(
+            MOCK_GOOGLE_ADS.userTokenId,
+            MOCK_GOOGLE_ADS.developerToken,
+            MOCK_GOOGLE_ADS.customerId,
+            {
+              name: 'Purchase',
+              category: GoogleAdsConversionCategory.PURCHASE,
+            }
+          )
+        ).rejects.toThrow('Failed to create conversion action: missing tag snippets in response')
+      })
+    })
+
+    describe('input validation guards', () => {
+      describe('validateCustomerId', () => {
+        it('throws on non-numeric input', () => {
+          expect(() => validateCustomerId('abc')).toThrow('Invalid Google Ads customer ID format')
+        })
+
+        it('throws on empty string', () => {
+          expect(() => validateCustomerId('')).toThrow('Invalid Google Ads customer ID format')
+        })
+
+        it('throws when fewer than 10 digits', () => {
+          expect(() => validateCustomerId('12345')).toThrow('Invalid Google Ads customer ID format')
+        })
+
+        it('throws when more than 10 digits', () => {
+          expect(() => validateCustomerId('12345678901')).toThrow('Invalid Google Ads customer ID format')
+        })
+
+        it('strips non-digit characters before validating', () => {
+          expect(validateCustomerId('123-456-7890')).toBe('1234567890')
+        })
+
+        it('returns the sanitized ID for a valid 10-digit input', () => {
+          expect(validateCustomerId('1234567890')).toBe('1234567890')
+        })
+      })
+
+      describe('validateResourceName', () => {
+        it('throws on path-traversal input', () => {
+          expect(() => validateResourceName('../../etc/passwd')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws when the id segment contains letters', () => {
+          expect(() => validateResourceName('customers/abc')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws when there is only one segment (no slash)', () => {
+          expect(() => validateResourceName('customers')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws on an odd number of segments', () => {
+          expect(() => validateResourceName('customers/1234567890/campaigns')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws when type segment contains uppercase letters', () => {
+          expect(() => validateResourceName('CUSTOMERS/1234567890')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws when the type segment is empty', () => {
+          expect(() => validateResourceName('/1234567890')).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('throws when input exceeds 256 characters', () => {
+          expect(() => validateResourceName('a'.repeat(257))).toThrow('Invalid Google Ads resource name format')
+        })
+
+        it('accepts a single-depth resource name', () => {
+          expect(validateResourceName('customers/1234567890')).toBe('customers/1234567890')
+        })
+
+        it('accepts a two-depth resource name', () => {
+          expect(validateResourceName('customers/1234567890/campaigns/9876543210')).toBe('customers/1234567890/campaigns/9876543210')
+        })
+
+        it('accepts underscore in the type segment', () => {
+          expect(validateResourceName('customers/1234567890/asset_groups/1111111111')).toBe('customers/1234567890/asset_groups/1111111111')
+        })
+      })
+
+      describe('campaign ID guard (via updateGoogleAdsCampaign)', () => {
+        it('throws when campaign ID is non-numeric', async () => {
+          await expect(
+            client.updateGoogleAdsCampaign(
+              MOCK_GOOGLE_ADS.userTokenId,
+              MOCK_GOOGLE_ADS.developerToken,
+              MOCK_GOOGLE_ADS.customerId,
+              'abc',
+              { name: 'Test' }
+            )
+          ).rejects.toThrow('Invalid campaign ID format')
+          expect(fetch).not.toHaveBeenCalled()
+        })
+
+        it('throws when campaign ID is empty', async () => {
+          await expect(
+            client.updateGoogleAdsCampaign(
+              MOCK_GOOGLE_ADS.userTokenId,
+              MOCK_GOOGLE_ADS.developerToken,
+              MOCK_GOOGLE_ADS.customerId,
+              '',
+              { name: 'Test' }
+            )
+          ).rejects.toThrow('Invalid campaign ID format')
+          expect(fetch).not.toHaveBeenCalled()
+        })
+      })
+
+      describe('date format guard (via getGoogleAdsCampaignMetrics)', () => {
+        it('throws when startDate is not YYYY-MM-DD', async () => {
+          await expect(
+            client.getGoogleAdsCampaignMetrics(
+              MOCK_GOOGLE_ADS.userTokenId,
+              MOCK_GOOGLE_ADS.developerToken,
+              MOCK_GOOGLE_ADS.customerId,
+              { startDate: '2024/01/01', endDate: '2024-12-31' }
+            )
+          ).rejects.toThrow('Invalid date format. Expected YYYY-MM-DD')
+          expect(fetch).not.toHaveBeenCalled()
+        })
+
+        it('throws when endDate is not YYYY-MM-DD', async () => {
+          await expect(
+            client.getGoogleAdsCampaignMetrics(
+              MOCK_GOOGLE_ADS.userTokenId,
+              MOCK_GOOGLE_ADS.developerToken,
+              MOCK_GOOGLE_ADS.customerId,
+              { startDate: '2024-01-01', endDate: 'not-a-date' }
+            )
+          ).rejects.toThrow('Invalid date format. Expected YYYY-MM-DD')
+          expect(fetch).not.toHaveBeenCalled()
+        })
+
+        it('throws when date is missing the dashes', async () => {
+          await expect(
+            client.getGoogleAdsCampaignMetrics(
+              MOCK_GOOGLE_ADS.userTokenId,
+              MOCK_GOOGLE_ADS.developerToken,
+              MOCK_GOOGLE_ADS.customerId,
+              { startDate: '20240101', endDate: '2024-12-31' }
+            )
+          ).rejects.toThrow('Invalid date format. Expected YYYY-MM-DD')
+          expect(fetch).not.toHaveBeenCalled()
+        })
+      })
     })
   })
 })

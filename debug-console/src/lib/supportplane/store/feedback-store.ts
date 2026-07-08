@@ -1,4 +1,4 @@
-import { DescribeTableCommand } from '@aws-sdk/client-dynamodb';
+import { DescribeTableCommand, KeySchemaElement } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
@@ -52,7 +52,7 @@ function invalidateFeedbackScanCache(): void {
 
 async function getTableKeyNames(tableName: string): Promise<string[]> {
   const res = await getClient().send(new DescribeTableCommand({ TableName: tableName }));
-  return (res.Table?.KeySchema ?? []).map((k) => k.AttributeName!);
+  return (res.Table?.KeySchema ?? []).map((k: KeySchemaElement) => k.AttributeName!);
 }
 
 async function scanSegment(tableName: string, segment: number, totalSegments: number): Promise<Record<string, unknown>[]> {

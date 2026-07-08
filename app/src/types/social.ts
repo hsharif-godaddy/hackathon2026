@@ -281,3 +281,159 @@ export function isMultiPlatformPublish(data: PendingPublishData): data is MultiP
   return 'platforms' in data && Array.isArray(data.platforms)
 }
 
+/**
+ * Google Ads API Types (Performance Max)
+ */
+
+export interface GoogleAdsCustomer {
+  id: string                     // Customer ID (numeric)
+  resourceName: string           // "customers/{customer_id}"
+  descriptiveName?: string       // Optional: only present in getGoogleAdsCustomer() response
+  currencyCode?: string          // Optional: only present in getGoogleAdsCustomer() response
+  timeZone?: string              // Optional: only present in getGoogleAdsCustomer() response
+  manager?: boolean              // Optional: only present in getGoogleAdsCustomer() response (True if MCC account)
+}
+
+export enum GoogleAdsCampaignStatus {
+  ENABLED = 'ENABLED',
+  PAUSED = 'PAUSED',
+  REMOVED = 'REMOVED',
+}
+
+export interface GoogleAdsCampaign {
+  id: string
+  resourceName: string           // "customers/{customer_id}/campaigns/{campaign_id}"
+  name: string
+  status: GoogleAdsCampaignStatus
+  advertisingChannelType: 'PERFORMANCE_MAX'
+  biddingStrategy: 'MAXIMIZE_CONVERSIONS' | 'MAXIMIZE_CONVERSION_VALUE' | 'TARGET_ROAS'
+  budget: {
+    resourceName: string         // Budget resource name
+    amountMicros: number         // Amount in micros (e.g., 1000000 = $1)
+  }
+  optimizationGoalTypes?: string[]
+  urlExpansionOptOut?: boolean
+  startDate?: string             // YYYY-MM-DD
+  endDate?: string               // YYYY-MM-DD
+}
+
+export enum GoogleAdsAssetType {
+  IMAGE = 'IMAGE',
+  TEXT = 'TEXT',
+  VIDEO = 'VIDEO',
+  MEDIA_BUNDLE = 'MEDIA_BUNDLE',
+}
+
+export interface GoogleAdsAsset {
+  id: string
+  resourceName: string           // "customers/{customer_id}/assets/{asset_id}"
+  type: GoogleAdsAssetType
+  name?: string
+  imageAsset?: {
+    fileSize: number
+    mimeType: string
+    fullSize: {
+      url: string
+      width: number
+      height: number
+    }
+  }
+  textAsset?: {
+    text: string
+  }
+  youtubeVideoAsset?: {
+    youtubeVideoId: string
+    youtubeVideoTitle?: string
+  }
+}
+
+export enum GoogleAdsAssetFieldType {
+  HEADLINE = 'HEADLINE',
+  LONG_HEADLINE = 'LONG_HEADLINE',
+  DESCRIPTION = 'DESCRIPTION',
+  BUSINESS_NAME = 'BUSINESS_NAME',
+  MARKETING_IMAGE = 'MARKETING_IMAGE',
+  SQUARE_MARKETING_IMAGE = 'SQUARE_MARKETING_IMAGE',
+  LOGO = 'LOGO',
+  LANDSCAPE_LOGO = 'LANDSCAPE_LOGO',
+  VIDEO = 'VIDEO',
+  CALL_TO_ACTION = 'CALL_TO_ACTION_SELECTION',
+}
+
+export enum GoogleAdsAssetGroupStatus {
+  ENABLED = 'ENABLED',
+  PAUSED = 'PAUSED',
+  REMOVED = 'REMOVED',
+}
+
+export interface GoogleAdsAssetGroup {
+  id: string
+  resourceName: string           // "customers/{customer_id}/assetGroups/{asset_group_id}"
+  campaign: string               // Campaign resource name
+  name: string
+  status: GoogleAdsAssetGroupStatus
+  finalUrls: string[]
+  finalMobileUrls?: string[]
+  assets?: Array<{
+    asset: string                // Asset resource name
+    fieldType: GoogleAdsAssetFieldType
+  }>
+}
+
+export interface GoogleAdsCampaignMetrics {
+  campaignId: string
+  campaignName: string
+  impressions: number
+  clicks: number
+  costMicros: number             // Cost in micros
+  conversions: number
+  conversionValue: number
+  averageCpc: number             // In micros
+  ctr: number                    // Click-through rate (0-1)
+  dateRange: {
+    startDate: string            // YYYY-MM-DD
+    endDate: string              // YYYY-MM-DD
+  }
+}
+
+export enum GoogleAdsConversionCategory {
+  DEFAULT = 'DEFAULT',
+  PAGE_VIEW = 'PAGE_VIEW',
+  PURCHASE = 'PURCHASE',
+  SIGNUP = 'SIGNUP',
+  LEAD = 'LEAD',
+  DOWNLOAD = 'DOWNLOAD',
+}
+
+export enum GoogleAdsConversionActionStatus {
+  ENABLED = 'ENABLED',
+  REMOVED = 'REMOVED',
+}
+
+export enum GoogleAdsConversionActionType {
+  WEBPAGE = 'WEBPAGE',
+  WEBSITE_CALL = 'WEBSITE_CALL',
+  APP_DEEP_LINK = 'APP_DEEP_LINK',
+}
+
+export enum GoogleAdsConversionCountingType {
+  ONE_PER_CLICK = 'ONE_PER_CLICK',
+  MANY_PER_CLICK = 'MANY_PER_CLICK',
+}
+
+export interface GoogleAdsConversionAction {
+  id: string
+  resourceName: string           // "customers/{customer_id}/conversionActions/{conversion_action_id}"
+  name: string
+  status: GoogleAdsConversionActionStatus
+  category: GoogleAdsConversionCategory
+  type: GoogleAdsConversionActionType
+  countingType: GoogleAdsConversionCountingType
+  valueMicros?: number           // Default conversion value
+  clickThroughLookbackWindowDays?: number
+  tagSnippets?: {
+    globalSiteTag?: string       // gtag.js snippet
+    eventSnippet?: string        // Conversion event snippet
+  }
+}
+
