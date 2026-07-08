@@ -27,7 +27,7 @@ import { appPlanTool } from '../../../tools/app-plan-tool.js';
 import { mediaManifestService } from '../../../services/MediaManifestService.js';
 import { getKvMemoryStore } from '../../../memory/adapters/index.js';
 import { workspaceScopeFromAppId } from '../../../memory/interfaces/scope.js';
-import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LAYOUTS } from '../../../services/logo/logo-slots.js';
+import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LAYOUTS, classifySurface } from '../../../services/logo/logo-slots.js';
 import { logoGenerationService, type LogoRunOutcome } from '../../../services/logo/LogoGenerationService.js';
 import { createForWorkspace } from '../../../workspace/index.js';
 import { readLogoJob } from '../../../services/logo/logo-job-state.js';
@@ -42,6 +42,15 @@ const PROMPT_SCHEMA_MAX = 1800; // leaves ~200 chars for the palette suffix
 
 const ToolLayoutSchema = z.enum(['square', 'horizontal', 'vertical', 'all']);
 type ToolLayout = z.infer<typeof ToolLayoutSchema>;
+
+const SurfaceColorField = z
+  .string()
+  .optional()
+  .describe(
+    'Hex color of the surface the logo will be placed on (e.g. header, footer, ' +
+      'hero background). When the placement surface differs from the page background, ' +
+      'pass that color here. Omit when placement uses bg-background.',
+  );
 
 const GenerateLogoInputSchema = z.object({
   prompt: z
@@ -71,6 +80,7 @@ const GenerateLogoInputSchema = z.object({
         'returns — required when your very next step depends on the logo being done (e.g. you ' +
         'will immediately ask the user about it or act on it in the same flow).',
     ),
+  surfaceColor: SurfaceColorField,
   followUpVariants: z
     .array(z.enum(['favicon', 'square', 'horizontal', 'vertical']))
     .optional()
@@ -107,6 +117,7 @@ const EditLogoInputSchema = z.object({
         'returns — required when your very next step depends on the logo being done (e.g. you ' +
         'will immediately ask the user about it or act on it in the same flow).',
     ),
+  surfaceColor: SurfaceColorField,
   followUpVariants: z
     .array(z.enum(['favicon', 'square', 'horizontal', 'vertical']))
     .optional()
@@ -259,31 +270,22 @@ function buildPaletteSuffix(palette: Partial<Record<CorePaletteKey, string>>): s
 }
 
 /**
- * Color roles sent to the logo API as structured params. `background` is the
- * surface the logo lands on (header/footer use `bg-background`); the rest are
- * brand colors to harmonize with. `foreground` is intentionally excluded —
- * the background hex is the only contrast signal the API needs.
- */
-const STRUCTURED_COLOR_KEYS: readonly (keyof LogoColors)[] = [
-  'primary',
-  'secondary',
-  'accent',
-  'background',
-] as const;
-
-/**
- * Build the structured `colors` payload from the resolved palette. Sends
- * whatever is populated (send-if-present) and returns undefined when none of
- * the roles resolved, so the caller can omit the field entirely.
+ * Build the structured `colors` payload from the resolved palette. `surfaceColor`
+ * overrides `palette.background` — it's the actual surface the logo will sit on
+ * (e.g. a dark header vs the page body). The logo API uses `background` as its
+ * contrast directive, so placing the real surface color there gives correct results.
  */
 function buildLogoColors(
   palette: Partial<Record<CorePaletteKey, string>>,
+  surfaceColor?: string,
 ): LogoColors | undefined {
   const out: LogoColors = {};
-  for (const k of STRUCTURED_COLOR_KEYS) {
+  for (const k of ['primary', 'secondary', 'accent'] as const) {
     const v = palette[k];
     if (v) out[k] = v;
   }
+  const bg: string | undefined = surfaceColor ?? palette.background;
+  if (bg) out.background = bg;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -582,7 +584,7 @@ export const generateLogoTool: SkillToolDefinition = {
     const suffix: string = buildPaletteSuffix(palette);
     const finalPrompt: string = assembleFinalPrompt(input.prompt, suffix, appId);
 
-    const colors: LogoColors | undefined = buildLogoColors(palette);
+    const colors: LogoColors | undefined = buildLogoColors(palette, input.surfaceColor);
 
     const layouts: LogoLayout[] = expandLayouts(input.layout);
     const references: { inspiration: string[] } | undefined = inspirationUrls.length > 0
@@ -693,7 +695,7 @@ export const editLogoTool: SkillToolDefinition = {
     const suffix: string = buildPaletteSuffix(palette);
     const finalPrompt: string = assembleFinalPrompt(input.prompt, suffix, appId);
 
-    const colors: LogoColors | undefined = buildLogoColors(palette);
+    const colors: LogoColors | undefined = buildLogoColors(palette, input.surfaceColor);
 
     const references: { logo: string; inspiration?: string[] } = {
       logo: resolved.url,
@@ -745,6 +747,7 @@ const GenerateLogoVariantInputSchema = z.object({
     .max(PROMPT_SCHEMA_MAX)
     .optional()
     .describe('Optional additional direction for the variant (e.g. "simplify the icon for small sizes").'),
+  surfaceColor: SurfaceColorField,
   background: z
     .boolean()
     .default(true)
@@ -822,7 +825,8 @@ export const generateLogoVariantTool: SkillToolDefinition = {
     }
 
     const { palette, brandName } = await readBrandContext(appId);
-    const colors: LogoColors | undefined = buildLogoColors(palette);
+    const colors: LogoColors | undefined = buildLogoColors(palette, input.surfaceColor);
+    const surfaceMode: 'light' | 'dark' | undefined = colors?.background ? classifySurface(colors.background) : undefined;
     const backgroundRegistry: BackgroundTaskRegistry | undefined = getBackgroundTaskRegistry(context);
 
     const result = await logoGenerationService.startVariant({
@@ -831,6 +835,7 @@ export const generateLogoVariantTool: SkillToolDefinition = {
       variant: input.variant as LogoVariant,
       ...(input.prompt ? { prompt: input.prompt } : {}),
       ...(colors !== undefined ? { colors } : {}),
+      ...(surfaceMode !== undefined ? { surfaceMode } : {}),
       ...(brandName !== undefined ? { brandName } : {}),
       customerId,
       budgetUserId,

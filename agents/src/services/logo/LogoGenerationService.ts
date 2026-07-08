@@ -9,7 +9,7 @@ import { mediaManifestService, type MediaSlot } from '../MediaManifestService.js
 import { logoService, type LogoLayout, type LogoVariant, type LogoSessionResponse, type ProcessedLogo } from '../LogoService.js'
 import { readLogoJob, writeLogoJob, type LogoJob } from './logo-job-state.js'
 import { ensureShimmerAsset, ensureShimmerAssets, LOGO_SHIMMER_SLOT_URLS } from './logo-shimmer.js'
-import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LOGO_SLOT_PATHS, saveLogoToSlots, saveSingleLogoSlot, snapshotSlots, placeShimmerSlots, revertSlots } from './logo-slots.js'
+import { LOGO_SLOT_PATHS, FAVICON_SLOT_PATH, ALL_LOGO_SLOT_PATHS, saveLogoToSlots, saveSingleLogoSlot, snapshotSlots, placeShimmerSlots, revertSlots, type SurfaceMode } from './logo-slots.js'
 
 export interface StartLogoParams {
   appId: string
@@ -81,6 +81,9 @@ export interface StartVariantParams {
   suppressGrowl?: boolean
   traceparent?: string
   conversationId?: string
+  /** Surface mode classification ('light'|'dark') derived from colors.background
+   *  luminance. Used in the variant dedup key to prevent light/dark collision. */
+  surfaceMode?: SurfaceMode
 }
 
 const MAX_ATTEMPTS = 3
@@ -290,8 +293,8 @@ class LogoGenerationService {
     return { status: 'queued', jobId, slots, done, chainDone: chainDeferred?.promise }
   }
 
-  private variantDedupKey(appId: string, variant: LogoVariant, sourceUrl: string, prompt?: string): string {
-    return `${appId}::${variant}::${sourceUrl}::${prompt?.trim() || ''}`
+  private variantDedupKey(appId: string, variant: LogoVariant, sourceUrl: string, prompt?: string, surfaceMode?: string): string {
+    return `${appId}::${variant}::${sourceUrl}::${prompt?.trim() || ''}::${surfaceMode || ''}`
   }
 
   async startVariant(params: StartVariantParams): Promise<StartLogoResult> {
@@ -303,7 +306,7 @@ class LogoGenerationService {
     }
 
     // --- Dedup check: return existing active promise if compatible ---
-    const dedupKey: string = this.variantDedupKey(appId, variant, sourceUrl, params.prompt)
+    const dedupKey: string = this.variantDedupKey(appId, variant, sourceUrl, params.prompt, params.surfaceMode)
     const exact: ActiveVariantEntry | undefined = this.activeVariants.get(dedupKey)
     if (exact) {
       logger.info('logo.variant.dedup_hit', { appId, variant, existingJobId: exact.jobId })
@@ -477,6 +480,7 @@ class LogoGenerationService {
       response.sessionId, response.logo.id, jobId,
       ctx.prompt?.slice(0, 80) ?? ctx.variant,
       groupId,
+      ctx.colors,
     )
 
     logger.info('logo.variant.worker.slot_saved', { appId, jobId, slotPath, saved })
@@ -671,7 +675,7 @@ class LogoGenerationService {
     }
 
     const { savedSlots, slotSaveFailed, failedLayouts, skippedLayouts } = await saveLogoToSlots(
-      appId, response, ctx.searchQuery, jobId,
+      appId, response, ctx.searchQuery, jobId, ctx.colors,
     )
     logger.info('logo.worker.slots_saved', {
       appId, jobId, slots, savedSlots: Object.keys(savedSlots), droppedLayouts: failedLayouts, skippedLayouts,

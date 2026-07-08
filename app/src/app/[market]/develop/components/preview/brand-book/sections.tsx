@@ -87,6 +87,7 @@ export function LogoSection({
   isLoading = false,
   isPending = false,
   priorLightLogoUrl,
+  generatedForSurfaceColor,
 }: {
   appId: string;
   brand: BrandStyle;
@@ -99,6 +100,8 @@ export function LogoSection({
   /** Prior hosted logo (light/solid) when this is a REGENERATION — shown dimmed under an
    *  animated "updating" overlay. Absent for a fresh generation (bare shimmer). */
   priorLightLogoUrl?: string;
+  /** Surface hex the logo was generated against — used as display background. */
+  generatedForSurfaceColor?: string;
 }) {
   const downloadImage = useDownloadImage();
   const brandClickProps = { flow: 'logo-designer' as const };
@@ -176,7 +179,7 @@ export function LogoSection({
       {logoUrl ? (
         <Box gap="lg">
           <div className={styles.logoPanelCard}>
-            <div className={styles.logoPanelImage} style={{ backgroundColor: palette.background ?? '#FFFFFF' }}>
+            <div className={styles.logoPanelImage} style={{ backgroundColor: generatedForSurfaceColor ?? palette.background ?? '#FFFFFF' }}>
               <Image
                 src={logoUrl}
                 alt="Logo on light background"

@@ -139,7 +139,7 @@ describe('LogoGenerationService.start (happy path)', () => {
     expect(mockSaveSlots).toHaveBeenCalledTimes(1)
     // run() threads THIS job's id as the ownerJobId (4th arg) so the save-time
     // userModified guard knows which pending marker it legitimately owns.
-    expect(mockSaveSlots).toHaveBeenCalledWith('app-1', okResponse, 'q', res.jobId)
+    expect(mockSaveSlots).toHaveBeenCalledWith('app-1', okResponse, 'q', res.jobId, undefined)
     expect(lastJob?.status).toBe('completed')
     expect(mockSendToApp).toHaveBeenCalledWith('app-1', 'logo',
       expect.objectContaining({ status: 'completed', jobId: res.jobId }))
@@ -607,6 +607,22 @@ describe('LogoGenerationService.startVariant dedup', () => {
     expect(firstOutcome!.status).toBe('cancelled')
 
     await second.done
+    await flushAsync()
+  })
+
+  it('treats same params with different surfaceMode as distinct jobs (no dedup)', async () => {
+    mockGenerate.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve(variantResponse), 100)
+    }))
+    mockManifestGetSlot.mockResolvedValue({ success: false })
+
+    const light = await logoGenerationService.startVariant({ ...variantParams, surfaceMode: 'light' })
+    const dark = await logoGenerationService.startVariant({ ...variantParams, surfaceMode: 'dark' })
+
+    expect(dark.jobId).not.toBe(light.jobId)
+
+    await light.done
+    await dark.done
     await flushAsync()
   })
 

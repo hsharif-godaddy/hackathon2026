@@ -115,6 +115,17 @@ media-logo__generate_logo_variant({ variant: 'favicon' });
 
 The source logo is resolved automatically from whichever slot is populated (square, horizontal, or vertical).
 
+## Surface color awareness
+
+The logo is transparent — its foreground colors must contrast with the surface it sits on. When placing a logo, check the actual background color of the element it will sit on. Pass `surfaceColor` when that background differs from the page body (`bg-background`). Omit it when the placement surface matches the page body.
+
+Examples (element backgrounds vary by site — always check the actual value):
+- Element has `bg-background` (same as page body) → omit surfaceColor
+- Element has a dark background like `#1a2332` → pass that hex as surfaceColor
+- Element has a colored accent background → pass that hex
+
+A logo generated for one light surface works on any light surface (same for dark). Only regenerate via `generate_logo_variant` with `surfaceColor` when the logo needs to appear on the opposite lightness.
+
 ## Placement decision
 
 After generation, decide based on context:
@@ -198,6 +209,19 @@ Correct — generate_logo_variant to derive a square layout from the existing lo
 media-logo__generate_logo_variant({
   variant: 'square',
   prompt: 'Optimize for social media profile picture — center the icon mark, generous padding.',
+});
+```
+</example>
+
+<example>
+User: "The logo doesn't look right in the header — the header background is dark navy (#1a2332)."
+
+Correct — generate_logo_variant with surfaceColor so the logo gets contrast-appropriate foreground colors for that dark surface:
+
+```typescript
+media-logo__generate_logo_variant({
+  variant: 'horizontal',
+  surfaceColor: '#1a2332',
 });
 ```
 </example>

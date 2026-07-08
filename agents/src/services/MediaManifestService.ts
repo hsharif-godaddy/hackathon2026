@@ -212,6 +212,14 @@ export interface MediaSlot {
   /** Previous hosted URL before shimmer was placed (regeneration only).
    *  Used by the client to show a dimmed overlay during regeneration. */
   priorUrl?: string;
+  /** Light/dark classification of the surface currentUrl was generated for. */
+  surfaceMode?: 'light' | 'dark';
+  /** Hex color currentUrl was generated against (display background in brand book/chat). */
+  generatedForSurfaceColor?: string;
+  /** Transparent URL optimized for light surfaces (dark foreground). */
+  lightSurfaceUrl?: string;
+  /** Transparent URL optimized for dark surfaces (light foreground). */
+  darkSurfaceUrl?: string;
 }
 
 export type LogoOrientation = 'square' | 'horizontal' | 'vertical';

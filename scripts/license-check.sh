@@ -30,6 +30,7 @@ ALLOWED_LICENSES=(
   "(AFL-2.1 OR BSD-3-Clause)"
   "(BSD-2-Clause OR MIT OR Apache-2.0)"
   "(BSD-3-Clause OR GPL-2.0)"
+  "(BSD-3-Clause AND Apache-2.0)"
   "(MIT OR Apache-2.0)"
   "(MIT OR CC0-1.0)"
   "(MIT OR WTFPL)"

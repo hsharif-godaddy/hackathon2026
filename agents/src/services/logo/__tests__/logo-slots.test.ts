@@ -12,7 +12,7 @@ vi.mock('../../../logging/index.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-import { saveLogoToSlots, saveSingleLogoSlot, snapshotSlots, placeShimmerSlots, revertSlots } from '../logo-slots.js'
+import { saveLogoToSlots, saveSingleLogoSlot, snapshotSlots, placeShimmerSlots, revertSlots, classifySurface } from '../logo-slots.js'
 import { LOGO_SHIMMER_SLOT_URLS } from '../logo-shimmer.js'
 import type { LogoJob } from '../logo-job-state.js'
 import type { LogoSessionResponse } from '../../LogoService.js'
@@ -387,5 +387,181 @@ describe('saveLogoToSlots cascade clears sibling logoGroupId', () => {
 
     // Only the horizontal write; no cascade needed
     expect(mockSetSlot).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('classifySurface', () => {
+  it('classifies white as light', () => {
+    expect(classifySurface('#ffffff')).toBe('light')
+  })
+
+  it('classifies black as dark', () => {
+    expect(classifySurface('#000000')).toBe('dark')
+  })
+
+  it('classifies dark brown as dark', () => {
+    expect(classifySurface('#2c1810')).toBe('dark')
+  })
+
+  it('classifies cream as light', () => {
+    expect(classifySurface('#f5f0e8')).toBe('light')
+  })
+
+  it('defaults to light on unparseable input and logs a warning', async () => {
+    const { logger } = await import('../../../logging/index.js')
+    const result: string = classifySurface('not-a-color')
+    expect(result).toBe('light')
+    expect(logger.warn).toHaveBeenCalledWith(
+      'logo.classifySurface.parse_failed',
+      expect.objectContaining({ hex: 'not-a-color' }),
+    )
+  })
+})
+
+describe('saveLogoToSlots — surface variant preservation', () => {
+  it('preserves existing lightSurfaceUrl when generating for dark surface', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        currentUrl: 'https://cdn/old.png',
+        mediaType: 'logo',
+        lightSurfaceUrl: 'https://cdn/light-variant.png',
+      },
+    })
+
+    const resp: LogoSessionResponse = {
+      sessionId: 'sess-1',
+      logo: {
+        id: 'logo-1',
+        urls: { horizontal: { transparent: 'https://cdn/new-dark.png' }, square: undefined, vertical: undefined },
+      },
+    } as unknown as LogoSessionResponse
+
+    await saveLogoToSlots('app-1', resp, 'query', 'job-1', { background: '#1a1a1a' })
+
+    const setSlotCall = mockSetSlot.mock.calls[0]
+    const slotData = setSlotCall[2]
+    expect(slotData.lightSurfaceUrl).toBe('https://cdn/light-variant.png')
+    expect(slotData.darkSurfaceUrl).toBe('https://cdn/new-dark.png')
+    expect(slotData.surfaceMode).toBe('dark')
+    expect(slotData.generatedForSurfaceColor).toBe('#1a1a1a')
+  })
+
+  it('preserves surfaceMode and generatedForSurfaceColor when colors is undefined', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        currentUrl: 'https://cdn/old.png',
+        mediaType: 'logo',
+        surfaceMode: 'dark',
+        generatedForSurfaceColor: '#1a1a1a',
+        darkSurfaceUrl: 'https://cdn/dark-variant.png',
+      },
+    })
+
+    const resp: LogoSessionResponse = {
+      sessionId: 'sess-1',
+      logo: {
+        id: 'logo-1',
+        urls: { horizontal: { transparent: 'https://cdn/regen.png' }, square: undefined, vertical: undefined },
+      },
+    } as unknown as LogoSessionResponse
+
+    await saveLogoToSlots('app-1', resp, 'query', 'job-1')
+
+    const setSlotCall = mockSetSlot.mock.calls[0]
+    const slotData = setSlotCall[2]
+    expect(slotData.surfaceMode).toBe('dark')
+    expect(slotData.generatedForSurfaceColor).toBe('#1a1a1a')
+    expect(slotData.darkSurfaceUrl).toBe('https://cdn/dark-variant.png')
+  })
+
+  it('preserves existing darkSurfaceUrl when generating for light surface', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        currentUrl: 'https://cdn/old.png',
+        mediaType: 'logo',
+        darkSurfaceUrl: 'https://cdn/dark-variant.png',
+      },
+    })
+
+    const resp: LogoSessionResponse = {
+      sessionId: 'sess-1',
+      logo: {
+        id: 'logo-1',
+        urls: { horizontal: { transparent: 'https://cdn/new-light.png' }, square: undefined, vertical: undefined },
+      },
+    } as unknown as LogoSessionResponse
+
+    await saveLogoToSlots('app-1', resp, 'query', 'job-1', { background: '#ffffff' })
+
+    const setSlotCall = mockSetSlot.mock.calls[0]
+    const slotData = setSlotCall[2]
+    expect(slotData.darkSurfaceUrl).toBe('https://cdn/dark-variant.png')
+    expect(slotData.lightSurfaceUrl).toBe('https://cdn/new-light.png')
+    expect(slotData.surfaceMode).toBe('light')
+  })
+})
+
+describe('saveSingleLogoSlot — surface fields', () => {
+  it('writes surfaceMode and generatedForSurfaceColor from colors', async () => {
+    mockGetSlot.mockResolvedValue({ success: false })
+
+    await saveSingleLogoSlot(
+      'app-1', 'logo/favicon', 'https://cdn/fav.png', 's1', 'l1', 'job-1', 'q', undefined,
+      { background: '#1a1a1a' },
+    )
+
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.surfaceMode).toBe('dark')
+    expect(slot.generatedForSurfaceColor).toBe('#1a1a1a')
+    expect(slot.darkSurfaceUrl).toBe('https://cdn/fav.png')
+  })
+
+  it('preserves existing lightSurfaceUrl when generating for dark surface', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        currentUrl: 'https://cdn/old-fav.png',
+        mediaType: 'logo',
+        lightSurfaceUrl: 'https://cdn/light-fav.png',
+        surfaceMode: 'light',
+        generatedForSurfaceColor: '#ffffff',
+      },
+    })
+
+    await saveSingleLogoSlot(
+      'app-1', 'logo/favicon', 'https://cdn/dark-fav.png', 's2', 'l2', 'job-2', 'q', undefined,
+      { background: '#000000' },
+    )
+
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.lightSurfaceUrl).toBe('https://cdn/light-fav.png')
+    expect(slot.darkSurfaceUrl).toBe('https://cdn/dark-fav.png')
+    expect(slot.surfaceMode).toBe('dark')
+    expect(slot.generatedForSurfaceColor).toBe('#000000')
+  })
+
+  it('preserves surface metadata when colors is undefined', async () => {
+    mockGetSlot.mockResolvedValue({
+      success: true,
+      slot: {
+        currentUrl: 'https://cdn/old-fav.png',
+        mediaType: 'logo',
+        surfaceMode: 'dark',
+        generatedForSurfaceColor: '#222222',
+        darkSurfaceUrl: 'https://cdn/dark-fav.png',
+      },
+    })
+
+    await saveSingleLogoSlot(
+      'app-1', 'logo/favicon', 'https://cdn/regen-fav.png', 's3', 'l3', 'job-3', 'q',
+    )
+
+    const [, , slot] = mockSetSlot.mock.calls[0]
+    expect(slot.surfaceMode).toBe('dark')
+    expect(slot.generatedForSurfaceColor).toBe('#222222')
+    expect(slot.darkSurfaceUrl).toBe('https://cdn/dark-fav.png')
   })
 })

@@ -244,6 +244,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
         isLoading={isGenerating}
         isPending={isLogoPending}
         priorLightLogoUrl={priorLightLogoUrl}
+        generatedForSurfaceColor={activeLogoSlot ? manifest?.[activeLogoSlot]?.generatedForSurfaceColor : undefined}
       />
       <BrandApplicationsSection
         brand={brand}

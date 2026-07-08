@@ -37,7 +37,7 @@ export default function LogoGeneratorToolRenderer({
 }: DefaultToolRendererProps) {
   const currentAppId = useStreamingConversationStore((s) => s.currentAppId)
   const { data: brandData } = useBrandData(currentAppId)
-  const logoBgColor: string = brandData?.palette?.background ?? '#ffffff'
+  const paletteBgColor: string = brandData?.palette?.background ?? '#ffffff'
 
   // New async shape: { started: true, jobId, slots }. Pure derivation (no hooks) —
   // computed BEFORE the store selector so the selector can key off THIS card's jobId.
@@ -52,13 +52,15 @@ export default function LogoGeneratorToolRenderer({
   )
 
   // Fallback: after reload the in-memory store is gone but the slot has the real URL.
+  // Always enabled when async so we can read generatedForSurfaceColor for display background.
   const asyncSlotPath: string | null = structured?.slots?.[0] ?? null
   const needsSlotFallback: boolean = !!startedJobId && !logoJobResult
   const { slot: fallbackSlot, refetch: refetchSlot } = useMediaSlot({
     appId: currentAppId,
     slotName: asyncSlotPath,
-    enabled: needsSlotFallback,
+    enabled: !!startedJobId,
   })
+  const logoBgColor: string = fallbackSlot?.generatedForSurfaceColor ?? paletteBgColor
 
   // When a new job starts, the react-query cache may still hold stale slot data
   // (from before placeShimmerSlots set pendingJobId). Force a refetch so the

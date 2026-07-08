@@ -100,6 +100,10 @@ type ImageSlot struct {
 	// SolidURLMap maps transparent URL → solid-background URL for logo variants.
 	// Only populated when MediaType == "logo".
 	SolidURLMap map[string]string `json:"solidUrlMap,omitempty"`
+	// LightSurfaceURL is the transparent logo optimized for light surfaces.
+	LightSurfaceURL string `json:"lightSurfaceUrl,omitempty"`
+	// DarkSurfaceURL is the transparent logo optimized for dark surfaces.
+	DarkSurfaceURL string `json:"darkSurfaceUrl,omitempty"`
 }
 
 // ImageManifest maps slot paths to their slot data.
@@ -247,6 +251,16 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for /light or /dark surface variant suffix (logo slots only).
+	var surfaceVariant string
+	if strings.HasSuffix(slotPath, "/light") {
+		surfaceVariant = "light"
+		slotPath = strings.TrimSuffix(slotPath, "/light")
+	} else if strings.HasSuffix(slotPath, "/dark") {
+		surfaceVariant = "dark"
+		slotPath = strings.TrimSuffix(slotPath, "/dark")
+	}
+
 	// Look up in manifest
 	slot, err := h.cache.Get(slotPath)
 	if errors.Is(err, ErrSlotNotFound) {
@@ -267,7 +281,16 @@ func (h *mediaSlotHandler) serveSlot(w http.ResponseWriter, r *http.Request) {
 	// placed on a page. The ?variant=solid query param is intentionally NOT
 	// honored here — solidUrlMap is retained on the slot only so display
 	// surfaces (brand book, logo widget) can render the solid CDN URL directly.
+	//
+	// Surface variant suffix (/light, /dark) selects the appropriate contrast
+	// variant for the placement surface. Falls back to currentUrl if the variant
+	// URL is not populated.
 	targetURL := slot.CurrentURL
+	if surfaceVariant == "light" && slot.LightSurfaceURL != "" {
+		targetURL = slot.LightSurfaceURL
+	} else if surfaceVariant == "dark" && slot.DarkSurfaceURL != "" {
+		targetURL = slot.DarkSurfaceURL
+	}
 	if srcParam := r.URL.Query().Get("src"); srcParam != "" {
 		// Validate that the requested URL is associated with this slot
 		if !h.isValidSlotURL(slot, srcParam) {

@@ -339,7 +339,7 @@ For chat-uploaded images, follow **Upload handling** in message context when pre
 
 ### Initial Build from Handoff
 
-Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that can run in parallel, but **complete each phase before starting the next**.
+Follow the BUILD ORDER phases in the handoff prompt. Each phase lists tasks that can run in parallel, but **complete each phase before starting the next**. Logo generation belongs in the phase AFTER the header/footer are written — the logo skill needs the actual surface color of the element it sits on (see "Surface color awareness" in the media-logo skill).
 
 **Skill loading during this workflow:** Backend-integration skills remain off-limits during the initial design-preview phase — see the "Initial design preview is visual-only" rule under "Skills System - Check First" above. Only visual/asset skills (`media-logo`, `media-image`, `media-video`, `media-upload`) are loadable here, and only when the handoff explicitly calls for them. All other skill loading waits until the user approves the design and picks a feature todo.
 

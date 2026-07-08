@@ -1,6 +1,8 @@
+import chroma from 'chroma-js'
+
 import { logger } from '../../logging/index.js'
 import { mediaManifestService, type MediaSlot } from '../MediaManifestService.js'
-import type { LogoLayout, LayoutUrls, LogoSessionResponse } from '../LogoService.js'
+import type { LogoLayout, LayoutUrls, LogoSessionResponse, LogoColors } from '../LogoService.js'
 import { isShimmerUrl, LOGO_SHIMMER_SLOT_URLS } from './logo-shimmer.js'
 import type { LogoJob } from './logo-job-state.js'
 
@@ -15,6 +17,40 @@ export const FAVICON_SLOT_PATH = 'logo/favicon'
 export const ALL_LAYOUTS: LogoLayout[] = ['square', 'horizontal', 'vertical']
 
 export const ALL_LOGO_SLOT_PATHS: string[] = [...Object.values(LOGO_SLOT_PATHS), FAVICON_SLOT_PATH]
+
+export type SurfaceMode = 'light' | 'dark'
+
+/**
+ * Classify a hex color as light or dark based on perceptual luminance.
+ * Uses chroma-js (same library as gai-logo-agent) for robust parsing.
+ */
+export function classifySurface(hex: string): SurfaceMode {
+  try {
+    return chroma(hex).luminance() >= 0.5 ? 'light' : 'dark'
+  } catch (err) {
+    logger.warn('logo.classifySurface.parse_failed', {
+      hex,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return 'light'
+  }
+}
+
+interface SurfaceSlotFields {
+  surfaceMode?: SurfaceMode
+  generatedForSurfaceColor?: string
+  lightSurfaceUrl?: string
+  darkSurfaceUrl?: string
+}
+
+function buildSurfaceFields(colors: LogoColors | undefined, url: string): SurfaceSlotFields {
+  const surfaceBg: string | undefined = colors?.background
+  if (!surfaceBg) return {}
+  const mode: SurfaceMode = classifySurface(surfaceBg)
+  const variantKey: 'lightSurfaceUrl' | 'darkSurfaceUrl' =
+    mode === 'light' ? 'lightSurfaceUrl' : 'darkSurfaceUrl'
+  return { surfaceMode: mode, generatedForSurfaceColor: surfaceBg, [variantKey]: url }
+}
 
 export interface SaveSlotsResult {
   savedSlots: Partial<Record<LogoLayout, string>>
@@ -33,6 +69,7 @@ export async function saveLogoToSlots(
   response: LogoSessionResponse,
   searchQuery: string,
   ownerJobId: string,
+  colors?: LogoColors,
 ): Promise<SaveSlotsResult> {
   const savedSlots: Partial<Record<LogoLayout, string>> = {}
   const failedLayouts: LogoLayout[] = []
@@ -78,6 +115,8 @@ export async function saveLogoToSlots(
         })
         continue
       }
+      let existingSurface: SurfaceSlotFields = {}
+
       if (existing.success && existing.slot) {
         const old = existing.slot
         const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
@@ -92,7 +131,15 @@ export async function saveLogoToSlots(
         }
         mergedLogoSourceMap = { ...(old.logoSourceMap ?? {}), ...logoSourceMap }
         createdAt = old.createdAt || now
+        existingSurface = {
+          ...(old.surfaceMode ? { surfaceMode: old.surfaceMode as SurfaceMode } : {}),
+          ...(old.generatedForSurfaceColor ? { generatedForSurfaceColor: old.generatedForSurfaceColor } : {}),
+          ...(old.lightSurfaceUrl ? { lightSurfaceUrl: old.lightSurfaceUrl } : {}),
+          ...(old.darkSurfaceUrl ? { darkSurfaceUrl: old.darkSurfaceUrl } : {}),
+        }
       }
+
+      const surface: SurfaceSlotFields = buildSurfaceFields(colors, transparent)
 
       await mediaManifestService.setSlot(appId, slotPath, {
         mediaType: 'logo',
@@ -106,11 +153,13 @@ export async function saveLogoToSlots(
         userModified: false,
         createdAt,
         lastUpdated: now,
+        ...existingSurface,
+        ...surface,
       })
 
       savedSlots[layout] = `/airo-assets/images/${slotPath}`
       logger.info('skill.media-logo.slot_saved', {
-        appId, slotPath, layout, sessionId: response.sessionId,
+        appId, slotPath, layout, sessionId: response.sessionId, surfaceMode: surface.surfaceMode,
       })
     } catch (err) {
       failedLayouts.push(layout)
@@ -165,6 +214,7 @@ export async function saveSingleLogoSlot(
   ownerJobId: string,
   searchQuery: string,
   groupId?: string,
+  colors?: LogoColors,
 ): Promise<boolean> {
   const now = new Date().toISOString()
 
@@ -186,6 +236,8 @@ export async function saveSingleLogoSlot(
       })
       return false
     }
+    let existingSurface: SurfaceSlotFields = {}
+
     if (existing.success && existing.slot) {
       const old = existing.slot
       const oldUrls = [old.currentUrl, ...(old.alternatives ?? [])].filter(
@@ -194,9 +246,17 @@ export async function saveSingleLogoSlot(
       mergedAlternatives = oldUrls
       mergedLogoSourceMap = { ...(old.logoSourceMap ?? {}) }
       createdAt = old.createdAt || now
+      existingSurface = {
+        ...(old.surfaceMode ? { surfaceMode: old.surfaceMode as SurfaceMode } : {}),
+        ...(old.generatedForSurfaceColor ? { generatedForSurfaceColor: old.generatedForSurfaceColor } : {}),
+        ...(old.lightSurfaceUrl ? { lightSurfaceUrl: old.lightSurfaceUrl } : {}),
+        ...(old.darkSurfaceUrl ? { darkSurfaceUrl: old.darkSurfaceUrl } : {}),
+      }
     }
 
     mergedLogoSourceMap[transparentUrl] = { sessionId, logoId, ...(groupId ? { groupId } : {}) }
+
+    const surface: SurfaceSlotFields = buildSurfaceFields(colors, transparentUrl)
 
     await mediaManifestService.setSlot(appId, slotPath, {
       mediaType: 'logo',
@@ -208,8 +268,10 @@ export async function saveSingleLogoSlot(
       userModified: false,
       createdAt,
       lastUpdated: now,
+      ...existingSurface,
+      ...surface,
     })
-    logger.info('skill.media-logo.variant_slot_saved', { appId, slotPath, sessionId })
+    logger.info('skill.media-logo.variant_slot_saved', { appId, slotPath, sessionId, surfaceMode: surface.surfaceMode })
     return true
   } catch (err) {
     logger.error('skill.media-logo.variant_slot_save_failed', {

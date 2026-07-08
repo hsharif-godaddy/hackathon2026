@@ -79,6 +79,7 @@ Phase 1 — Setup (run these in parallel):
 Phase 2 — Structure (run these in parallel, after Phase 1):
 - Build header with navigation
 - Build footer with links and branding
+- Generate logo (AFTER header is written — the logo needs the header's background color for contrast. Use `surfaceColor` if the header background differs from `bg-background`. The header can reference the slot URL `/airo-assets/images/logo/horizontal` which resolves once the logo is ready.)
 
 Phase 3 — Page (after Phase 1 & 2 are complete):
 - Build homepage (index.tsx) with all sections and animations

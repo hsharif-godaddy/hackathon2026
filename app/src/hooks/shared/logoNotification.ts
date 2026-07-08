@@ -87,6 +87,13 @@ export function handleLogoNotification(params: HandleLogoNotificationParams): vo
       const qc = getQueryClient()
       if (qc) {
         void qc.invalidateQueries({ queryKey: ['mediaManifest', targetAppId] })
+        // Invalidate per-slot queries so the logo renderer picks up generatedForSurfaceColor
+        // (used for the preview card background color).
+        if (Array.isArray(slots)) {
+          for (const slotPath of slots) {
+            void qc.invalidateQueries({ queryKey: ['mediaSlot', targetAppId, slotPath] })
+          }
+        }
       }
     }
 

@@ -165,6 +165,7 @@ Phase 1 — Setup (parallel):
 Phase 2 — Structure (parallel):
 - Build header with navigation
 - Build footer with hours and location
+- Generate logo (AFTER header — use `surfaceColor` if header background differs from `bg-background`)
 
 Phase 3 — Page:
 - Build homepage (index.tsx) with all sections
