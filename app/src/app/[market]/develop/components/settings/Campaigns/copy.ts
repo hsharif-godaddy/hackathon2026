@@ -68,6 +68,12 @@ export const CAMPAIGN_KEYS = {
   progress: 'builder_campaign_progress',
   summary: 'builder_campaign_summary',
   leadsGenerated: 'builder_campaign_leads_generated',
+  leadsInsight: 'builder_campaign_leads_insight',
+  leadsCount: 'builder_campaign_leads_count',
+  totalLeads: 'builder_campaign_total_leads',
+  statsLoading: 'builder_campaign_stats_loading',
+  statsError: 'builder_campaign_stats_error',
+  leadsEmpty: 'builder_campaign_leads_empty',
 } as const
 
 function campaignT(t: Translate, key: string, values?: Record<string, unknown>): string {
@@ -107,4 +113,37 @@ export function translateCampaignKey(
   values?: Record<string, unknown>,
 ): string {
   return campaignT(t, key, values)
+}
+
+const LEAD_SOURCE_LABELS: Record<string, string> = {
+  FACEBOOK: 'Facebook',
+  INSTAGRAM: 'Instagram',
+  BLOG_AAB: 'Blog',
+}
+
+const LEAD_MEDIUM_LABELS: Record<string, string> = {
+  ORGANIC_SOCIAL: 'Organic Social',
+  BLOG: 'Blog',
+}
+
+/** Title-case an UPPER_SNAKE_CASE enum value as a readable fallback label. */
+function humanizeEnum(value: string): string {
+  return value
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((word: string): string => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
+/** Friendly label for a leads breakdown `source` enum (e.g. FACEBOOK → Facebook). */
+export function formatLeadSource(source: string): string {
+  if (!source) return ''
+  return LEAD_SOURCE_LABELS[source] ?? humanizeEnum(source)
+}
+
+/** Friendly label for a leads breakdown `medium` enum (e.g. ORGANIC_SOCIAL → Organic Social). */
+export function formatLeadMedium(medium: string): string {
+  if (!medium) return ''
+  return LEAD_MEDIUM_LABELS[medium] ?? humanizeEnum(medium)
 }

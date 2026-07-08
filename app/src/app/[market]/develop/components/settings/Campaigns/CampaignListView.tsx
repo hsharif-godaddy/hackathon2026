@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import MegaphoneIcon from '@ux/icon/megaphone'
@@ -11,6 +11,7 @@ import CampaignCard from '@/app/[market]/develop/components/settings/Campaigns/C
 import { CAMPAIGN_KEYS, translateCampaignKey } from '@/app/[market]/develop/components/settings/Campaigns/copy'
 import { focusChatWithCreateCampaignPrompt } from '@/app/[market]/develop/components/settings/Campaigns/createCampaignInChat'
 import type { Campaign } from '@/app/[market]/develop/components/settings/Campaigns/types'
+import { useCampaignStatsList } from '@/app/[market]/develop/components/settings/Campaigns/useCampaignStats'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import EmptyStateCard from '@/components/layout/EmptyStateCard'
@@ -27,6 +28,14 @@ export default function CampaignListView({ campaigns, loading, onSelectCampaign 
   const t = useTranslations()
   const router = useRouter()
   const appId = useAppIdFromParams()
+
+  const campaignRefIds: string[] = useMemo(
+    () => campaigns
+      .map((campaign: Campaign): string | undefined => campaign.campaignRefId)
+      .filter((ref: string | undefined): ref is string => !!ref),
+    [campaigns],
+  )
+  const { statsByRef, loading: statsLoading, error: statsError } = useCampaignStatsList(appId, campaignRefIds)
 
   const handleCreate = useCallback((): void => {
     logClickEvent('settings.campaigns.create')()
@@ -91,6 +100,9 @@ export default function CampaignListView({ campaigns, loading, onSelectCampaign 
               key={campaign.id}
               campaign={campaign}
               showLabels
+              stats={campaign.campaignRefId ? statsByRef[campaign.campaignRefId] ?? null : null}
+              statsLoading={statsLoading}
+              statsError={statsError}
               onDetails={() => onSelectCampaign(campaign)}
             />
           ))}

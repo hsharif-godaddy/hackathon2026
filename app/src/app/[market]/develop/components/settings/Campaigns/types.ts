@@ -27,4 +27,23 @@ export interface Campaign {
   createdAt?: string
   updatedAt?: string
   assets?: CampaignAsset[]
+  /**
+   * Opaque `cmp_<hash>` UTM token used as the join key by the Customer Stats API.
+   * Absent until the agents response has projected it; the list only fetches and keys
+   * stats for campaigns that have a `campaignRefId`.
+   */
+  campaignRefId?: string
+}
+
+/** A single leads breakdown row from the Customer Stats API, keyed by source/medium. */
+export interface CampaignLeadsRow {
+  source: string
+  medium: string
+  leads: number
+}
+
+/** Normalized campaign performance metrics rendered in the detail view. */
+export interface CampaignStats {
+  totalLeads: number
+  breakdown: CampaignLeadsRow[]
 }
