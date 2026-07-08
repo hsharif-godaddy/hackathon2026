@@ -1,0 +1,319 @@
+---
+evaluatorId: "airo-commerce-intent"
+name: "Commerce Intent Classifier"
+description: "Session-level evaluator that determines if a session is commerce-related, then classifies it into the Commerce intent taxonomy (Intent + Sub-intent). Runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+
+scoreType: NUMERIC
+scoreName: "commerce_resolution_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 4000
+
+staticContext: |
+  You are a senior ML evaluation analyst classifying production sessions of an AI
+  coding agent (Airo Builder) into the Commerce intent taxonomy.
+
+  Your job:
+  1. Determine if this session is about Commerce (binary: yes/no).
+  2. If yes, classify the intent and sub-intent.
+
+  # Domain: Commerce
+
+  A session is commerce-related if the merchant is trying to set up a store, manage
+  products, build shop pages, connect checkout to a catalog, manage orders, configure
+  shipping/tax, or migrate an existing store.
+
+  ## Intents and Sub-intents
+
+  ### 1. set_up_my_store
+  Merchant wants to connect or create a GoDaddy Commerce store.
+
+  Sub-intents:
+  - connect_my_existing_godaddy_store
+    Keywords: existing store, my store, connect store, use my store, already have a store
+    Example: "Use my existing GoDaddy store"
+
+  - create_a_new_online_store
+    Keywords: new store, set up store, commerce store, create store, online store setup
+    Example: "Set up a new online store"
+
+  ### 2. manage_products
+  Merchant wants to add, update, or organize catalog products.
+
+  Sub-intents:
+  - add_products_to_my_store
+    Keywords: add product, products, catalog, new product, import products, bulk upload, SKU
+    Example: "Add products to my store"
+
+  - update_a_product
+    Keywords: price, change price, update product, edit product, pricing
+    Example: "Change the price on my candle"
+
+  - organize_products_or_track_inventory
+    Keywords: inventory, stock, organize products, track inventory
+    Example: "Organize products", "track inventory"
+
+  ### 3. build_shop_pages
+  Merchant wants shop pages, product catalog, product detail pages, or shopping cart UI.
+
+  Sub-intents:
+  - create_a_shop_or_product_catalog_page
+    Keywords: online store, shop, storefront, product catalog, shop page, store page, view products
+    Example: "Build an online store for my products"
+
+  - create_a_page_for_each_product
+    Keywords: product page, product detail, PDP, item page, view product, product info
+    Example: "Product page for each item"
+
+  - add_a_shopping_cart_to_my_site
+    Keywords: cart, add to cart, shopping cart, basket, cart page, promo code
+    Example: "Add a shopping cart"
+
+  ### 4. connect_checkout
+  Merchant wants to wire cart or catalog to checkout so customers can pay.
+
+  Sub-intents:
+  - let_customers_pay_from_their_cart
+    Keywords: checkout, check out, complete purchase, pay from cart, hosted checkout
+    Example: "Checkout from cart"
+
+  - add_buy_now_for_a_specific_product
+    Keywords: buy button, buy now, purchase this product, add to cart + pay
+    Example: "Buy button for this product"
+
+  ### 5. run_my_store
+  Merchant wants to view orders, set up shipping, or configure tax.
+
+  Sub-intents:
+  - see_my_orders
+    Keywords: orders, order status, see orders, my orders, order history, fulfillment
+    Example: "See my orders"
+
+  - set_up_shipping_for_checkout
+    Keywords: shipping, ship, shipping rates, flat rate, free shipping, USPS, carrier, delivery
+    Example: "Set up shipping rates"
+
+  - set_up_sales_tax
+    Keywords: tax, sales tax, VAT, tax rates, charge tax
+    Example: "Configure sales tax"
+
+  ### 6. move_my_store_here
+  Merchant wants to migrate an existing store to App Builder.
+
+  Sub-intents:
+  - move_from_website_builder_to_app_builder
+    Keywords: migrate store, site migration, OLS, Godaddy OLS, legacy store, switch platform
+    Example: "Migrate my Website Builder store"
+
+  # Classification Rules
+
+  - Classify based on MERCHANT INTENT expressed in the session, not agent behavior.
+  - If the session has NO commerce intent, set is_commerce_session=false and stop.
+  - Use keyword signals as guidance but rely on semantic understanding — keywords are not exhaustive.
+  - Pick the SINGLE most prominent intent and sub-intent for the session.
+  - A session that touches BOTH payments and commerce should still be classified here
+    if any commerce intent is expressed.
+
+steps:
+  - id: commerce_classification
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      Classify this production session into the Commerce intent taxonomy.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        is_commerce_session — boolean: true if this session expresses any commerce intent
+        intent              — the primary commerce intent tag. Must be exactly one of:
+                              set_up_my_store | manage_products | build_shop_pages |
+                              connect_checkout | run_my_store | move_my_store_here | none
+                              Use "none" if is_commerce_session=false.
+        sub_intent          — the specific sub-intent tag. Must be exactly one of:
+                              connect_my_existing_godaddy_store | create_a_new_online_store |
+                              add_products_to_my_store | update_a_product |
+                              organize_products_or_track_inventory |
+                              create_a_shop_or_product_catalog_page |
+                              create_a_page_for_each_product |
+                              add_a_shopping_cart_to_my_site |
+                              let_customers_pay_from_their_cart |
+                              add_buy_now_for_a_specific_product |
+                              see_my_orders | set_up_shipping_for_checkout |
+                              set_up_sales_tax |
+                              move_from_website_builder_to_app_builder | none
+                              Use "none" if is_commerce_session=false.
+        goal                — string ≤200 chars: the inferred merchant goal
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [is_commerce_session, intent, sub_intent, goal]
+        properties:
+          is_commerce_session:
+            type: boolean
+          intent:
+            type: string
+            enum:
+              - set_up_my_store
+              - manage_products
+              - build_shop_pages
+              - connect_checkout
+              - run_my_store
+              - move_my_store_here
+              - none
+          sub_intent:
+            type: string
+            enum:
+              - connect_my_existing_godaddy_store
+              - create_a_new_online_store
+              - add_products_to_my_store
+              - update_a_product
+              - organize_products_or_track_inventory
+              - create_a_shop_or_product_catalog_page
+              - create_a_page_for_each_product
+              - add_a_shopping_cart_to_my_site
+              - let_customers_pay_from_their_cart
+              - add_buy_now_for_a_specific_product
+              - see_my_orders
+              - set_up_shipping_for_checkout
+              - set_up_sales_tax
+              - move_from_website_builder_to_app_builder
+              - none
+          goal:
+            type: string
+        additionalProperties: false
+
+  - id: resolution_scoring
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 1500
+    template: |
+      {{staticContext}}
+
+      You previously classified this session:
+      - Is commerce session: {{steps.commerce_classification.is_commerce_session}}
+      - Intent: {{steps.commerce_classification.intent}}
+      - Sub-intent: {{steps.commerce_classification.sub_intent}}
+      - Merchant goal: {{steps.commerce_classification.goal}}
+
+      Now score how well the agent resolved the merchant's commerce intent.
+
+      Scoring rubric:
+      - 90–100: Intent fully resolved with clear end-state evidence.
+      - 70–89:  Largely resolved; minor gaps or acceptable alternatives.
+      - 50–69:  Partially resolved; meaningful progress but important parts missing.
+      - 25–49:  Poorly resolved; agent misunderstood or delivered wrong outcome.
+      - 0–24:   Failed; intent not addressed or outcome contradicts the goal.
+
+      Special cases:
+      - If is_commerce_session=false, score 100 (not applicable).
+      - Score the ACHIEVED END STATE, not effort or stated intention.
+      - A plan or explanation without executed results caps at 50.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        score   — integer 0–100
+        summary — string ≤500 chars: what the agent did well or poorly
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, summary]
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+          summary:
+            type: string
+        additionalProperties: false
+
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: always false for this evaluator (alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: always false for this evaluator (alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: always 'none' for this evaluator"
+    batchConfig:
+      type: object
+      description: "Batch runner config — alwaysRun, scoreMapping"
+  additionalProperties: false
+
+onlineConfig:
+  enabled: true
+  version: "v1"
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - cmj7ew7m20026tr41gsi9knd4
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    - name: "Avg resolution score"
+      description: "Mean resolution score across commerce-relevant sessions"
+      metric: commerce_resolution_score
+      filter:
+        - name: commerce_is_relevant
+          value: 1
+      agg: [count, avg, min, max]
+    - name: "Resolution score by intent and sub-intent"
+      description: "Count and avg resolution score grouped by intent then sub-intent"
+      metric: commerce_resolution_score
+      filter:
+        - name: commerce_is_relevant
+          value: 1
+      groupBy: [commerce_intent, commerce_sub_intent]
+      agg: [count, avg]
+  criteria:
+    batchConfig:
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+      scoreMapping:
+        - langfuseName: "commerce_is_relevant"
+          sourceField: "is_commerce_session"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Whether this session is about commerce"
+        - langfuseName: "commerce_intent"
+          sourceField: "intent"
+          type: CATEGORICAL
+          nonMatchValue: "none"
+          description: "Primary commerce intent classification"
+        - langfuseName: "commerce_sub_intent"
+          sourceField: "sub_intent"
+          type: CATEGORICAL
+          nonMatchValue: "none"
+          description: "Specific commerce sub-intent classification"
+        - langfuseName: "commerce_resolution_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "How well the agent resolved the commerce intent (0–100)"

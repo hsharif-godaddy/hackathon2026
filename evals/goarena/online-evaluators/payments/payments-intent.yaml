@@ -1,0 +1,337 @@
+---
+evaluatorId: "airo-payments-intent"
+name: "Payments Intent Classifier"
+description: "Session-level evaluator that determines if a session is payments-related, then classifies it into the Payments intent taxonomy (Intent + Sub-intent). Runs on every session (alwaysRun: true)."
+
+type: llm
+customOutputSchema: true
+
+scoreType: NUMERIC
+scoreName: "payments_resolution_score"
+scoreConfig:
+  min: 0
+  max: 100
+
+llmConfig:
+  model: gpt-5.2
+  temperature: 0
+  maxTokens: 4000
+
+staticContext: |
+  You are a senior ML evaluation analyst classifying production sessions of an AI
+  coding agent (Airo Builder) into the Payments intent taxonomy.
+
+  Your job:
+  1. Determine if this session is about Payments (binary: yes/no).
+  2. If yes, classify the intent and sub-intent.
+
+  # Domain: Payments
+
+  A session is payments-related if the merchant is trying to accept money, set up
+  a payment provider, verify checkout, test payments, fix payment issues, or manage
+  payouts.
+
+  ## Intents and Sub-intents
+
+  ### 1. get_paid_on_my_site
+  Merchant wants to accept money on their site.
+
+  Sub-intents:
+  - sell_services_or_packages_with_pay_buttons
+    Keywords: pay, payment, accept, get paid, service, package, consultation, deposit, client pay
+    Example: "Three service packages with pay buttons"
+
+  - collect_donations_or_tips
+    Keywords: donation, donate, tip, tip jar
+    Example: "Add a donation button"
+
+  - send_a_payment_link_or_invoice
+    Keywords: payment link, pay link, invoice, custom fee
+    Example: "Payment link for each contract"
+
+  - let_customers_choose_what_to_pay
+    Keywords: pay what you want, name your price
+    Example: "Pay what you want"
+
+  - add_a_buy_now_button_on_the_page
+    Keywords: buy now, buy button, pay button, purchase, checkout button, pay online
+    Example: "Buy now on each tier"
+
+  - pay_for_items_already_in_a_shopping_cart
+    Keywords: cart, checkout, check out, complete purchase, pay for cart, pay from cart
+    Example: "Checkout from my cart"
+
+  ### 2. set_up_payments
+  Merchant wants to choose or configure a payment provider.
+
+  Sub-intents:
+  - choose_the_payment_provider
+    Keywords: accept payment, get paid, take payment, payment options, how do I pay, Stripe, Paypal
+    Example: "I want to accept payments"
+
+  - set_up_godaddy_payments
+    Keywords: godaddy payments, GDP, go daddy payments
+    Example: "Set up GoDaddy Payments"
+
+  - set_up_stripe
+    Keywords: stripe, stripe checkout, stripe keys, connect stripe, stripe account
+    Example: "Use Stripe for checkout"
+
+  ### 3. confirm_payments_work
+  Merchant wants to verify checkout is connected and functional.
+
+  Sub-intents:
+  - check_that_checkout_is_connected
+    Keywords: checkout connected, confirm payment
+    Example: "Is checkout connected?"
+
+  - publish_so_customers_can_pay_live
+    Keywords: publish checkout
+    Example: "I entered my keys but checkout won't work"
+
+  ### 4. try_a_test_payment
+  Merchant wants to run a test transaction.
+
+  Sub-intents:
+  - run_a_test_transaction_with_agent_help
+    Keywords: test payment, test checkout, test transaction, try payment, mock order, mock payment
+    Example: "Run a test payment"
+
+  ### 5. fix_a_payment_problem
+  Merchant has a broken checkout or payment error.
+
+  Sub-intents:
+  - fix_checkout_errors_or_wrong_provider
+    Keywords: stripe key, wrong provider, payment failed, failed transaction
+    Example: "GDP chosen but getting Stripe-key message"
+
+  - accept_payments_outside_us_canada
+    Keywords: international payments
+    Example: "Accept payments in Australia"
+
+  ### 6. show_prices
+  Merchant wants to display prices without taking payment.
+
+  Sub-intents:
+  - show_prices_without_taking_payment
+    Keywords: pricing, prices, show price, display price
+    Example: "Show prices on the page"
+
+  ### 7. receive_payout
+  Merchant wants to manage where money is deposited.
+
+  Sub-intents:
+  - manage_where_money_is_deposited
+    Keywords: payout, payouts, bank account, payout settings, get paid out, deposit to bank
+    Example: "Connect my bank for payouts"
+
+  # Classification Rules
+
+  - Classify based on MERCHANT INTENT expressed in the session, not agent behavior.
+  - If the session has NO payments intent, set is_payments_session=false and stop.
+  - Use keyword signals as guidance but rely on semantic understanding — keywords are not exhaustive.
+  - Pick the SINGLE most prominent intent and sub-intent for the session.
+  - A session that touches BOTH payments and commerce should still be classified here
+    if any payments intent is expressed.
+
+steps:
+  - id: payments_classification
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 2000
+    template: |
+      {{staticContext}}
+
+      Classify this production session into the Payments intent taxonomy.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        is_payments_session — boolean: true if this session expresses any payments intent
+        intent             — the primary payments intent tag. Must be exactly one of:
+                             get_paid_on_my_site | set_up_payments | confirm_payments_work |
+                             try_a_test_payment | fix_a_payment_problem | show_prices |
+                             receive_payout | none
+                             Use "none" if is_payments_session=false.
+        sub_intent         — the specific sub-intent tag. Must be exactly one of:
+                             sell_services_or_packages_with_pay_buttons |
+                             collect_donations_or_tips | send_a_payment_link_or_invoice |
+                             let_customers_choose_what_to_pay |
+                             add_a_buy_now_button_on_the_page |
+                             pay_for_items_already_in_a_shopping_cart |
+                             choose_the_payment_provider | set_up_godaddy_payments |
+                             set_up_stripe | check_that_checkout_is_connected |
+                             publish_so_customers_can_pay_live |
+                             run_a_test_transaction_with_agent_help |
+                             fix_checkout_errors_or_wrong_provider |
+                             accept_payments_outside_us_canada |
+                             show_prices_without_taking_payment |
+                             manage_where_money_is_deposited | none
+                             Use "none" if is_payments_session=false.
+        goal               — string ≤200 chars: the inferred merchant goal
+    output:
+      kind: json
+      schema:
+        type: object
+        required: [is_payments_session, intent, sub_intent, goal]
+        properties:
+          is_payments_session:
+            type: boolean
+          intent:
+            type: string
+            enum:
+              - get_paid_on_my_site
+              - set_up_payments
+              - confirm_payments_work
+              - try_a_test_payment
+              - fix_a_payment_problem
+              - show_prices
+              - receive_payout
+              - none
+          sub_intent:
+            type: string
+            enum:
+              - sell_services_or_packages_with_pay_buttons
+              - collect_donations_or_tips
+              - send_a_payment_link_or_invoice
+              - let_customers_choose_what_to_pay
+              - add_a_buy_now_button_on_the_page
+              - pay_for_items_already_in_a_shopping_cart
+              - choose_the_payment_provider
+              - set_up_godaddy_payments
+              - set_up_stripe
+              - check_that_checkout_is_connected
+              - publish_so_customers_can_pay_live
+              - run_a_test_transaction_with_agent_help
+              - fix_checkout_errors_or_wrong_provider
+              - accept_payments_outside_us_canada
+              - show_prices_without_taking_payment
+              - manage_where_money_is_deposited
+              - none
+          goal:
+            type: string
+        additionalProperties: false
+
+  - id: resolution_scoring
+    llmConfig:
+      model: gpt-5.2
+      temperature: 0
+      maxTokens: 1500
+    template: |
+      {{staticContext}}
+
+      You previously classified this session:
+      - Is payments session: {{steps.payments_classification.is_payments_session}}
+      - Intent: {{steps.payments_classification.intent}}
+      - Sub-intent: {{steps.payments_classification.sub_intent}}
+      - Merchant goal: {{steps.payments_classification.goal}}
+
+      Now score how well the agent resolved the merchant's payments intent.
+
+      Scoring rubric:
+      - 90–100: Intent fully resolved with clear end-state evidence.
+      - 70–89:  Largely resolved; minor gaps or acceptable alternatives.
+      - 50–69:  Partially resolved; meaningful progress but important parts missing.
+      - 25–49:  Poorly resolved; agent misunderstood or delivered wrong outcome.
+      - 0–24:   Failed; intent not addressed or outcome contradicts the goal.
+
+      Special cases:
+      - If is_payments_session=false, score 100 (not applicable).
+      - Score the ACHIEVED END STATE, not effort or stated intention.
+      - A plan or explanation without executed results caps at 50.
+
+      Session:
+      {{workflow}}
+
+      Response Format:
+      Return ONLY a valid JSON object — no markdown, no prose, no trailing text.
+      Required fields:
+        score   — integer 0–100
+        summary — string ≤500 chars: what the agent did well or poorly
+    output:
+      kind: score
+      schema:
+        type: object
+        required: [score, summary]
+        properties:
+          score:
+            type: number
+            minimum: 0
+            maximum: 100
+          summary:
+            type: string
+        additionalProperties: false
+
+criteriaSchema:
+  type: object
+  properties:
+    relevanceKeywordMatch:
+      type: boolean
+      description: "Pre-detected: always false for this evaluator (alwaysRun)"
+    skillDetected:
+      type: boolean
+      description: "Pre-detected: always false for this evaluator (alwaysRun)"
+    skillEvidence:
+      type: string
+      description: "Pre-detected: always 'none' for this evaluator"
+    batchConfig:
+      type: object
+      description: "Batch runner config — alwaysRun, scoreMapping"
+  additionalProperties: false
+
+onlineConfig:
+  enabled: true
+  version: "v1"
+  scope: trace
+  target:
+    langfuseProjectIds:
+      - cmj7ew7m20026tr41gsi9knd4
+  metadataFilters:
+    tagsAnyOf:
+      - airo-app-builder
+  metrics:
+    - name: "Avg resolution score"
+      description: "Mean resolution score across payments-relevant sessions"
+      metric: payments_resolution_score
+      filter:
+        - name: payments_is_relevant
+          value: 1
+      agg: [count, avg, min, max]
+    - name: "Resolution score by intent and sub-intent"
+      description: "Count and avg resolution score grouped by intent then sub-intent"
+      metric: payments_resolution_score
+      filter:
+        - name: payments_is_relevant
+          value: 1
+      groupBy: [payments_intent, payments_sub_intent]
+      agg: [count, avg]
+  criteria:
+    batchConfig:
+      alwaysRun: true
+      detectionKeywords: []
+      detectionToolPatterns: []
+      scoreMapping:
+        - langfuseName: "payments_is_relevant"
+          sourceField: "is_payments_session"
+          type: BOOLEAN
+          nonMatchValue: 0
+          description: "Whether this session is about payments"
+        - langfuseName: "payments_intent"
+          sourceField: "intent"
+          type: CATEGORICAL
+          nonMatchValue: "none"
+          description: "Primary payments intent classification"
+        - langfuseName: "payments_sub_intent"
+          sourceField: "sub_intent"
+          type: CATEGORICAL
+          nonMatchValue: "none"
+          description: "Specific payments sub-intent classification"
+        - langfuseName: "payments_resolution_score"
+          sourceField: "score"
+          type: NUMERIC
+          nonMatchValue: 0
+          description: "How well the agent resolved the payments intent (0–100)"

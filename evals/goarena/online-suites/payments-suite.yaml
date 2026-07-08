@@ -1,0 +1,8 @@
+version: "1.0"
+
+suite:
+  name: "payments"
+  agentId: "643efd2d-2dbe-461a-9d2e-188baab483a0"
+  description: "Production trace evaluators for Payments intent classification"
+  evaluatorIds:
+    - "airo-payments-intent"
