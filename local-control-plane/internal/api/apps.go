@@ -551,9 +551,20 @@ func (s *Server) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	delete(appDomains, appID)
 	appDomainsMu.Unlock()
 
+	// Delete the authoritative control-plane row first, then best-effort remove
+	// the agents-service record. This mirrors the create ordering (CreateApp
+	// then registerWithAgent): if the agents unregister fails, the leftover is
+	// CP-absent/agents-present, which the startup orphan sweep is purpose-built
+	// to reclaim.
 	if err := s.DB.DeleteApp(appID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Non-fatal: the control-plane delete already succeeded; a failure here is
+	// reclaimed by the startup orphan sweep (SweepOrphanAgentApps).
+	if err := deleteAppFromAgent(r.Context(), s.JWT, appID); err != nil {
+		slog.Warn("agent.unregister.failed", "app_id", appID, "error", err)
 	}
 
 	slog.Info("app.deleted", "app_id", appID)

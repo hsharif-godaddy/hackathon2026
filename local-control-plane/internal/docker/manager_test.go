@@ -1,36 +1,11 @@
 package docker
 
 import (
+	"os"
+	"path/filepath"
+	"sort"
 	"testing"
 )
-
-func TestIsValidAppID(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{"valid nanoid", "abc123defg", true},
-		{"all digits", "1234567890", true},
-		{"all lowercase", "abcdefghij", true},
-		{"too short", "abc123", false},
-		{"too long", "abc123defghij", false},
-		{"empty", "", false},
-		{"uppercase", "ABC123DEFG", false},
-		{"hyphen", "abc-123def", false},
-		{"underscore", "abc_123def", false},
-		{"special chars", "abc!@#defg", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isValidAppID(tt.input)
-			if got != tt.expected {
-				t.Errorf("isValidAppID(%q) = %v, want %v", tt.input, got, tt.expected)
-			}
-		})
-	}
-}
 
 func TestExtractAppID(t *testing.T) {
 	tests := []struct {
@@ -134,4 +109,46 @@ func TestParseContainerAppIDs(t *testing.T) {
 			t.Errorf("expected abc123defg, got %q", ids[0])
 		}
 	})
+}
+
+func TestListWorkspaceAppIDs(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("APPS_BASE_DIR", base)
+
+	// Valid app-id workspace directories.
+	for _, id := range []string{"abcdef1234", "0325of91r4"} {
+		if err := os.Mkdir(filepath.Join(base, id), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Non-app directories (template/scratch) and a file must be ignored.
+	for _, name := range []string{"dev-tools", "ABC123DEFG", "short"} {
+		if err := os.Mkdir(filepath.Join(base, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(base, "notadir123"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := (&Manager{}).listWorkspaceAppIDs()
+	sort.Strings(got)
+	want := []string{"0325of91r4", "abcdef1234"}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("expected %v, got %v", want, got)
+			break
+		}
+	}
+}
+
+func TestListWorkspaceAppIDsMissingBaseDir(t *testing.T) {
+	t.Setenv("APPS_BASE_DIR", filepath.Join(t.TempDir(), "does-not-exist"))
+	if ids := (&Manager{}).listWorkspaceAppIDs(); ids != nil {
+		t.Errorf("expected nil for missing base dir, got %v", ids)
+	}
 }

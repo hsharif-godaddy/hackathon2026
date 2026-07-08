@@ -21,6 +21,9 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 const nanoidAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
 
+// appIDLength is the length of a generated app id (see generateAppID).
+const appIDLength = 10
+
 func generateNanoid(length int) (string, error) {
 	b := make([]byte, length)
 	for i := range b {
@@ -34,7 +37,24 @@ func generateNanoid(length int) (string, error) {
 }
 
 func generateAppID() (string, error) {
-	return generateNanoid(10)
+	return generateNanoid(appIDLength)
+}
+
+// IsValidAppID reports whether id has the canonical app-id shape: an
+// appIDLength-character string drawn from nanoidAlphabet. It is the single
+// source of truth for app-id validation — shared by the docker reconcile and
+// agents-cleanup paths — so their gates can't drift from what generateAppID
+// emits.
+func IsValidAppID(id string) bool {
+	if len(id) != appIDLength {
+		return false
+	}
+	for _, ch := range id {
+		if !strings.ContainsRune(nanoidAlphabet, ch) {
+			return false
+		}
+	}
+	return true
 }
 
 func generateJobID() (string, error) {

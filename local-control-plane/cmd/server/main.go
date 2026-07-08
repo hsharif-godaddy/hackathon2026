@@ -79,6 +79,9 @@ func run() error {
 	defer cancel()
 
 	docker.NewManager().Reconcile(db)
+	// Runs in the background: it waits for the concurrently-booting agents
+	// service to become reachable, so it must not block control-plane startup.
+	go api.SweepOrphanAgentApps(ctx, db, jwtService)
 	templatesync.Start(ctx, logger)
 
 	authType := getEnv("AUTH_TYPE", "none")

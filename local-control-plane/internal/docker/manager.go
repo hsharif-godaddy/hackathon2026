@@ -42,12 +42,16 @@ func (m *Manager) AllocatePorts() (preview, publish, supervisor, publishSupervis
 	return m.ports.Allocate()
 }
 
-func (m *Manager) basePath(appID string) string {
+func (m *Manager) appsBaseDir() string {
 	base := os.Getenv("APPS_BASE_DIR")
 	if base == "" {
 		base = "/tmp/airo-app-builder"
 	}
-	return filepath.Join(base, appID)
+	return base
+}
+
+func (m *Manager) basePath(appID string) string {
+	return filepath.Join(m.appsBaseDir(), appID)
 }
 
 // Up generates docker-compose.yml and starts the compose stack.
@@ -247,6 +251,9 @@ type ReconcileResult struct {
 	Running  int
 	Cleaned  int
 	Orphaned int
+	// Failed counts orphans whose cleanup did not fully succeed (e.g. a
+	// workspace dir that couldn't be removed) — a persistent leak, not a clean.
+	Failed int
 }
 
 // Reconcile checks every app in the database against its actual Docker state
@@ -259,6 +266,12 @@ type ReconcileResult struct {
 //
 // Phase 2: List all Docker containers matching airo naming patterns and
 // remove any whose app ID has no corresponding DB record.
+//
+// Phase 3: Scan APPS_BASE_DIR for workspace directories and remove any whose
+// app ID has no DB record. The template live-sync (internal/templatesync)
+// discovers apps by scanning this directory, not the DB, so a directory left
+// behind after deletion (with no container to flag it in Phase 2) would be
+// synced forever.
 func (m *Manager) Reconcile(db *store.DB) ReconcileResult {
 	var result ReconcileResult
 
@@ -298,27 +311,54 @@ func (m *Manager) Reconcile(db *store.DB) ReconcileResult {
 		}
 
 		slog.Info("reconcile.orphan.cleaning", "app_id", appID)
-		m.cleanupApp(appID, nil)
-		result.Orphaned++
+		if m.cleanupApp(appID, nil) {
+			result.Orphaned++
+		} else {
+			result.Failed++
+		}
+		knownIDs[appID] = true // mark handled so Phase 3 doesn't clean it again
 	}
 
-	slog.Info(
+	// Phase 3: find orphaned workspace directories with no DB record (and no
+	// container, else Phase 2 already handled them).
+	for _, appID := range m.listWorkspaceAppIDs() {
+		if knownIDs[appID] {
+			continue
+		}
+
+		slog.Info("reconcile.orphan_dir.cleaning", "app_id", appID)
+		if m.cleanupApp(appID, nil) {
+			result.Orphaned++
+		} else {
+			result.Failed++
+		}
+		knownIDs[appID] = true
+	}
+
+	logComplete := slog.Info
+	if result.Failed > 0 {
+		logComplete = slog.Warn
+	}
+	logComplete(
 		"reconcile.complete",
 		"running", result.Running,
 		"cleaned", result.Cleaned,
 		"orphaned", result.Orphaned,
+		"failed", result.Failed,
 	)
 	return result
 }
 
 // cleanupApp tears down containers, drops the MySQL database, removes
-// the filesystem, and optionally deletes the DB record. Returns true if
-// container teardown succeeded (safe to consider fully cleaned).
+// the filesystem, and optionally deletes the DB record. Returns true only if
+// both container teardown AND workspace-dir removal succeeded — a dir that
+// can't be removed keeps getting synced by templatesync (the exact leak
+// Phase 3 prevents), so it must not be reported as a clean success.
 func (m *Manager) cleanupApp(appID string, db *store.DB) bool {
-	downOK := true
+	ok := true
 	if err := m.Down(appID); err != nil {
 		slog.Warn("reconcile.down.failed", "app_id", appID, "error", err)
-		downOK = false
+		ok = false
 	}
 
 	if err := DropDatabase(appID); err != nil {
@@ -327,6 +367,7 @@ func (m *Manager) cleanupApp(appID string, db *store.DB) bool {
 
 	if err := os.RemoveAll(m.basePath(appID)); err != nil {
 		slog.Warn("reconcile.remove_files.failed", "app_id", appID, "error", err)
+		ok = false
 	}
 
 	if db != nil {
@@ -335,8 +376,12 @@ func (m *Manager) cleanupApp(appID string, db *store.DB) bool {
 		}
 	}
 
-	slog.Info("reconcile.app.cleaned", "app_id", appID)
-	return downOK
+	if ok {
+		slog.Info("reconcile.app.cleaned", "app_id", appID)
+	} else {
+		slog.Warn("reconcile.app.cleanup_incomplete", "app_id", appID)
+	}
+	return ok
 }
 
 // isStackRunning checks whether a compose stack has any running containers.
@@ -369,6 +414,28 @@ func (m *Manager) listContainerAppIDs() []string {
 	return parseContainerAppIDs(string(output))
 }
 
+// listWorkspaceAppIDs returns app IDs that have a workspace directory directly
+// under APPS_BASE_DIR. Only valid 10-char nanoid directory names are returned,
+// so template/scratch folders are ignored.
+func (m *Manager) listWorkspaceAppIDs() []string {
+	entries, err := os.ReadDir(m.appsBaseDir())
+	if err != nil {
+		if !os.IsNotExist(err) {
+			slog.Warn("reconcile.list_workspaces.failed", "error", err)
+		}
+		return nil
+	}
+
+	var ids []string
+	for _, entry := range entries {
+		if entry.IsDir() && store.IsValidAppID(entry.Name()) {
+			ids = append(ids, entry.Name())
+		}
+	}
+
+	return ids
+}
+
 // parseContainerAppIDs extracts unique app IDs from Docker container name
 // output. Container names follow the pattern preview-{appID}-1 or
 // publish-{appID}-1.
@@ -398,27 +465,12 @@ func extractAppID(containerName string) string {
 	for _, prefix := range []string{"preview-", "publish-"} {
 		if strings.HasPrefix(containerName, prefix) && strings.HasSuffix(containerName, "-1") {
 			candidate := strings.TrimSuffix(strings.TrimPrefix(containerName, prefix), "-1")
-			if isValidAppID(candidate) {
+			if store.IsValidAppID(candidate) {
 				return candidate
 			}
 		}
 	}
 	return ""
-}
-
-// isValidAppID checks that an app ID is a 10-character nanoid consisting of
-// lowercase letters a-z and digits 0-9, matching the format generated by
-// internal/store/db.go.
-func isValidAppID(id string) bool {
-	if len(id) != 10 {
-		return false
-	}
-	for _, ch := range id {
-		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'z') {
-			return false
-		}
-	}
-	return true
 }
 
 func hostUserIDs() (uid, gid int) {

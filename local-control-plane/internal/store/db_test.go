@@ -7,6 +7,45 @@ import (
 	"testing"
 )
 
+func TestIsValidAppID(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"valid nanoid", "abc123defg", true},
+		{"all digits", "1234567890", true},
+		{"all lowercase", "abcdefghij", true},
+		{"too short", "abc123", false},
+		{"too long", "abc123defghij", false},
+		{"empty", "", false},
+		{"uppercase", "ABC123DEFG", false},
+		{"hyphen", "abc-123def", false},
+		{"underscore", "abc_123def", false},
+		{"special chars", "abc!@#defg", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsValidAppID(tt.input); got != tt.expected {
+				t.Errorf("IsValidAppID(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// A freshly generated app id must satisfy IsValidAppID — pins the validator to
+// the generator so the two can't drift.
+func TestGeneratedAppIDIsValid(t *testing.T) {
+	id, err := generateAppID()
+	if err != nil {
+		t.Fatalf("generateAppID: %v", err)
+	}
+	if !IsValidAppID(id) {
+		t.Errorf("generated id %q failed IsValidAppID", id)
+	}
+}
+
 func newTestDB(t *testing.T) *DB {
 	t.Helper()
 	db, err := Open(":memory:")
