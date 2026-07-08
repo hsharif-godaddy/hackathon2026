@@ -3,7 +3,7 @@
  *
  * Covers allow-list-based filtering of the Gasket switchboard tree into
  * `hivemind` (entries named by the `appbuilder-allowed-experiment-ids`
- * tree value) and `switchboard` (entries named by the
+ * tree value) and `configs` (entries named by the
  * `appbuilder-allowed-switchboard-configs` tree value), plus error handling
  * when the upstream call fails.
  */
@@ -65,14 +65,14 @@ describe('GET /api/switchboard', () => {
   });
 
   describe('response filtering', () => {
-    it('should return empty hivemind and switchboard when tree is empty', async () => {
+    it('should return empty hivemind and configs when tree is empty', async () => {
       mockGetSwitchboardTree.mockResolvedValue({});
 
       const res = await GET(makeRequest());
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body).toStrictEqual({ hivemind: {}, switchboard: {} });
+      expect(body).toStrictEqual({ hivemind: {}, configs: {} });
     });
 
     it('should filter out entries not in either allow-list', async () => {
@@ -86,7 +86,7 @@ describe('GET /api/switchboard', () => {
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body).toStrictEqual({ hivemind: {}, switchboard: {} });
+      expect(body).toStrictEqual({ hivemind: {}, configs: {} });
     });
 
     it('should return entries named by the allow-list settings in the tree itself', async () => {
@@ -104,7 +104,7 @@ describe('GET /api/switchboard', () => {
       expect(res.status).toBe(200);
       expect(body).toStrictEqual({
         hivemind: { 'airo-build-initial-agent': { cohortId: 'variant-a' } },
-        switchboard: { 'appbuilder-share-links': true },
+        configs: { 'appbuilder-share-links': true },
       });
     });
 
@@ -120,7 +120,7 @@ describe('GET /api/switchboard', () => {
       expect(res.status).toBe(200);
       expect(body).toStrictEqual({
         hivemind: { 'airo-build-initial-agent': { cohortId: 'variant-a' } },
-        switchboard: {},
+        configs: {},
       });
     });
   });

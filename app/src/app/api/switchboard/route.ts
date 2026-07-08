@@ -2,7 +2,7 @@
  * GET /api/switchboard
  *
  * Returns the Gasket switchboard tree for the authenticated user, split into
- * two objects: `hivemind` (experiment assignments) and `switchboard` (all other
+ * two objects: `hivemind` (experiment assignments) and `configs` (all other
  * feature-flag values). The allowed keys are themselves Switchboard JSON-array
  * settings (`ALLOWED_EXPERIMENT_IDS_KEY` / `ALLOWED_SWITCHBOARD_CONFIGS_KEY`),
  * so the allowlist can be updated without a deploy.
@@ -33,16 +33,16 @@ export const GET = withCustomerAuth(
       const tree = await getSwitchboardTree(request);
 
       const hivemind: Record<string, unknown> = {};
-      const switchboard: Record<string, unknown> = {};
+      const configs: Record<string, unknown> = {};
 
       for (const key of readAllowlist(tree, ALLOWED_EXPERIMENT_IDS_KEY)) {
         if (key in tree) hivemind[key] = tree[key];
       }
       for (const key of readAllowlist(tree, ALLOWED_SWITCHBOARD_CONFIGS_KEY)) {
-        if (key in tree) switchboard[key] = tree[key];
+        if (key in tree) configs[key] = tree[key];
       }
 
-      return NextResponse.json({ hivemind, switchboard });
+      return NextResponse.json({ hivemind, configs });
     } catch (error) {
       logger.error('api.switchboard.get.error', {
         error: error instanceof Error ? error.message : String(error),
