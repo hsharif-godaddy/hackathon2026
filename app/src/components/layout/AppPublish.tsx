@@ -658,10 +658,11 @@ export default function AppPublish({ location = 'develop', triggerClassName }: {
     try {
       const gateResult = await runGate();
       if (!gateResult.proceed) {
-        // Gate (paywall / DNS conflict) blocked the publish — record as a blocked attempt
+        // DNS conflict gate blocked the publish — record as a blocked attempt
         try {
-          shipAnalyticsLog('publish.attempted', { appId: currentAppId, blockedReason: 'gate_blocked', trigger: 'ui' })
-          logImpressionEvent('develop.publish.attempt', { appId: currentAppId, blockedReason: 'gate_blocked', trigger: 'ui' })()
+          const gateBlockedReason = gateResult.reason ?? 'gate_blocked';
+          shipAnalyticsLog('publish.attempted', { appId: currentAppId, blockedReason: gateBlockedReason, trigger: 'ui' })
+          logImpressionEvent('develop.publish.attempt', { appId: currentAppId, blockedReason: gateBlockedReason, trigger: 'ui' })()
         } catch (e) { logger.warn('app-publish.analytics.failed', { appId: currentAppId, error: e instanceof Error ? e.message : String(e) }) }
         return;
       }

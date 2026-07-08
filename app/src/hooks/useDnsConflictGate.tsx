@@ -14,10 +14,14 @@ interface ModalState {
   variant: 'conflict' | 'unverified';
 }
 
+// Union of all gate block reasons — extend as new gates are added.
+// Each value identifies the cause of the block; how the user responded (e.g. dismissed) is implied.
+export type GateBlockReason = 'dns_conflict';
+
 interface GateResult {
   consent?: boolean;
   proceed: boolean;
-  reason?: 'dismissed';
+  reason?: GateBlockReason;
 }
 
 interface UseDnsConflictGateOptions {
@@ -42,7 +46,7 @@ export function useDnsConflictGate({ appId, site }: UseDnsConflictGateOptions) {
   }, []);
 
   useEffect(() => () => {
-    pendingResultRef.current?.({ proceed: false, reason: 'dismissed' });
+    pendingResultRef.current?.({ proceed: false, reason: 'dns_conflict' });
     pendingResultRef.current = null;
   }, []);
 
@@ -165,7 +169,7 @@ export function useDnsConflictGate({ appId, site }: UseDnsConflictGateOptions) {
       <DnsConflictModal
         fqdn={modalState.fqdn}
         variant={modalState.variant}
-        onClose={() => closeModal({ proceed: false, reason: 'dismissed' })}
+        onClose={() => closeModal({ proceed: false, reason: 'dns_conflict' })}
         onConfirm={(consent) => closeModal({ proceed: true, consent })}
       />
     );

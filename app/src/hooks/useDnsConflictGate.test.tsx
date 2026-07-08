@@ -282,7 +282,7 @@ describe('useDnsConflictGate', () => {
       screen.getByRole('button', { name: 'close' }).click();
     });
 
-    await expect(gatePromise).resolves.toEqual({ proceed: false, reason: 'dismissed' });
+    await expect(gatePromise).resolves.toEqual({ proceed: false, reason: 'dns_conflict' });
   });
 
   it('resolves pending gate promise on unmount while modal is open', async () => {
@@ -310,7 +310,7 @@ describe('useDnsConflictGate', () => {
 
     unmount();
 
-    await expect(gatePromise).resolves.toEqual({ proceed: false, reason: 'dismissed' });
+    await expect(gatePromise).resolves.toEqual({ proceed: false, reason: 'dns_conflict' });
   });
 
   it('fails open with error log when dns check json parsing fails', async () => {
