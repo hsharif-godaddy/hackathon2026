@@ -34,10 +34,6 @@ on:
           - 'Create + Reload'
           - 'Rollback'
         default: 'Create + Reload'
-      branch:
-        description: 'airo-app-builder branch or tag NAME to build + dark-release (not a raw SHA — it is used as the dispatch ref)'
-        type: string
-        default: 'main'
       publish_image:
         description: "Push built images to the registry (default). true guarantees step 3's tags exist in ECR; set false to build only when the commit's images are already in the registry (e.g. from CI), else step 3 binds tags absent from ECR."
         type: boolean
@@ -75,7 +71,7 @@ on:
         type: string
         default: ''
 
-run-name: 'Dark Release (dev) — ${{ inputs.action }} | branch: ${{ inputs.branch }} | actor: ${{ github.actor }}'
+run-name: 'Dark Release (dev) — ${{ inputs.action }} | ref: ${{ github.ref_name }} | actor: ${{ github.actor }}'
 
 permissions:
   contents: read
@@ -90,7 +86,7 @@ permissions:
 # guards can't tell apart (same commit ⇒ identical tags). cancel-in-progress=false:
 # never kill a run that may have already created a Release Group (it would orphan it).
 concurrency:
-  group: dark-release-dev-${{ inputs.branch }}
+  group: dark-release-dev-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -115,7 +111,7 @@ jobs:
           PIONEER_INFRA_TOKEN: ${{ secrets.PIONEER_INFRA_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # in-repo dispatch + commit resolve
           ACTION: ${{ inputs.action }}
-          BRANCH: ${{ inputs.branch }}
+          BRANCH: ${{ github.ref_name }}
           APP_ENV: ${{ inputs.app_environment }}
           MGMT_ENV: ${{ inputs.mgmt_environment }}
           COMPOSITION_ID: ${{ inputs.composition_id }}
@@ -192,8 +188,10 @@ jobs:
 
           # ===== Create + Reload: build → dark-release → bind, in one shot. =====
 
-          # Resolve the branch to a full SHA so the build target and the
-          # katanaSelector reference exactly the same commit.
+          # BRANCH is github.ref_name — the "Use workflow from" ref this run was
+          # dispatched on — so the orchestration version, the build target, and the
+          # katanaSelector all reference the same branch/tag. Resolve it to a full SHA
+          # so the build target and the katanaSelector reference exactly the same commit.
           SHA=$(gh api "repos/$AGENT_REPO/commits/$BRANCH" --jq '.sha' || true)
           if [ -z "${SHA:-}" ]; then
             echo "::error::could not resolve branch/tag '$BRANCH' to a commit SHA in $AGENT_REPO"; exit 1
