@@ -284,6 +284,10 @@ export function processBudgetReport(context: BudgetReportContext): BudgetReportR
         patternsDetected: executionData.patterns.length,
         causalChainsDetected: executionData.causalChains.length,
         sessionWasFree,
+        patternCounts: executionData.patternCounts,
+        firedPatternTypes: executionData.patterns.map(p => p.type),
+        maxPatternSeverity: Math.max(0, ...executionData.patterns.map(p => p.severity)),
+        totalSteps: executionData.totalSteps,
       })
     } else if (executionData.noValueDelivered && !wasUserAborted) {
       // No value delivered: agent ran but produced nothing useful -> 100% GoDaddy
