@@ -200,8 +200,9 @@ describe('ManagePlan', function managePlanTests() {
     mockReplace.mockClear();
     usePaywallStore.setState({ paywallLoading: false, showUpgradeModal: false, upgradeModalSource: null, showCreditsModal: false, creditsModalSource: null });
     mockUseSites.mockReturnValue({ sites: [], isLoading: false, error: null });
-    // Reset switchboard flags
+    // Reset switchboard flags; disable redesign by default so v1-layout tests remain on v1 path
     Object.keys(mockSwitchboardFlags).forEach((key) => delete mockSwitchboardFlags[key]);
+    mockSwitchboardFlags['aab-manage-plan-redesign'] = false;
     // Reset autoRenew mutation state
     mockSetAutoRenewState.isSuccess = false;
     mockSetAutoRenewState.variables = undefined;

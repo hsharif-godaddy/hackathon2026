@@ -1,5 +1,5 @@
-import ManagePlanSkeleton from './components/ManagePlanSkeleton';
 import PageLayout from './components/PageLayout';
+import ManagePlanSkeleton from './components/v2/ManagePlanSkeleton';
 
 /**
  * Next.js loading UI shown immediately during navigation to /manage-plan.

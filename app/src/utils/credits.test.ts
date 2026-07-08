@@ -13,6 +13,7 @@ import {
   getMonthlyPlanGrant,
   getPlanDisplayLabelKey,
   getPlanFromSubscription,
+  getPlanLabelKey,
   getTotalCreditsFromGrants,
 } from '@/utils/credits';
 
@@ -733,6 +734,44 @@ describe('credits', function creditsTests() {
 
     it('should return empty string for None plan', function none() {
       const result = getPlanDisplayLabelKey(SubscriptionPlan.None);
+
+      expect(result).toBe('');
+    });
+  });
+
+  describe('#getPlanLabelKey', function getPlanLabelKeyTests() {
+    it('should return correct key for AiroPlus plan', function airoPlus() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.AiroPlus);
+
+      expect(result).toBe('builder_manageplan_plan_airo_plus');
+    });
+
+    it('should return correct key for Starter plan', function starter() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.Starter);
+
+      expect(result).toBe('builder_manageplan_plan_starter_label');
+    });
+
+    it('should return correct key for Professional plan', function professional() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.Professional);
+
+      expect(result).toBe('builder_manageplan_plan_professional_label');
+    });
+
+    it('should return correct key for Ultimate plan', function ultimate() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.Ultimate);
+
+      expect(result).toBe('builder_manageplan_plan_ultimate_label');
+    });
+
+    it('should return correct key for Free plan', function free() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.Free);
+
+      expect(result).toBe('builder_manageplan_plan_free_label');
+    });
+
+    it('should return empty string for None plan', function none() {
+      const result: string = getPlanLabelKey(SubscriptionPlan.None);
 
       expect(result).toBe('');
     });

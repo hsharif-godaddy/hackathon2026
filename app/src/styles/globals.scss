@@ -18,7 +18,11 @@
 
 @theme inline {
   --color-ai: #613EA3;
+  --color-ai-bright: #6D28D9;
+  --color-ai-progress: #A45CFD;
+  --color-ai-progress-light: #9A7DEE;
   --color-ai-light: #744BC4;
+  --color-ai-light-transparent: #F9F7FC;
   --credit-meter-fill-start: color-mix(in srgb, var(--color-ai-light) 15%, transparent);
   --credit-meter-fill-gradient: linear-gradient(
     to right,
@@ -31,6 +35,7 @@
   --color-ai-glow: #613EA340;
   --color-ring-ai: #613EA3;
   --color-gauge-track: #D9D9D9;
+  --color-progress-track: #1111111A;
 
   --color-light-purple: #D3C1F733;
   --color-light-purple-solid: #D3C1F7;
@@ -127,6 +132,10 @@
     --sidebar-border: oklch(0.92 0.004 286.32);
     --sidebar-ring: oklch(0.606 0.25 292.717);
 
+    --color-ai-bright: #6D28D9;
+    --color-ai-progress: #A45CFD;
+    --color-ai-progress-light: #9A7DEE;
+    --color-ai-light-transparent: #F9F7FC;
     --develop-bg: #F5F7F8;
     --card-height: 65vh;
     --card-width: calc(var(--card-height) / 1.5);
@@ -168,6 +177,8 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.541 0.281 293.009);
+
+    --color-progress-track: oklch(1 0 0 / 10%);
 
     /* Chart palette tokens (dark) */
     --color-chart-blue: oklch(0.699 0.183 255.137);

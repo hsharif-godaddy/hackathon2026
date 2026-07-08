@@ -219,7 +219,7 @@ export function getPlanFromSubscription(
 }
 
 /**
- * Get translation key for subscription plan display label
+ * Get translation key for subscription plan display label (Starter Plan is displayed)
  */
 export function getPlanDisplayLabelKey(plan: SubscriptionPlan): string {
   switch (plan) {
@@ -233,6 +233,27 @@ export function getPlanDisplayLabelKey(plan: SubscriptionPlan): string {
       return 'builder_manageplan_plan_ultimate';
     case SubscriptionPlan.Free:
       return 'builder_manageplan_plan_free';
+    case SubscriptionPlan.None:
+    default:
+      return '';
+  }
+}
+
+/**
+ * Get translation key for subscription plan label (Starter is displayed)
+ */
+export function getPlanLabelKey(plan: SubscriptionPlan): string {
+  switch (plan) {
+    case SubscriptionPlan.AiroPlus:
+      return 'builder_manageplan_plan_airo_plus';
+    case SubscriptionPlan.Starter:
+      return 'builder_manageplan_plan_starter_label';
+    case SubscriptionPlan.Professional:
+      return 'builder_manageplan_plan_professional_label';
+    case SubscriptionPlan.Ultimate:
+      return 'builder_manageplan_plan_ultimate_label';
+    case SubscriptionPlan.Free:
+      return 'builder_manageplan_plan_free_label';
     case SubscriptionPlan.None:
     default:
       return '';

@@ -59,7 +59,7 @@ describe('PageLayout', function pageLayoutTests() {
 
       const main = container.querySelector('main');
       expect(main).toBeInTheDocument();
-      expect(main?.className).toContain('max-w-6xl');
+      expect(main?.className).toContain('max-w-7xl');
       expect(main?.className).toContain('mx-auto');
     });
 

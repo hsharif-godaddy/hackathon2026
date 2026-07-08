@@ -26,6 +26,10 @@ import {
   SuspendedNonPaymentAlert,
   TotalCreditsCard,
 } from "@/app/[market]/manage-plan/components";
+import {
+  ManagePlanLayout,
+  ManagePlanSkeletonV2,
+} from "@/app/[market]/manage-plan/components/v2";
 import { ProtectedRoute } from "@/components/auth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useCreditGrants } from "@/hooks/useCreditGrants";
@@ -50,6 +54,7 @@ import {
   PAYWALL_TYPE,
   type PaywallType,
 } from "@/lib/paywall/shared";
+import { getPublishLimit, isPublishedApp } from "@/lib/publish-limit";
 import { usePaywallStore } from "@/stores/usePaywallStore";
 import { useSites } from "@/stores/useSitesStore";
 import type { CreditGrant } from "@/types/credits";
@@ -164,7 +169,8 @@ function ManagePlanContent() {
   } = useSubscriptionRenewal();
   const isUnpublishEnabled = useSwitchboard("appbuilder-unpublish");
   const isSuspendedBannerEnabled = useSwitchboard("appbuilder-suspended-nonpayment-banner");
-
+  const isManagePlanRedesignFlagEnabled: boolean | undefined = useSwitchboard("aab-manage-plan-redesign");
+  const isRedesignEnabled: boolean = isManagePlanRedesignFlagEnabled === true;
   const paywallLoading = usePaywallStore((state) => state.paywallLoading);
   const openPaywall = useCallback(
     (source: string, type: PaywallType = "upgrade", itc?: string) => {
@@ -203,8 +209,13 @@ function ManagePlanContent() {
     useEcommSubscriptionAutoRenewStatus(builderEntitlementId);
 
   const { sites, isLoading: isSitesLoading } = useSites({
-    enabled: isUnpublishEnabled === true,
+    enabled: isUnpublishEnabled === true || isRedesignEnabled,
   });
+
+  const publishedCount: number = useMemo(
+    () => (sites ?? []).filter(isPublishedApp).length,
+    [sites],
+  );
 
   // Next.js shares the route bundle across all /develop/[id] routes,
   // so one prefetch warms the cache for every row.
@@ -251,7 +262,7 @@ function ManagePlanContent() {
   if (isSubscriptionLoading || isGrantsLoading) {
     return (
       <PageLayout>
-        <ManagePlanSkeleton />
+        {isRedesignEnabled ? <ManagePlanSkeletonV2 /> : <ManagePlanSkeleton />}
       </PageLayout>
     );
   }
@@ -508,77 +519,93 @@ function ManagePlanContent() {
               onDismiss={() => setIsFreeAutoRenewAlertDismissed(true)}
             />
           )}
-        <div className="flex flex-col gap-2">
-          <text.h2 as="title" size={3} text={t("builder_manageplan_title")} />
-          <text.p as="paragraph" className="mb-2">
-            <FormattedMessage
-              id="builder_manageplan_description_help"
-              values={{
-                creditLink: (chunks) => (
-                  <a
-                    href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-credits-faq-42828`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-ai-light"
-                  >
-                    {chunks}
-                  </a>
-                ),
-                promptLink: (chunks) => (
-                  <a
-                    href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-prompt-best-practices-42854`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-ai-light"
-                  >
-                    {chunks}
-                  </a>
-                ),
-              }}
-            />
-          </text.p>
-
-          <div className="grid grid-cols-1 md:grid-cols-12 md:items-start gap-4">
-            <div className="md:col-span-3 md:min-h-0">
-              <TotalCreditsCard
-                totalCreditsSpent={totalCreditsSpent}
-                totalCreditsMax={totalCreditsMax}
+        {isRedesignEnabled ? (
+          <ManagePlanLayout
+            planGrant={planGrant}
+            creditPacks={creditPacks}
+            activeGrantId={activeGrant?.id}
+            locale={locale}
+            openPaywall={openPaywall}
+            onDowngradeClick={() => setShowSwitchToFreeModal(true)}
+            sites={sites}
+            isSitesLoading={isSitesLoading}
+            currentPlan={currentPlan}
+            publishedCount={publishedCount}
+            publishLimit={getPublishLimit(currentPlan)}
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <text.h2 as="title" size={3} text={t("builder_manageplan_title")} />
+            <text.p as="paragraph" className="mb-2">
+              <FormattedMessage
+                id="builder_manageplan_description_help"
+                values={{
+                  creditLink: (chunks) => (
+                    <a
+                      href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-credits-faq-42828`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-ai-light"
+                    >
+                      {chunks}
+                    </a>
+                  ),
+                  promptLink: (chunks) => (
+                    <a
+                      href={`https://www.${rootDomain}/help/godaddy-airo-ai-builder-prompt-best-practices-42854`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-ai-light"
+                    >
+                      {chunks}
+                    </a>
+                  ),
+                }}
               />
-            </div>
+            </text.p>
 
-            <div className="flex flex-col gap-4 md:col-span-9 md:min-h-0">
-              <PlanCreditsCard
-                subscription={subscription}
-                planGrant={planGrant}
-                activeGrantId={activeGrant?.id}
-                locale={locale}
-                creditPacks={creditPacks}
-                openPaywall={openPaywall}
-                autoRenewStatus={autoRenewStatus}
-                onDowngradeClick={() => setShowSwitchToFreeModal(true)}
-              />
-              {currentPlan && (
-                <AddonCreditCard
-                  creditPacks={creditPacks}
-                  subscriptionPlan={currentPlan}
+            <div className="grid grid-cols-1 md:grid-cols-12 md:items-start gap-4">
+              <div className="md:col-span-3 md:min-h-0">
+                <TotalCreditsCard
+                  totalCreditsSpent={totalCreditsSpent}
+                  totalCreditsMax={totalCreditsMax}
+                />
+              </div>
+
+              <div className="flex flex-col gap-4 md:col-span-9 md:min-h-0">
+                <PlanCreditsCard
+                  subscription={subscription}
+                  planGrant={planGrant}
                   activeGrantId={activeGrant?.id}
                   locale={locale}
-                  onOpenPaywall={openPaywall}
-                  builderEntitlementId={builderEntitlementId}
+                  creditPacks={creditPacks}
+                  openPaywall={openPaywall}
+                  autoRenewStatus={autoRenewStatus}
+                  onDowngradeClick={() => setShowSwitchToFreeModal(true)}
                 />
-              )}
-              {isUnpublishEnabled && (
-                <AppsAndSitesCard
-                  sites={sites}
-                  isLoading={isSitesLoading}
-                  subscriptionPlan={currentPlan}
-                  hadAiroPlus={subscription?.hadAiroPlus}
-                  onOpenPaywall={openPaywall}
-                />
-              )}
+                {currentPlan && (
+                  <AddonCreditCard
+                    creditPacks={creditPacks}
+                    subscriptionPlan={currentPlan}
+                    activeGrantId={activeGrant?.id}
+                    locale={locale}
+                    onOpenPaywall={openPaywall}
+                    builderEntitlementId={builderEntitlementId}
+                  />
+                )}
+                {isUnpublishEnabled && (
+                  <AppsAndSitesCard
+                    sites={sites}
+                    isLoading={isSitesLoading}
+                    subscriptionPlan={currentPlan}
+                    hadAiroPlus={subscription?.hadAiroPlus}
+                    onOpenPaywall={openPaywall}
+                  />
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </PageLayout>
 
       {/* Polling overlay while waiting for new grant after credit purchase */}
@@ -598,7 +625,6 @@ function ManagePlanContent() {
 }
 
 export default function ManagePlan() {
-  const t = useTranslations();
   const router = useRouter();
   const isFeatureEnabled = useSwitchboard("appbuilder-manage-plan");
 
