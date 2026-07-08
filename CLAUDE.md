@@ -147,6 +147,7 @@ Use `pnpm run dev` — preflight checks generate `.env` files automatically. Don
 
 ## Additional Documentation
 
+- **Releases: `docs/release-pipeline.md`** — single source of truth for how we ship (GHA workflows, release-train schedule, Slack channel, on-demand releases via the `release.yml` GHA dispatch, approval gate, rollback, dark release, and the dev dark-release GHA). Releases run through GitHub Actions; the local `pnpm run release` TUI is emergency-only. **Read this for ANY release, release-train, dark-release, rollback, or prod-gate question.**
 - Chat transport (SSE): `app/CLAUDE.md` → "Chat Transport (SSE)" (the legacy client WebSocket transport was removed in AIROBUILD-2629)
 - OAuth: `docs/oauth-architecture.md`
 - Testing: `app/TESTING.md`

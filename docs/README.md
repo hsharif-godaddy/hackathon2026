@@ -25,6 +25,7 @@
 
 ## Operations
 
+- [release-pipeline.md](release-pipeline.md) — Release runbook: GHA workflows, train schedule, approval gate, Slack, dark release, dev dark release, rollback
 - [OPERATIONAL_PLAYBOOK.md](OPERATIONAL_PLAYBOOK.md) — On-call runbook, alerts, dashboards
 - [LOCAL_APM_SETUP.md](LOCAL_APM_SETUP.md) — Local Elastic APM stack for dev
 - [REQUEST_CONTEXT_GUIDE.md](REQUEST_CONTEXT_GUIDE.md) — AsyncLocalStorage request context for logging
