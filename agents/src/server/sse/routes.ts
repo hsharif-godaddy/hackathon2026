@@ -27,6 +27,9 @@ import { asyncHandler } from '../middleware/async-handler.js'
 import { mapSegmentsToUI, mapToolCallsToUI } from '../tool-call-mapper.js'
 import { appRepository } from '../../database/repositories/index.js'
 import { isUUID } from '../../utils/uuid.js'
+import { AppMetadataRepository } from '../../database/repositories/AppMetadataRepository.js'
+
+const appMetadataRepo = new AppMetadataRepository()
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 const RETRY_MS = 1000
@@ -122,6 +125,16 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
         }).catch(err => {
           logger.warn('sse.conversation.persist_shopper_id_failed', { appId, ...errorFields(err) })
         })
+      }
+
+      // Persist the frozen agentProfile to app_metadata — once at conversation-create;
+      // a later experiment flip cannot overwrite the profile the app was built with.
+      if (isNew && agentContext?.agentProfile) {
+        try {
+          appMetadataRepo.merge(appId, { agentProfile: agentContext.agentProfile })
+        } catch (metadataErr) {
+          logger.error('sse.conversation.persist_agent_profile_failed', { appId, ...errorFields(metadataErr) })
+        }
       }
 
       res.status(200).json({

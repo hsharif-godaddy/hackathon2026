@@ -37,6 +37,7 @@ export interface App {
   status: AppStatusType
   initialBuildComplete?: boolean
   builderLayout?: BuilderLayoutDescriptor
+  agentProfile?: string
   createdAt: string
   updatedAt: string
 }

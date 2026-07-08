@@ -1,18 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-/** The design-kit guided flow's agent profile (Switchboard `appbuilder-agent-profile`). */
-export const DESIGN_KIT_PROFILE = 'initial-agent-design-kit';
-
-/**
- * The CLIENT-read Switchboard value that gates the design-kit guided flow:
- * the agent profile (→ `useIsDesignKitWizardProfile`).
- * Inject with `forceClientFlags` + verify live with `expectClientFlags` (both in ui.ts).
- */
-export const DESIGN_KIT_FLAGS: Record<string, string | boolean> = {
-  'appbuilder-agent-profile': DESIGN_KIT_PROFILE,
-};
-
 /**
  * Persist + broadcast a design-kit wizard phase via the real BFF proxy
  * (authenticated by the shared SSO cookie on `page.request`). The agents route

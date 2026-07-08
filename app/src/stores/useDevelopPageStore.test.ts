@@ -1647,9 +1647,7 @@ describe('useDevelopPageStore', function useDevelopPageStoreTests() {
       // The design-kit flow no longer lands on the BRAND tab — it has its own immersive
       // layout (useBuilderLayout) — so resetForNewApp treats it like any non-logo-designer
       // app and lands it on PREVIEW once the build hands off.
-      (window as unknown as { gasketData?: unknown }).gasketData = {
-        switchboard: { 'appbuilder-agent-profile': 'initial-agent-design-kit' },
-      };
+      // Note: resetForNewApp does not read agentProfile / Switchboard; no profile setup needed.
 
       act(function setup() {
         useDevelopPageStore.setState({ viewMode: ViewMode.EDIT, isEditModeEnabled: true });

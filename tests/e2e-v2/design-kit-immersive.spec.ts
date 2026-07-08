@@ -7,12 +7,11 @@
  * chrome hidden.
  *
  * NOT the homepage "Design Kit Gallery" (`appbuilder-design-kit-gallery`) — that's
- * a separate feature. The profile gate is a CLIENT-read Switchboard value, so we
- * force `appbuilder-agent-profile=initial-agent-design-kit` on (the
- * `window.gasketData.switchboard` injection pattern) and drive the real
- * `PUT /api/design-kit/:id/wizard-step` endpoint — which persists
- * `designKitLayoutForPhase(true, phase)` and emits the `builder_layout` SSE — then
- * reload so the app-record path renders immersive.
+ * a separate feature. The immersive layout is fully server-driven: `driveWizardPhase`
+ * sets the `builder_layout` SSE event + app_metadata, and a reload confirms the
+ * immersive shell from `GET /apps/:id`. As of AIROBUILD-3541, the design-kit Brand
+ * tab UI (DesignKitPanels) is gated by `app.agentProfile` from the app record — not
+ * by a client Switchboard value.
  * Deterministic: no LLM wait, no TLA account, no route mocks.
  *
  * Owns its app (drives layout state) — it can NOT use the read-only pool app.
@@ -23,8 +22,8 @@ import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import { AI_RESPONSE_TIMEOUT_MS, DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
-import { DESIGN_KIT_FLAGS, driveWizardPhase } from '../helpers/design-kit';
-import { dismissOverlays, expectClientFlags, forceClientFlags, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
+import { driveWizardPhase } from '../helpers/design-kit';
+import { dismissOverlays, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls below. */
 const SPEC_PREFIXES = ['dk-immersive'] as const;
@@ -56,7 +55,6 @@ test.describe('Design Kit immersive layout (v2 smoke)', () => {
   test('design-kit build renders the immersive shell with chrome hidden', async ({ page }, testInfo) => {
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 90_000);
 
-    await forceClientFlags(page, DESIGN_KIT_FLAGS);
     await page.addInitScript(() => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
@@ -80,9 +78,6 @@ test.describe('Design Kit immersive layout (v2 smoke)', () => {
     await page.reload();
     await dismissOverlays(page);
 
-    // Prove the injected flags are live so the immersive assertions can't
-    // false-pass via the legacy phase-inference path (which renders the same shell).
-    await expectClientFlags(page, DESIGN_KIT_FLAGS);
     await expect(page.getByTestId('immersive-header')).toBeVisible({ timeout: LONG_TIMEOUT });
     await expect(page.getByTestId('design-kit-wizard')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // Immersive takes over — the full builder header tabs are not rendered.

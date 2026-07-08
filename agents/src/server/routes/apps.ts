@@ -69,8 +69,8 @@ async function readDesignKitBuildPhase(appId: string, customerId: string | undef
   return typeof phase === 'string' ? (phase as DesignKitBuildPhase) : undefined;
 }
 
-async function resolveAppBuilderLayout(appId: string, customerId: string | undefined): Promise<BuilderLayoutDescriptor> {
-  const metadata = appMetadataRepo.get(appId);
+async function resolveAppBuilderLayout(appId: string, customerId: string | undefined, cachedMetadata?: Record<string, unknown>): Promise<BuilderLayoutDescriptor> {
+  const metadata = cachedMetadata ?? appMetadataRepo.get(appId);
   if (metadata.builderLayout !== undefined) {
     return normalizeBuilderLayout(metadata.builderLayout);
   }
@@ -262,17 +262,18 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     const customerId = (req as AuthenticatedRequest).agentContext?.customerId;
+    const metadata = appMetadataRepo.get(id);
+    const agentProfile: string | undefined = metadata.agentProfile as string | undefined;
     let builderLayout: BuilderLayoutDescriptor;
     try {
-      builderLayout = await resolveAppBuilderLayout(id, customerId);
+      builderLayout = await resolveAppBuilderLayout(id, customerId, metadata);
     } catch (layoutError) {
       log.forApp(id).warn('route.apps.get.builder_layout.failed', {
         error: layoutError instanceof Error ? layoutError.message : String(layoutError),
       });
       builderLayout = normalizeBuilderLayout(undefined);
     }
-
-    return res.json({ app: { ...app, builderLayout } });
+    return res.json({ app: { ...app, builderLayout, agentProfile } });
   } catch (error) {
     const contextLogger = req.params.id ? log.forApp(req.params.id) : logger;
     log.error(contextLogger, 'route.apps.get.error', error as Error, {});

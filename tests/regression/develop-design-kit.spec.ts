@@ -12,14 +12,9 @@
  * `appbuilder-design-kit-gallery`, the "attach a pre-made style" modal). That is
  * a separate feature with a confusingly similar name.
  *
- * The profile gate is a CLIENT-read Switchboard value (`useIsDesignKitWizardProfile`
- * -> `getSwitchboardValue('appbuilder-agent-profile')`), so we force it on via the
- * `window.gasketData.switchboard` init-script injection (same pattern as
- * apps-page.spec.ts), then drive the real `PUT /api/design-kit/:id/wizard-step`
- * endpoint — which persists `designKitLayoutForPhase(true, phase)` + emits the
- * `builder_layout` SSE — so the phase machine + layout transitions are
- * deterministic: no LLM wait, no TLA account, no route mocks. The full agent-driven
- * build (real vibe pick -> brand / website generation) is a future @tla-account job.
+ * As of AIROBUILD-3541, `useIsDesignKitWizardProfile` reads `app.agentProfile` from
+ * the app record (persisted at conversation-create) rather than the client Switchboard.
+ * The immersive layout is fully server-driven via `driveWizardPhase`.
  *
  * Template: develop-brand-book.spec.ts (create-app -> assert testids -> cleanup).
  */
@@ -28,8 +23,8 @@ import { test, expect } from '../helpers/test-fixtures';
 import { deleteAppsWithPrefix, evictOldestE2eAppsToFitLimit } from '../helpers/api';
 import { ensureAuthenticated, loginViaSsoDirect } from '../helpers/auth';
 import { AI_RESPONSE_TIMEOUT_MS, DEFAULT_TIMEOUT, E2E_NO_DELETE, LONG_TIMEOUT, getSpecPrefix } from '../helpers/constants';
-import { DESIGN_KIT_FLAGS, driveWizardPhase } from '../helpers/design-kit';
-import { dismissOverlays, expectClientFlags, forceClientFlags, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
+import { driveWizardPhase } from '../helpers/design-kit';
+import { dismissOverlays, logTestResult, logTestStart, submitHomepage, waitForDevelopPage } from '../helpers/ui';
 
 /** Spec prefixes used by `getSpecPrefix(...)` calls in this describe block. */
 const SPEC_PREFIXES = ['design-kit'] as const;
@@ -63,8 +58,6 @@ test.describe('initial-agent-design-kit guided flow', () => {
     // App create (+ optional generation) plus three drive+reload cycles — give it headroom.
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 120_000);
 
-    // Force the design-kit agent profile (the flow's gate) on, before the first navigation.
-    await forceClientFlags(page, DESIGN_KIT_FLAGS);
     await page.addInitScript(() => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
     });
@@ -88,9 +81,6 @@ test.describe('initial-agent-design-kit guided flow', () => {
     // Reload so useBuilderLayout resolves immersive from GET /apps/:id (app-record path).
     await page.reload();
     await dismissOverlays(page);
-    // Prove the injected flags are live so the immersive assertions below can't
-    // false-pass via the legacy phase-inference path (which renders the same shell).
-    await expectClientFlags(page, DESIGN_KIT_FLAGS);
     await expect(page.getByTestId('immersive-header')).toBeVisible({ timeout: LONG_TIMEOUT });
     await expect(page.getByTestId('design-kit-wizard')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     // Immersive hides the full builder chrome — the develop header tabs are gone.

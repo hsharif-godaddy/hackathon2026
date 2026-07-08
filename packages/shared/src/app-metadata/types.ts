@@ -37,4 +37,10 @@ export interface KnownAppMetadata {
    * Persisted by the agents layout resolver and returned on GET /apps/:id.
    */
   builderLayout?: BuilderLayoutDescriptor;
+  /**
+   * The agent profile the app was frozen with at conversation-create (JWT agentProfile claim).
+   * Absent = default profile. Written once at freeze time (the `isNew` guard in
+   * `sse/routes.ts` enforces this; `merge` itself is last-writer-wins).
+   */
+  agentProfile?: string;
 }

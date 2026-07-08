@@ -1,4 +1,4 @@
-import { getSwitchboardValue } from '@/hooks/useSwitchboard'
+import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
 
 export const DESIGN_KIT_WIZARD_PROFILE = 'initial-agent-design-kit'
 
@@ -9,15 +9,15 @@ export function isDesignKitWizardProfile(profile: string | null | undefined): bo
 /**
  * Whether the Design Kit Wizard is active for this session.
  *
- * The agent profile is now server-resolved and JWT-only (the per-project
- * ProfileSelector and its store state were removed in main's
- * deterministic-resolution refactor). We read the same Switchboard value the
- * server uses to pick the profile — `appbuilder-agent-profile` — and treat the
- * value `initial-agent-design-kit` as "in the design kit agent".
+ * Reads the server-resolved agent profile from the app record
+ * (`useDevelopPageStore.app.agentProfile`), which is set at conversation-create
+ * from the JWT `agentProfile` claim and returned on `GET /apps/:id`. This makes
+ * the design-kit brand UI independent of the `appbuilder-agent-profile` Switchboard
+ * value, so the upcoming JWT-minted experiment cohort works correctly.
  *
- * Returns false during SSR (gasketData is client-only); the brand tab is
- * client-interactive, so the wizard resolves on hydration.
+ * Returns false until the app record loads; the brand tab is client-interactive
+ * so the wizard resolves on hydration.
  */
 export function useIsDesignKitWizardProfile(): boolean {
-  return isDesignKitWizardProfile(getSwitchboardValue('appbuilder-agent-profile'))
+  return isDesignKitWizardProfile(useDevelopPageStore((s) => s.app?.agentProfile))
 }

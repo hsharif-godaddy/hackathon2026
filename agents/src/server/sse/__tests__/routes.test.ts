@@ -4,6 +4,7 @@ import request from 'supertest'
 import { createSSERoutes } from '../routes.js'
 import { EventStreamRegistry } from '../EventStreamRegistry.js'
 import { getAgentFactory } from '../../agent-runtime.js'
+import { AppMetadataRepository } from '../../../database/repositories/AppMetadataRepository.js'
 
 const { mockSpan, mockStartSpan } = vi.hoisted(() => {
   const mockSpan = {
@@ -179,6 +180,86 @@ describe('SSE routes', () => {
       )
     })
 
+  })
+
+  describe('agentProfile freeze persistence', () => {
+    // createSSERoutes binds deps.authenticate as middleware at registration, so a
+    // profile must be injected via a fresh app, not a post-hoc deps.authenticate
+    // reassignment (mirrors the JWT-profile freeze test above).
+    it('persists agentProfile to app_metadata when isNew and agentProfile is set', async () => {
+      const mergeSpy = vi.spyOn(AppMetadataRepository.prototype, 'merge').mockReturnValue({})
+
+      const profileDeps = {
+        ...createMockDeps(),
+        authenticate: vi.fn(function (req: any, _res: any, next: any) {
+          req.agentContext = { siteId: 'abcdefghij', agentProfile: 'initial-agent-design-kit' }
+          next()
+        }),
+      }
+      const profileApp = express()
+      profileApp.use(express.json())
+      profileApp.use('/api/conversations', createSSERoutes(profileDeps as any))
+
+      await request(profileApp).post('/api/conversations/abcdefghij').send({})
+
+      expect(mergeSpy).toHaveBeenCalledWith('abcdefghij', { agentProfile: 'initial-agent-design-kit' })
+      mergeSpy.mockRestore()
+    })
+
+    it('does NOT persist agentProfile when agentProfile is absent', async () => {
+      const mergeSpy = vi.spyOn(AppMetadataRepository.prototype, 'merge').mockReturnValue({})
+
+      await request(app).post('/api/conversations/abcdefghij').send({})
+
+      expect(mergeSpy).not.toHaveBeenCalled()
+      mergeSpy.mockRestore()
+    })
+
+    it('does NOT persist agentProfile when isNew is false (existing conversation)', async () => {
+      const mergeSpy = vi.spyOn(AppMetadataRepository.prototype, 'merge').mockReturnValue({})
+
+      const profileDeps = {
+        ...createMockDeps(),
+        authenticate: vi.fn(function (req: any, _res: any, next: any) {
+          req.agentContext = { siteId: 'abcdefghij', agentProfile: 'initial-agent-design-kit' }
+          next()
+        }),
+      }
+      profileDeps.lifecycle.getOrCreateForApp = vi.fn().mockResolvedValue({
+        conversation: { id: 'conv_existing', appId: 'abcdefghij', agentId: 'develop' },
+        isNew: false,
+      })
+      const profileApp = express()
+      profileApp.use(express.json())
+      profileApp.use('/api/conversations', createSSERoutes(profileDeps as any))
+
+      await request(profileApp).post('/api/conversations/abcdefghij').send({})
+
+      expect(mergeSpy).not.toHaveBeenCalled()
+      mergeSpy.mockRestore()
+    })
+
+    it('still returns 200 when merge throws (error must not propagate)', async () => {
+      vi.spyOn(AppMetadataRepository.prototype, 'merge').mockImplementation(() => {
+        throw new Error('db full')
+      })
+
+      const profileDeps = createMockDeps()
+      profileDeps.authenticate = vi.fn(function (req: any, _res: any, next: any) {
+        req.agentContext = { siteId: 'abcdefghij', agentProfile: 'initial-agent-design-kit' }
+        next()
+      })
+      const profileApp = express()
+      profileApp.use(express.json())
+      profileApp.use('/api/conversations', createSSERoutes(profileDeps as any))
+
+      const res = await request(profileApp).post('/api/conversations/abcdefghij').send({})
+
+      expect(res.status).toBe(200)
+      expect(res.body.conversationId).toBeDefined()
+
+      vi.restoreAllMocks()
+    })
   })
 
   describe('GET /api/conversations/:appId/:conversationId/stream', () => {
