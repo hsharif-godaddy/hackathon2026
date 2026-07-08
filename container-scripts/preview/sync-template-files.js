@@ -76,6 +76,12 @@ const SYNC_MANIFEST = [
     known_hashes: [],
     force: false,
   },
+  {
+    file: 'src/server/indexnow-key.test.ts',
+    description: 'Unit tests for the IndexNow ownership key loader',
+    known_hashes: [],
+    force: false,
+  },
   // Intentionally NOT in syncGroup: 'ssrMigration'. Unlike index.html (which agents edit
   // interactively), entry.ts is rewritten by the migrate-to-ssr-entry migration with
   // per-app API route imports — producing a unique hash per app. Including it in the group

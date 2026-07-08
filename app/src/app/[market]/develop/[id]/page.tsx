@@ -1858,7 +1858,7 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
                     {/* Settings Tab - Mount on first visit, then CSS-hide to preserve state */}
                     {(optimisticMobileTab === ChatTab.SETTINGS || visitedTabs.has(ChatTab.SETTINGS)) && (
                       <div
-                        className="absolute inset-0 flex flex-col transition-opacity duration-150"
+                        className="absolute inset-0 flex min-w-0 flex-col transition-opacity duration-150"
                         style={{
                           opacity: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 1 : 0,
                           pointerEvents: mobileMode === MobileMode.TOOLS && optimisticMobileTab === ChatTab.SETTINGS ? 'auto' : 'none',

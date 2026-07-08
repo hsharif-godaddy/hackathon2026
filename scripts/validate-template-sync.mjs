@@ -284,7 +284,7 @@ function parseManifest(content) {
   // prematurely terminate the array capture — the non-greedy backtracking
   // continues past in-comment `]` chars until it finds a `]` that is
   // syntactically followed by the next field.
-  const blockRe = /\{\s*file:\s*['"]([^'"]+)['"][\s\S]*?known_hashes:\s*\[([\s\S]*?)\]\s*,\s*force:\s*(true|false)/g;
+  const blockRe = /\{\s*file:\s*['"]([^'"]+)['"][\s\S]*?known_hashes:\s*\[([\s\S]*?)\]\s*,(?:\s*syncGroup:\s*['"][^'"]+['"],\s*)?\s*force:\s*(true|false)/g;
   let match;
   while ((match = blockRe.exec(content)) !== null) {
     const file = match[1];

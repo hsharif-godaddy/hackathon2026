@@ -87,6 +87,21 @@ describe('SettingsSection', () => {
     expect(screen.getByRole('button', { name: /Action Button/i })).toBeInTheDocument();
   });
 
+  it('should place button in header row when buttonInHeader is set', () => {
+    renderWithProviders(
+      <SettingsSection
+        title="Section Title"
+        buttonInHeader
+        button={<button data-testid="header-action">Header Action</button>}
+      >
+        <div data-testid="section-content">Content</div>
+      </SettingsSection>
+    );
+
+    expect(screen.getByTestId('header-action').parentElement).toHaveClass('shrink-0');
+    expect(screen.getByTestId('section-content')).toBeInTheDocument();
+  });
+
   it('should render both status and button', () => {
     const status: StatusValue = {
       type: 'success',

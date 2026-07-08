@@ -149,10 +149,11 @@ export default function SecurityPanel() {
   const isReady = serverState?.isReady && serverState?.url;
 
   return (
-    <Box gap="lg" className="@container">
+    <Box gap="md" className="@container min-w-0 w-full px-1">
       <SettingsSection
         title={t('builder_settings_security_title')}
         description={t('builder_settings_security_desc')}
+        buttonInHeader
         button={
           !isAnyAnalysisRunning && !isLoadingStoredReport && (
             <Button

@@ -11,6 +11,7 @@ import Tag from '@ux/tag';
 import text from '@ux/text';
 import TextLockup from '@ux/text-lockup';
 
+import { SettingsSectionTitle } from '@/app/[market]/develop/components/settings/SettingsTypography';
 import { ChatTab } from '@/app/[market]/develop/components/types';
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils';
 import { type StructuredVulnerability } from '@/app/api/security-analysis/transform-scan-result';
@@ -187,7 +188,8 @@ function SecurityVulnerabilityCard({
   return (
     <Card
       id={vulnerabilityId}
-      className="checkbox-card p-2.5"
+      className="checkbox-card min-w-0 max-w-full"
+      space={{ gap: 'sm', block: 'md', inline: 'md' }}
       as="checkbox"
       disabled={selectionDisabled}
       checked={isChecked}
@@ -210,27 +212,32 @@ function SecurityVulnerabilityCard({
           size="sm"
         />
       }
-      title={
-        <Box className="pb-1.5" gap="sm" orientation="vertical">
+    >
+        <Box orientation="vertical" gap="sm" className="min-w-0">
           <Tag
             className="shrink-0 self-start"
             emphasis={getSeverityTagEmphasis(vulnerability.severity)}
-            size="lg"
           >
             {severityLabel(vulnerability.severity, t)}
           </Tag>
-          <text.span as="title" className="min-w-0 break-words" size={0}>
-            {displayTitle(vulnerability, t)}
-          </text.span>
+          <TextLockup
+            className="min-w-0"
+            compact
+            size="xs"
+            textMaxWidth={false}
+            title={
+              <text.span size={0} className="min-w-0 break-words font-medium">
+                {displayTitle(vulnerability, t)}
+              </text.span>
+            }
+            titleLevel={4}
+          >
+            <text.p emphasis="passive" size={-1} className="min-w-0 break-words">
+              {impact}
+            </text.p>
+          </TextLockup>
         </Box>
-      }
-    >
-      {impact && (
-        <Box>
-          <text.span>{impact}</text.span>
-        </Box>
-      )}
-    </Card>
+      </Card>
   );
 }
 
@@ -453,58 +460,54 @@ export default function SecurityResults({
     visibleVulnerabilities.length > 0 || failedTests.length > 0;
 
   return (
-    <Box gap="lg" className="p-1.5">
+    <Box gap="md" className="min-w-0 w-full">
       {!hasIssues && <SecuritySuccessScreen />}
 
       {visibleVulnerabilities.length > 0 && (
-        <Box gap="md">
-          <Box gap="sm">
-            <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-center @md:justify-between @md:gap-4">
-              <div className="flex min-w-0 flex-col gap-1">
-                <div className="flex min-w-0 flex-row flex-wrap items-center gap-0.5">
-                  <text.h3 as="title" className="min-w-0" size={2}>
-                    {t('builder_settings_security_results_title')} ({visibleVulnerabilities.length})
-                  </text.h3>
+        <Box gap="sm">
+          <div className="flex min-w-0 flex-col gap-2 @md:flex-row @md:items-start @md:justify-between @md:gap-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <SettingsSectionTitle className="min-w-0">
+                {t('builder_settings_security_results_title')} ({visibleVulnerabilities.length})
+              </SettingsSectionTitle>
+              {isSecurityScanUiEnabled && (
+                <div className="flex min-w-0 flex-row items-center gap-1">
+                  <InfoIcon className="size-2.5 shrink-0 text-intents-ux-textSubtle-textColor" />
+                  <text.p emphasis="passive" size={-1} className="min-w-0">
+                    {t('builder_settings_security_fix_credits_note')}
+                  </text.p>
                 </div>
-                {isSecurityScanUiEnabled && (
-                  <div className="flex min-w-0 flex-row items-center gap-1 mb-2">
-                    <InfoIcon className="size-2.5 shrink-0 text-intents-ux-textSubtle-textColor" />
-                    <text.p emphasis="passive" size={-1} className="min-w-0">
-                      {t('builder_settings_security_fix_credits_note')}
-                    </text.p>
-                  </div>
-                )}
-              </div>
-              <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-nowrap @md:justify-end">
-                <Button
-                  className="min-w-0 w-full justify-center @md:w-auto"
-                  size="sm"
-                  design="secondary"
-                  disabled={isCreatingTodoList}
-                  onClick={handleSelectAll}
-                  data-eid={generateClickEID('security.analysis_panel.select_all')}
-                  text={areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
-                />
-                <Button
-                  className="min-w-0 w-full justify-center @md:w-auto"
-                  size="sm"
-                  design="primary"
-                  onClick={handleQuickFix}
-                  disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
-                  data-eid={generateClickEID('security.analysis_panel.ask_airo_to_fix')}
-                  text={
-                    isCreatingTodoList
-                      ? t('builder_common_creating')
-                      : t('builder_settings_security_ask_airo_to_fix')
-                  }
-                />
-              </div>
+              )}
+              <text.p emphasis="passive" size={-1} className="min-w-0">
+                {t('builder_settings_security_results_list_scope_note')}
+              </text.p>
             </div>
-            <text.p emphasis="passive" size={-1} className="min-w-0">
-              {t('builder_settings_security_results_list_scope_note')}
-            </text.p>
-          </Box>
-          <div className="grid gap-2">
+            <div className="grid min-w-0 w-full grid-cols-2 gap-2 @md:flex @md:w-auto @md:flex-row @md:flex-wrap @md:justify-end">
+              <Button
+                className="min-w-0 w-full justify-center @md:w-auto"
+                size="sm"
+                design="secondary"
+                disabled={isCreatingTodoList}
+                onClick={handleSelectAll}
+                data-eid={generateClickEID('security.analysis_panel.select_all')}
+                text={areAllSelected() ? t('builder_common_deselect_all') : t('builder_common_select_all')}
+              />
+              <Button
+                className="min-w-0 w-full justify-center @md:w-auto"
+                size="sm"
+                design="primary"
+                onClick={handleQuickFix}
+                disabled={checkedVulnerabilities.size === 0 || isCreatingTodoList}
+                data-eid={generateClickEID('security.analysis_panel.ask_airo_to_fix')}
+                text={
+                  isCreatingTodoList
+                    ? t('builder_common_creating')
+                    : t('builder_settings_security_ask_airo_to_fix')
+                }
+              />
+            </div>
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-2 py-1 @md:grid-cols-2">
             {visibleVulnerabilities.map((vulnerability, index) => {
               const vulnerabilityId = `vulnerability-${index}`;
               return (

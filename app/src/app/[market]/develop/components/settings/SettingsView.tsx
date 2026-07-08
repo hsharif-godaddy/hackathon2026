@@ -168,7 +168,7 @@ export default function SettingsView() {
 
   return (
     <div
-      className={`h-full flex flex-col overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto`}
+      className="mx-auto flex h-full w-full min-w-0 flex-col overflow-y-auto px-1.5 pb-2 md:max-w-7xl md:px-0.5"
       {...commanderMobileScrollRootProps}
     >
       <GitHubSyncSettingsSavedSnackbar placement="settings-view" />

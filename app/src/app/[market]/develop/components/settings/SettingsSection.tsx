@@ -6,6 +6,7 @@ import CircleFilledIcon from '@ux/icon/circle-filled';
 import Tag from '@ux/tag';
 import text from '@ux/text';
 
+import { SettingsPageTitle } from "@/app/[market]/develop/components/settings/SettingsTypography";
 import { StatusValue } from "@/app/[market]/develop/components/types";
 import { useTranslations } from "@/hooks/useTranslations";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ interface SettingsSectionProps {
   status?: StatusValue
   hideStatus?: boolean
   button?: React.ReactNode
+  buttonInHeader?: boolean
   className?: string
   isCollapsible?: boolean
   defaultOpen?: boolean
@@ -31,6 +33,7 @@ export default function SettingsSection({
   description,
   status,
   button,
+  buttonInHeader = false,
   hideStatus,
   className,
   isCollapsible = false,
@@ -45,7 +48,7 @@ export default function SettingsSection({
       blockAlignChildren="spaceBetween"
       className={cn(useDomainConnectLayout && 'w-full')}
     >
-      {title && <text.h3 as="title" data-testid={testId}>{title}</text.h3>}
+      {title && <SettingsPageTitle testId={testId}>{title}</SettingsPageTitle>}
       {showStatus && <SettingsSectionStatus status={status} />}
     </Box>
   ) : null
@@ -61,7 +64,7 @@ export default function SettingsSection({
     <div className="min-w-0">
       <Box gap="md">
         {isCollapsible && description && <text.p>{description}</text.p>}
-        {button && (
+        {button && (!buttonInHeader || isCollapsible) && (
           <Box gap="md" inlineAlignChildren="end" blockAlignChildren="end" className="w-full">
             {button}
           </Box>
@@ -87,9 +90,22 @@ export default function SettingsSection({
   }
 
   return (
-    <Box gap="md" className={cn(className, 'min-w-0', useDomainConnectLayout && 'w-full')}>
+    <Box gap="lg" className={cn(className, 'min-w-0', useDomainConnectLayout && 'w-full')}>
       {useDomainConnectLayout ? (
         header
+      ) : buttonInHeader ? (
+        <div className="flex flex-col gap-3 @md:flex-row @md:items-start @md:justify-between">
+          {header && (
+            <Box className="min-w-0 w-full flex-1">
+              {header}
+            </Box>
+          )}
+          {button && (
+            <div className="shrink-0 self-start">
+              {button}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="flex flex-col flex-1 @md:flex-row justify-between items-center @md:items-start gap-3 -mb-0.5">
           <Box className="flex-1 w-full">
