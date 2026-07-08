@@ -892,6 +892,16 @@ export class MessageExecutionService implements SubscriberLifecycleListener {
         throw err
       }
 
+      if (attributionPath === 'fix_intent') {
+        logger.info('grants.assessment.free_task_completed', {
+          appId,
+          budgetId,
+          sessionId,
+          taskType: assessmentOutcome?.result?.taskType,
+          appliedBudget: assessmentOutcome?.appliedBudget,
+        })
+      }
+
       if (attributionResult) {
         const attributionContext: AttributionContext = {
           budgetId,
