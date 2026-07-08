@@ -64,6 +64,8 @@ Tools registered in `src/tools/ai-lib-tools/index.ts` (`allAILibTools`). Each ag
 
 **Skills system:** Dynamic tool loading via `skillToolManager`; skills activated/deactivated per conversation; tool names use `{skillName}__{toolName}`. Skills live in `src/skills/` — see `src/skills/README.md`. **Skills must be self-contained:** routing data, intent phrases, and any per-skill metadata live in that skill's `skill.md` frontmatter — never in shared code keyed by skill name (see `src/skills/README.md` "Self-Containment Rule").
 
+**Turnscript (batched tool calls):** When enabled (Switchboard `appbuilder-turnscript` / `TURNSCRIPT_ENABLED`; off by default, DevelopAgent only), the model batches `readFile`/`grepSearch`/`directoryListing`/`str_replace_based_edit_tool` into ONE opaque `turnscript` tool call that runs in-container — the discrete calls never appear in the stream, so any code keyed on those tool names must handle the turnscript case. Its result must stay a plain string (the develop agent's failure fallback checks `typeof result === 'string'`), and the trailing `[turnscript:edited] <paths>` line is a contract with the app client. See `src/tools/ai-lib-tools/turnscript/README.md`.
+
 ### Skill Eval Validation
 
 When modifying skills, run the matching eval suite if one exists. See [SKILL-EVALS.md](SKILL-EVALS.md) for the full A/B comparison workflow.

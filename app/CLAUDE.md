@@ -152,6 +152,8 @@ Chat streaming uses Server-Sent Events as the **only** transport. (The legacy So
 
 **Out-of-band server pushes** (`build_phase`, `logo`, `video`, `oauth_result`, `media_caption`) arrive over the same SSE event stream via the agents `EventStreamRegistry`. `media_caption` is fanned out by `emitMediaCaption` (`agents/src/server/media-caption-emit.ts`) after async caption generation; `useSSEChat`'s `media_caption` branch calls `handleMediaCaptionNotification`, which patches the media-slot + manifest React Query caches so captions surface live without a manifest refetch (AIROBUILD-2680).
 
+**Turnscript hides tool calls (feature-gated, off by default).** When turnscript is enabled (Switchboard `appbuilder-turnscript` or `TURNSCRIPT_ENABLED`, optionally TLA-restricted — see the README below), the develop agent batches `readFile`/`grepSearch`/`directoryListing`/`str_replace_based_edit_tool` into ONE opaque `turnscript` tool call — the discrete calls never reach the stream. **Any client logic keyed on tool-call names** (`FILE_EDIT_TOOLS`, `FILE_OPERATION_TOOLS`, `mutatesFiles`, tool renderers, side-effect hooks) **must handle the turnscript case** or it silently no-ops on turnscript builds (this stuck the first-build overlay for 10 minutes). The files a run wrote are recoverable from the result's trailing `[turnscript:edited] <paths>` line — parse it with `parseTurnscriptEditedPaths` (`useInitialization.ts`), which `getEditPaths` already routes to. Full contract: `agents/src/tools/ai-lib-tools/turnscript/README.md`.
+
 Auth docs: `docs/ui-agents-authentication-architecture.md`.
 
 ## Shared Types (`@airo/shared`)
