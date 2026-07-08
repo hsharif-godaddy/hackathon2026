@@ -52,7 +52,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { FEEDBACK_ID } from '@/components/feedback/utils'
 import { UpgradeModal } from '@/components/upgrade/UpgradeModal'
 import { buildDynamicApiUrl, dynamicApiConfigService } from '@/config/dynamic-api'
-import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT, SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT } from '@/config/switchboard-flags'
+import { SWITCHBOARD_APPBUILDER_CMS_INLINE_EDIT } from '@/config/switchboard-flags'
 import { ChatProvider } from '@/contexts/ChatContext'
 import { prefetchGitRemoteConfig } from '@/hooks/github/useGitRemoteConfig'
 import { activateInitialBuildFunnel } from '@/hooks/shared/initialBuildFunnel'
@@ -230,19 +230,13 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
   const showDesignKitWizard = useIsDesignKitWizardProfile()
 
   // Immersive design-kit flow (AIROBUILD-2855): a chat-driven phase machine
-  // (gathering → brand → website → ready). The immersive layout (see useBuilderLayout)
-  // runs until phase is 'ready'; `wizardPhase` also drives whether the wizard panel docks.
+  // (gathering → brand → website → ready). Docking follows the server descriptor's pinned
+  // surface (`pinnedSurface.canvasId`), falling back to phase-timed docking
+  // (`wizardPhase === 'brand' || 'website'`) when no pinned surface is present.
   const wizardPhase = useWizardStore((s) => s.phaseByApp[appId])
-  const serverDrivenLayoutEnabled = useSwitchboard(SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT)
   const liveLayout = useWizardStore((s) => s.builderLayoutByApp[appId])
   const appRecordLayout = useDevelopPageStore((s) => s.app?.builderLayout)
-  // Whether to dock the design-kit wizard beside the immersive chat. Flag-gated like
-  // useBuilderLayout: when server-driven layout is ON, the server descriptor's pinned surface
-  // decides (the design-kit-build canvas → dock). Flag OFF → fall back to phase-timed docking
-  // (byte-identical to main). agents ships the descriptor unconditionally, so without the flag
-  // gate a flag-OFF reload would dock from the GET descriptor. The immersive layout itself is
-  // feature-agnostic — it docks whatever panel it's handed; the design-kit specifics live here.
-  const serverLayout = serverDrivenLayoutEnabled ? (liveLayout ?? appRecordLayout) : undefined
+  const serverLayout = liveLayout ?? appRecordLayout
   const pinnedSurface = serverLayout?.layout === 'immersive' ? serverLayout.pinnedSurface : undefined
   const dockDesignKitWizard: boolean = pinnedSurface
     ? isDesignKitBuildCanvas(pinnedSurface.canvasId)

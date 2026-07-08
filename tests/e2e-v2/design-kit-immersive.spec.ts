@@ -7,12 +7,12 @@
  * chrome hidden.
  *
  * NOT the homepage "Design Kit Gallery" (`appbuilder-design-kit-gallery`) — that's
- * a separate feature. The profile gate + layout are both CLIENT-read Switchboard
- * values, so we force `appbuilder-agent-profile=initial-agent-design-kit` and
- * `appbuilder-server-driven-layout` on (the `window.gasketData.switchboard`
- * injection pattern) and drive the real `PUT /api/design-kit/:id/wizard-step`
- * endpoint — which persists `designKitLayoutForPhase(true, phase)` and emits the
- * `builder_layout` SSE — then reload so the app-record path renders immersive.
+ * a separate feature. The profile gate is a CLIENT-read Switchboard value, so we
+ * force `appbuilder-agent-profile=initial-agent-design-kit` on (the
+ * `window.gasketData.switchboard` injection pattern) and drive the real
+ * `PUT /api/design-kit/:id/wizard-step` endpoint — which persists
+ * `designKitLayoutForPhase(true, phase)` and emits the `builder_layout` SSE — then
+ * reload so the app-record path renders immersive.
  * Deterministic: no LLM wait, no TLA account, no route mocks.
  *
  * Owns its app (drives layout state) — it can NOT use the read-only pool app.

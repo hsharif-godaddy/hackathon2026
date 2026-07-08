@@ -5,13 +5,12 @@ import { expect } from '@playwright/test';
 export const DESIGN_KIT_PROFILE = 'initial-agent-design-kit';
 
 /**
- * The two CLIENT-read Switchboard values that gate the design-kit guided flow:
- * the agent profile (→ `useIsDesignKitWizardProfile`) and server-driven layout.
+ * The CLIENT-read Switchboard value that gates the design-kit guided flow:
+ * the agent profile (→ `useIsDesignKitWizardProfile`).
  * Inject with `forceClientFlags` + verify live with `expectClientFlags` (both in ui.ts).
  */
 export const DESIGN_KIT_FLAGS: Record<string, string | boolean> = {
   'appbuilder-agent-profile': DESIGN_KIT_PROFILE,
-  'appbuilder-server-driven-layout': true,
 };
 
 /**

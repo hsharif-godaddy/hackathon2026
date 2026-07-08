@@ -31,5 +31,3 @@ export const SWITCHBOARD_APPBUILDER_SSO_MODAL_FALLBACK =
   'appbuilder-sso-modal-fallback';
 export const SWITCHBOARD_AAB_MCP_ELICITATION =
   'aab-mcp-elicitation';
-export const SWITCHBOARD_APPBUILDER_SERVER_DRIVEN_LAYOUT =
-  'appbuilder-server-driven-layout';

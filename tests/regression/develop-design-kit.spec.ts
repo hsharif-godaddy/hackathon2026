@@ -15,12 +15,11 @@
  * The profile gate is a CLIENT-read Switchboard value (`useIsDesignKitWizardProfile`
  * -> `getSwitchboardValue('appbuilder-agent-profile')`), so we force it on via the
  * `window.gasketData.switchboard` init-script injection (same pattern as
- * apps-page.spec.ts) and also force `appbuilder-server-driven-layout` on, then
- * drive the real `PUT /api/design-kit/:id/wizard-step` endpoint — which persists
- * `designKitLayoutForPhase(true, phase)` + emits the `builder_layout` SSE — so the
- * phase machine + layout transitions are deterministic: no LLM wait, no TLA
- * account, no route mocks. The full agent-driven build (real vibe pick -> brand /
- * website generation) is a future @tla-account job.
+ * apps-page.spec.ts), then drive the real `PUT /api/design-kit/:id/wizard-step`
+ * endpoint — which persists `designKitLayoutForPhase(true, phase)` + emits the
+ * `builder_layout` SSE — so the phase machine + layout transitions are
+ * deterministic: no LLM wait, no TLA account, no route mocks. The full agent-driven
+ * build (real vibe pick -> brand / website generation) is a future @tla-account job.
  *
  * Template: develop-brand-book.spec.ts (create-app -> assert testids -> cleanup).
  */
@@ -64,8 +63,7 @@ test.describe('initial-agent-design-kit guided flow', () => {
     // App create (+ optional generation) plus three drive+reload cycles — give it headroom.
     testInfo.setTimeout(AI_RESPONSE_TIMEOUT_MS + 120_000);
 
-    // Force the design-kit agent profile (the flow's gate) + server-driven layout
-    // (deterministic descriptor-driven docking) on, before the first navigation.
+    // Force the design-kit agent profile (the flow's gate) on, before the first navigation.
     await forceClientFlags(page, DESIGN_KIT_FLAGS);
     await page.addInitScript(() => {
       localStorage.setItem('airo-intro-tour-shown', 'true');
