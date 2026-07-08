@@ -4,27 +4,24 @@ import { useMemo } from 'react'
 
 import { useSubscription } from '@/hooks/useSubscription'
 import { useSwitchboard } from '@/hooks/useSwitchboard'
-import { isProfessionalOrAbove } from '@/lib/paywall/shared'
+import { isProfessionalOrAbove, isStarterOrAbove } from '@/lib/paywall/shared'
 import { SubscriptionPlan } from '@/types/credits'
 import { getPlanFromSubscription } from '@/utils/credits'
 
 interface UseCanTransferOwnershipResult {
-  /** Show Transfer in project/app action menus (Professional / Ultimate only). */
+  /** Show Transfer in project/app action menus (Starter / Professional / Ultimate). */
   showTransfer: boolean
-  /** User can initiate transfer without upgrading. */
+  /** User can initiate transfer without upgrading (Professional / Ultimate only). */
   canInitiateTransfer: boolean
   /** True while the feature flag or subscription plan is still loading. */
   isLoading: boolean
 }
 
 /**
- * Transfer ownership is available on Professional / Ultimate only. Other plans
- * (including Starter) do not see Transfer.
- *
- * `showTransfer` and `canInitiateTransfer` are always equal today — both plans
- * that can see Transfer can also initiate it. They're kept as separate fields
- * because a future plan tier may need to show the menu item while gating the
- * actual transfer behind an upgrade prompt.
+ * Transfer ownership menu item is visible to Starter / Professional / Ultimate.
+ * Starter users see a Diamond icon upgrade indicator and are redirected to the
+ * upgrade modal on click — they cannot initiate a transfer directly.
+ * Only Professional / Ultimate can initiate a transfer.
  */
 export function useCanTransferOwnership(): UseCanTransferOwnershipResult {
   const isTransferEnabled = useSwitchboard('appbuilder-transfer-ownership')
@@ -43,7 +40,7 @@ export function useCanTransferOwnership(): UseCanTransferOwnershipResult {
 
     const canInitiate = isProfessionalOrAbove(plan)
 
-    return { showTransfer: canInitiate, canInitiateTransfer: canInitiate }
+    return { showTransfer: isStarterOrAbove(plan), canInitiateTransfer: canInitiate }
   }, [isTransferEnabled, isSubscriptionLoading, subscription])
 
   return { showTransfer, canInitiateTransfer, isLoading }

@@ -15,6 +15,8 @@ import { useProjectsView } from '@/app/[market]/projects/lib/useProjectsView'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useTranslations } from '@/hooks/useTranslations'
 import { SiteInfo } from '@/lib/control-plane/types'
+import { PAYWALL_ITC } from '@/lib/paywall/shared'
+import { usePaywallStore } from '@/stores/usePaywallStore'
 import { generateClickEID } from '@/utils/instrumentation'
 
 interface ProjectsLayoutProps {
@@ -32,11 +34,17 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
   const [isSelectionActive, setIsSelectionActive] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const isMobile = useIsMobile()
-  // `showTransfer` (menu visibility) and `transferAllowed` (initiation eligibility)
-  // are always equal today, but every transfer-related gate below derives from
-  // this combined flag so a future show-but-not-allowed combo can't leave the
-  // "Transfer" menu item visible while the dialog silently refuses to open.
+  const openUpgradeModal = usePaywallStore((state) => state.openUpgradeModal)
   const shouldShowTransferMenu = showTransfer || transferAllowed
+  const transferNeedsUpgrade = showTransfer && !transferAllowed
+
+  const handleTransfer = (site: SiteInfo): void => {
+    if (!transferAllowed) {
+      openUpgradeModal('transfer.upgrade', PAYWALL_ITC.UPGRADE)
+    } else {
+      setTransferTarget(site)
+    }
+  }
 
   useEffect(() => {
     setIsMounted(true)
@@ -126,7 +134,8 @@ export default function ProjectsLayout({ sites, transferAllowed = false, showTra
         gridClassName="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         showTabs={false}
         showTransfer={showTransfer}
-        onTransfer={setTransferTarget}
+        transferNeedsUpgrade={transferNeedsUpgrade}
+        onTransfer={handleTransfer}
         onSelectionActiveChange={setIsSelectionActive}
       />
 

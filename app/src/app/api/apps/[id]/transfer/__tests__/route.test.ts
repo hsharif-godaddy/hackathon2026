@@ -9,6 +9,13 @@ const mockCancelTransfer = vi.fn();
 const mockUnpublishApp = vi.fn();
 const mockCreateToken = vi.fn();
 const mockEnforce = vi.fn();
+const mockGetAccountSubscription = vi.fn();
+
+vi.mock('@/lib/paywall/server-provider', () => ({
+  ServerPaywallProvider: class {
+    getAccountSubscription() { return mockGetAccountSubscription(); }
+  },
+}));
 
 vi.mock('@/lib/authz-fga/enforce-venture-relation', () => ({
   enforceAabMultiUserVentureRelation: (...args: any[]) => mockEnforce(...args),
@@ -121,6 +128,38 @@ describe('/api/apps/[id]/transfer', function transferRouteTests() {
     mockCreateToken.mockResolvedValue({ token: 'agent-jwt-token' });
     mockFetch.mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
+    mockGetAccountSubscription.mockResolvedValue({ plan: 'professional' });
+  });
+
+  describe('POST - Plan gate', function postPlanGateTests() {
+    it('returns 403 for Starter plan users', async function starterPlanDenied() {
+      mockGetAccountSubscription.mockResolvedValue({ plan: 'starter' });
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error).toMatch(/Professional or Ultimate/);
+      expect(mockEnforce).not.toHaveBeenCalled();
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when no subscription exists', async function noSubscriptionDenied() {
+      mockGetAccountSubscription.mockResolvedValue(undefined);
+
+      const { POST } = await import('../route');
+      const response = await POST(
+        createPostRequest('app-1', { targetEmail: 'test@godaddy.com' }),
+        { params: Promise.resolve({ id: 'app-1' }) }
+      );
+
+      expect(response.status).toBe(403);
+      expect(mockInitiateTransfer).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST - FGA transfer gate', function postFgaGateTests() {

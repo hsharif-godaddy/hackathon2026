@@ -11,7 +11,10 @@ import { type CustomerAuthContext, withCustomerAuth } from '@/lib/customer-auth'
 import { getJWTService } from '@/lib/jwt-service';
 import { AiroHttpError, AiroMgmtClient } from '@/lib/mgmt-airo';
 import { mgmtAiro401Response } from '@/lib/mgmt-airo/auth-error';
+import { ServerPaywallProvider } from '@/lib/paywall/server-provider';
+import { isProfessionalOrAbove } from '@/lib/paywall/shared';
 import { logger } from '@/lib/request-context';
+import { SubscriptionPlan } from '@/types/credits';
 
 const MGMT_AIRO_BASE_URL = process.env.MGMT_AIRO_BASE_URL || 'https://mgmt.nstk.net';
 
@@ -105,6 +108,14 @@ export const POST = withCustomerAuth(async (
 
     if (!body.targetEmail) {
       return NextResponse.json({ error: 'targetEmail is required' }, { status: 400 });
+    }
+
+    const paywallProvider = new ServerPaywallProvider(authContext.jwt, authContext.user.customerId, request.headers);
+    const accountSubscription = await paywallProvider.getAccountSubscription();
+    const currentPlan = accountSubscription?.plan ?? SubscriptionPlan.None;
+    if (!isProfessionalOrAbove(currentPlan)) {
+      logger.warn('transfer.initiate.planGate', { appId: id, plan: currentPlan });
+      return NextResponse.json({ error: 'Transfer requires a Professional or Ultimate plan' }, { status: 403 });
     }
 
     const adapter = getControlPlaneAdapter();

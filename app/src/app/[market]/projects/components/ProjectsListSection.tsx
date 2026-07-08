@@ -26,6 +26,7 @@ interface ProjectsListSectionProps {
   gridClassName: string
   showTabs?: boolean
   showTransfer?: boolean
+  transferNeedsUpgrade?: boolean
   onTransfer?: (site: SiteInfo) => void
   onSelectionActiveChange?: (active: boolean) => void
 }
@@ -35,6 +36,7 @@ export default function ProjectsListSection({
   gridClassName,
   showTabs = true,
   showTransfer = false,
+  transferNeedsUpgrade = false,
   onTransfer,
   onSelectionActiveChange,
 }: ProjectsListSectionProps) {
@@ -218,6 +220,7 @@ export default function ProjectsListSection({
               site={site}
               view="list"
               showTransfer={showTransfer}
+              transferNeedsUpgrade={transferNeedsUpgrade}
               onTransfer={onTransfer}
               selected={selectedIds.has(site.id)}
               selectionActive={selectionActive}
@@ -233,6 +236,7 @@ export default function ProjectsListSection({
               site={site}
               view="grid"
               showTransfer={showTransfer}
+              transferNeedsUpgrade={transferNeedsUpgrade}
               onTransfer={onTransfer}
               selected={selectedIds.has(site.id)}
               selectionActive={selectionActive}

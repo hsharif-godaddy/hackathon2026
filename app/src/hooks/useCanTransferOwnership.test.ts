@@ -57,7 +57,7 @@ describe('useCanTransferOwnership', () => {
     expect(result.current.canInitiateTransfer).toBe(true)
   })
 
-  it('hides transfer for Starter plan users', () => {
+  it('shows transfer for Starter plan users but blocks initiation', () => {
     vi.mocked(useSubscription).mockReturnValue({
       data: { plan: SubscriptionPlan.Starter } as never,
       subscriptions: [],
@@ -70,7 +70,7 @@ describe('useCanTransferOwnership', () => {
 
     const { result } = renderHookWithProviders(() => useCanTransferOwnership())
 
-    expect(result.current.showTransfer).toBe(false)
+    expect(result.current.showTransfer).toBe(true)
     expect(result.current.canInitiateTransfer).toBe(false)
   })
 

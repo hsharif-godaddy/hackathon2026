@@ -6,6 +6,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import Box from '@ux/box'
 import Button from '@ux/button'
 import Growl from '@ux/growl'
+import DiamondIcon from '@ux/icon/diamond'
 import EditIcon from '@ux/icon/edit'
 import LinkIcon from '@ux/icon/link'
 import ShareIcon from '@ux/icon/share'
@@ -72,6 +73,8 @@ interface ProjectCardProps {
   site: SiteInfo
   view?: ViewMode
   showTransfer?: boolean
+  /** When true, the Transfer item is visible but requires an upgrade to execute. */
+  transferNeedsUpgrade?: boolean
   onTransfer?: (site: SiteInfo) => void
   /** Whether this card is currently selected (multi-select mode). */
   selected?: boolean
@@ -85,6 +88,7 @@ export default function ProjectCard({
   site,
   view = 'grid',
   showTransfer = false,
+  transferNeedsUpgrade = false,
   onTransfer,
   selected = false,
   selectionActive = false,
@@ -325,6 +329,9 @@ export default function ProjectCard({
             id: 'transfer',
             label: transferLabel,
             icon: <LinkIcon />,
+            trailingIcon: transferNeedsUpgrade ? (
+              <DiamondIcon className="size-3 text-intents-ux-feedbackHighContrastPremium-feedbackColor" />
+            ) : undefined,
             onClick: () => runSheetAction(handleTransferClick),
           } satisfies ProjectCardAction,
         ]
@@ -426,7 +433,7 @@ export default function ProjectCard({
               onClick={handleTransferClick}
               data-eid={generateClickEID('projects.card.transfer')}
             >
-              <TransferMenuLabel label={transferLabel} />
+              <TransferMenuLabel label={transferLabel} needsUpgrade={transferNeedsUpgrade} />
             </MenuItem>
           )}
           {!isLogo && isPublished && (
