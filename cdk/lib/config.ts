@@ -262,6 +262,7 @@ const devConfig: Config = {
     'arn:aws:iam::694282668781:role/airobuilde-custom-KatanaEnvironment1017GlobalEcsTaskRole6285482A', // stripe-service dev-private
   ],
   // dev-private NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  // Note: dev-private has no us-east-1 NAT entry in the Gateway IPs table.
   stripeGatewayEgressCidrs: [
     '54.68.138.152/32', // dev-private NAT us-west-2
     '160.153.192.0/20', // TGW ARIN
@@ -386,9 +387,10 @@ const testConfig: Config = {
   stripeServiceTaskRoleArns: [
     'arn:aws:iam::269423819739:role/airobuilde-custom-KatanaEnvironment1080GlobalEcsTaskRole41B00ECB', // stripe-service test
   ],
-  // test NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  // test NAT (PCP 6702, us-west-2 + us-east-1) + TGW ranges (required for public-origin services)
   stripeGatewayEgressCidrs: [
     '54.189.94.106/32', // test NAT us-west-2
+    '3.218.245.60/32',  // test NAT us-east-1
     '160.153.192.0/20', // TGW ARIN
     '118.139.184.0/22', // TGW APNIC
     '146.255.32.0/22',  // TGW RIPE
@@ -503,14 +505,29 @@ const prodConfig: Config = {
   stripeServiceTaskRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment1081GlobalEcsTaskRole31913DA4', // stripe-service prod
   ],
-  // prod NAT (PCP 6702, us-west-2) + TGW ranges (required for public-origin services)
+  // prod NAT (PCP 6702, all regions) + TGW ranges (required for public-origin services)
   stripeGatewayEgressCidrs: [
-    '52.10.30.90/32',   // prod NAT us-west-2
-    '44.239.96.28/32',  // prod NAT us-west-2
-    '35.85.83.18/32',   // prod NAT us-west-2
-    '160.153.192.0/20', // TGW ARIN
-    '118.139.184.0/22', // TGW APNIC
-    '146.255.32.0/22',  // TGW RIPE
+    '52.10.30.90/32',    // prod NAT us-west-2
+    '44.239.96.28/32',   // prod NAT us-west-2
+    '35.85.83.18/32',    // prod NAT us-west-2
+    '3.229.75.252/32',   // prod NAT us-east-1
+    '54.88.232.130/32',  // prod NAT us-east-1
+    '54.235.153.103/32', // prod NAT us-east-1
+    '54.151.178.220/32', // prod NAT ap-southeast-1
+    '13.251.245.234/32', // prod NAT ap-southeast-1
+    '52.221.104.142/32', // prod NAT ap-southeast-1
+    '3.109.224.85/32',   // prod NAT ap-south-1
+    '65.0.153.31/32',    // prod NAT ap-south-1
+    '3.9.220.156/32',    // prod NAT eu-west-2
+    '18.135.156.128/32', // prod NAT eu-west-2
+    '18.168.113.61/32',  // prod NAT eu-west-2
+    '34.251.42.78/32',   // prod NAT eu-west-1
+    '54.75.75.175/32',   // prod NAT eu-west-1
+    '3.64.241.33/32',    // prod NAT eu-central-1
+    '3.72.119.192/32',   // prod NAT eu-central-1
+    '160.153.192.0/20',  // TGW ARIN
+    '118.139.184.0/22',  // TGW APNIC
+    '146.255.32.0/22',   // TGW RIPE
   ],
   investigatorInvokerRoleArns: [
     'arn:aws:iam::644094189644:role/airobuilde-custom-KatanaEnvironment7797GlobalEcsTaskRole2CAC93CD', // console-service prod
