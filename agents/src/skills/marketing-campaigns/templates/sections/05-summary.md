@@ -15,22 +15,22 @@ marketing-campaigns__campaignPlanCreate({
   campaignType: 'landing-page', // always 'landing-page'; never 'content-only'
   landingPagePath: '/[slug]',
   plannedContent: [
-    { assetType: 'landing-page', title: '[title]', scheduledDate: '[date]', status: 'scheduled', contentPreview: '[description]' },
-    { assetType: 'blog', title: '[title]', scheduledDate: '[date]', status: 'scheduled', contentPreview: '[what was created]' },
-    { assetType: 'social', title: '[title]', scheduledDate: '[date]', status: 'draft', contentPreview: '[post angle]' },
-    { assetType: 'email', title: '[subject line]', scheduledDate: '[date]', status: 'draft', contentPreview: '[email purpose]' },
-    { assetType: 'ad', title: '[headline]', status: 'draft', contentPreview: '[platform and targeting]' }
+    { assetType: 'landing-page', title: '[title]', scheduledDate: '[date]', contentPreview: '[description]' },
+    { assetType: 'blog', title: '[title]', scheduledDate: '[date]', contentPreview: '[what was created]' },
+    { assetType: 'social', title: '[title]', scheduledDate: '[date]', contentPreview: '[post angle]' },
   ]
 })
 ```
 
-**Set `status` honestly — nothing is published yet.** At this point the campaign is built but NOT launched. Use `'scheduled'` for built site assets (landing page, blog) that go live when the user publishes the site, and `'draft'` for social/email/ad that still need the user to publish or copy them out. **NEVER use `'published'` or `'sent'`** — those statuses claim work the user hasn't done yet (the site still needs Publish, social needs a connection, the campaign needs Launch). The badge on the card shows this status verbatim, so an inaccurate value is a false claim to the customer.
+(Supported channels are landing page, blog, and Facebook social only — do not add `email` or `ad` assets.)
+
+**Status is system-owned — you do NOT set it.** There is no `status` field to pass: at SUMMARY the system persists every asset as `'draft'` (nothing is scheduled or published pre-launch), and the launch flow (RUBICON-448) is what advances the state. The card's badge reflects this system value, so it never claims work the user hasn't done yet.
 
 For each **social** asset in `plannedContent`, also pass `rawContent` — the exact `message`, `hashtags`, `callToAction`, and `platform` you generated with `socialPostCreate`. This stores the editable draft so the user can revise or delete the post before launch. Non-social assets do not take `rawContent`.
 
 ## 2. Present the summary — honestly, with any pending customer actions FIRST
 
-**NEVER say the campaign OR any of its assets are "live", "launched", "running", "active", or "published."** Nothing is public until the user **publishes the site** — that is what makes the landing page and blog reachable; social/email/ads also still need the user to connect, copy, or send them. (**Launch Campaign** only marks the campaign active on the card; it does NOT publish anything.) **Open your summary with the "built and ready to launch" framing** (e.g. *"Your [Campaign Name] campaign is built and ready to launch."*) — do NOT open with "X is live" or "all assets are live." The landing page and blog exist in the build/preview but are NOT publicly live until the site is published; built ≠ live, so never tag a built asset as already live.
+**NEVER say the campaign OR any of its assets are "live", "launched", "running", "active", or "published."** Nothing is public until the user **publishes the site** — that is what makes the landing page and blog reachable; social posts also still need the user to connect an account and publish them. (**Launch Campaign** only marks the campaign active on the card; it does NOT publish anything.) **Open your summary with the "built and ready to launch" framing** (e.g. *"Your [Campaign Name] campaign is built and ready to launch."*) — do NOT open with "X is live" or "all assets are live." The landing page and blog exist in the build/preview but are NOT publicly live until the site is published; built ≠ live, so never tag a built asset as already live.
 
 If VERIFY found pending customer actions (e.g. social accounts not connected), call them out BEFORE the launch framing. Do NOT imply everything will go live automatically when a connection is still needed.
 
@@ -44,8 +44,6 @@ Here's everything that was created:
 - **Landing page** at /[slug] — [description] (built — goes live when you publish your site)
 - **Blog posts** — [titles and dates] (built — go live when you publish your site)
 - **Social posts** — [angles and dates] — ready to publish [once connected]
-- **Email copy** — [subjects and dates] — copy into your email tool
-- **Ad copy** — [platforms and headlines] — copy into your ad manager
 
 > **Publish your site to make the landing page live.** Generating the landing page adds it to your site, but visitors can't reach it until you **publish your site**. The page is only live during your campaign window ([start] to [end]).
 

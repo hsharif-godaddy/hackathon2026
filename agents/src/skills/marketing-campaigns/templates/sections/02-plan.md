@@ -14,7 +14,7 @@ Heuristics:
 - **Short-term sale / discount** → landing page + a few social posts (optionally a banner/coupon on top); usually skip the blog (too slow for a short window).
 - **Product / feature launch** → landing page + blog + social.
 - **Awareness / SEO** → landing page + blog + social.
-- Include **email / ads** only when they clearly fit the goal; they are inline copy the user runs elsewhere.
+- **Supported channels: landing page, blog, and Facebook social ONLY.** Email, ads, Instagram, and Google Business Profile are out of scope — do not plan them.
 - **Sells in person** (derive it — an in-person/hybrid vertical like restaurant / service / health, or a physical address / opening hours on the site) → bias toward local visibility and foot-traffic goals and local-oriented content, and have the landing page surface hours/address/directions where relevant.
 - Set `campaignType: 'landing-page'` (a landing page is always built). NEVER use `'content-only'`. For a sale banner, keep `campaignType: 'landing-page'` and add a `{ assetType: 'banner' }` asset alongside the landing page.
 - Do NOT propose a channel the business can't use yet (e.g. social with no Meta connection). VERIFY checks prerequisites, but don't plan assets that will be unusable.
@@ -78,8 +78,6 @@ marketing-campaigns__campaignPlanPropose({
     { assetType: 'landing-page', title: '[page title]', description: '[what it contains]' },
     { assetType: 'blog', title: '[blog title]', scheduledDate: '[YYYY-MM-DD]', description: '[angle]' },
     { assetType: 'social', title: '[post angle]', scheduledDate: '[YYYY-MM-DD]', description: '[platform]' },
-    { assetType: 'email', title: '[subject line]', scheduledDate: '[YYYY-MM-DD]' },
-    { assetType: 'ad', title: '[headline]', description: '[platform and targeting]' },
   ]
 })
 ```

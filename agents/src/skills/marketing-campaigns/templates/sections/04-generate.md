@@ -1,11 +1,12 @@
 # GENERATE Phase
 
-**Execute content creation in this order. No deviation.** The build is LAST and only runs AFTER steps 1–3. (The business signal — vertical / salesType / location — is persisted primarily by `campaignPlanPropose` in PLAN; skill.md's GENERATE runs a backstop `brandIdentity` set for the rare case the plan params were dropped.)
+**Execute content creation in this order. No deviation.** The build is LAST and only runs AFTER steps 1–2. (The business signal — vertical / salesType / location — is persisted primarily by `campaignPlanPropose` in PLAN; skill.md's GENERATE runs a backstop `brandIdentity` set for the rare case the plan params were dropped.)
 
 1. **Social posts** (`socialPostCreate`) — FIRST content step. **Only when social is in the plan** (i.e. the `socialPostCreate` tool is available to you). If social is disabled (tool absent), skip this step and start at step 2.
-2. **Email + ad copy** — inline, in the same response.
-3. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before you build its content.
-4. **Build the landing page + blog** (edit the scaffolded page, create the blog files) — LAST. This step creates CODE FILES only; social posts (if any), email, and ad copy MUST already be created (steps 1–2) — do not defer any of them past this point. When social is in the plan, NEVER build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
+2. **Scaffold landing page** (`marketing-campaigns__campaignScaffoldPage`) — writes the landing page template (with countdown timer + date-gating) to the workspace. The landing page MUST exist before you build its content.
+3. **Build the landing page + blog** (edit the scaffolded page, create the blog files) — LAST. This step creates CODE FILES only; social posts (if any) MUST already be created (step 1) — do not defer them past this point. When social is in the plan, NEVER build before the social posts exist. After the build completes, continue to SUMMARY to save and show the campaign card.
+
+**Supported channels:** the campaign channels are landing page, blog, and Facebook social ONLY. Email, ads, Instagram, and Google Business Profile are out of scope — do not write email/ad copy or create posts for those channels.
 
 (The canonical slug was sanitized and frozen in the `campaignPlanPropose` response — use `plan.landingPageSlug` for all references. All CTAs across channels MUST point to `/lp/[canonicalSlug]`, never a bare top-level route. Do NOT invent a different slug — reuse the exact value from the approved plan.)
 
@@ -49,53 +50,29 @@ socialPostCreate({
 })
 ```
 
-This renders the social post widget. The user publishes to Facebook/Instagram directly from it.
-
-## Step 2: Write email + ad copy inline
-
-In the SAME message after calling `socialPostCreate`, write email and ad copy as formatted text. These are copy-paste content — AAB cannot send emails or submit ads.
-
-**Email format:**
-
-> ### Email [#]: "[Subject Line]"
-> **Send date:** [date] | **Angle:** [type]
-> **Preview text:** [40 chars]
->
-> [Headline]
->
-> [Body — 3-4 paragraphs: hook, offer, details, CTA]
->
-> **[CTA Button]** → /lp/[campaign-slug]
-
-**Ad format:**
-
-> ### Ad [#]: [Platform] — "[Headline]"
-> **Headline:** [25-40 chars] | **CTA:** [action]
-> **Description:** [90 chars]
-> **Targeting:** [audience, interests]
-> **Destination:** /lp/[campaign-slug]
+This renders the social post widget. The user publishes to Facebook directly from it.
 
 ---
 
-## Step 3: Scaffold landing page — `campaignScaffoldPage`
+## Step 2: Scaffold landing page — `campaignScaffoldPage`
 
-**Only do this AFTER steps 1–2 (social posts + email/ad) are done.** Call `marketing-campaigns__campaignScaffoldPage` with the campaign name, start date, end date, and landing page path from the approved plan.
+**Only do this AFTER Step 1 (social posts) is done.** Call `marketing-campaigns__campaignScaffoldPage` with the campaign name, start date, end date, and landing page path from the approved plan.
 
-This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. The landing page MUST exist before you build its content in Step 4. Do NOT skip this step.
+This tool writes the landing page at `src/pages/lp/[campaign-slug].tsx` with a countdown timer, coming-soon state, and sale-ended state already built in. The landing page MUST exist before you build its content in Step 3. Do NOT skip this step.
 
 ---
 
-## Step 4 (DO THIS LAST): Build the landing page + create blog
+## Step 3 (DO THIS LAST): Build the landing page + create blog
 
-**Only do this AFTER step 3 (campaignScaffoldPage) has completed.** Build everything below directly with your file tools (`str_replace_based_edit_tool`, `readFile`, `grepSearch`, `media`) in one focused pass.
+**Only do this AFTER step 2 (campaignScaffoldPage) has completed.** Build everything below directly with your file tools (`str_replace_based_edit_tool`, `readFile`, `grepSearch`, `media`) in one focused pass.
 
-**IMPORTANT CONTEXT:** The landing page already exists at `src/pages/lp/[campaign-slug].tsx` — it was written by `campaignScaffoldPage` in Step 3. The file has a working countdown timer, a "sale ended" state, and placeholder content. Your job is to EDIT this file — replace the placeholder section with creative campaign content while keeping the countdown timer and ended state intact.
+**IMPORTANT CONTEXT:** The landing page already exists at `src/pages/lp/[campaign-slug].tsx` — it was written by `campaignScaffoldPage` in Step 2. The file has a working countdown timer, a "sale ended" state, and placeholder content. Your job is to EDIT this file — replace the placeholder section with creative campaign content while keeping the countdown timer and ended state intact.
 
 **CRITICAL BUILD RULES:**
 - The landing page ALREADY EXISTS with a countdown timer — EDIT it (replace placeholder content), do NOT create a new file from scratch
 - The blog MUST be discoverable — set up a blog index/listing page + route if one doesn't exist, and link it from the nav. Never leave a post as an orphaned page reachable only by direct URL.
 - NEVER create a summary/planning markdown file
-- NEVER put social posts, emails, or ads into a file (those were already created in Step 1–2)
+- NEVER put social posts into a file (those were already created in Step 1)
 
 **What to build:**
 
@@ -133,19 +110,16 @@ FIRST, make the blog discoverable:
 
 THEN create [N] blog post(s):
 - Write markdown files to `src/content/data/blog/[slug].md`. If the app is page-based, create the post page AND make sure it appears on the blog index.
-- Required frontmatter for markdown posts (EXACT format — the marketing calendar reads these fields):
+- Required frontmatter for markdown posts (EXACT format):
 ---
-id: 'post-<12 random lowercase chars>'
 title: '[title]'
 publishedAt: '[YYYY-MM-DDTHH:MM:SSZ]'
 published: true
 tags: ['tag1', 'tag2']
 excerpt: '[1-2 sentence summary]'
-campaignId: '[campaign id]'
 ---
 - `slug` is derived from the filename (`<slug>.md`); add an explicit `slug:` field only to override it.
-- **`id` field:** generate a fresh `post-<nanoid>` for every post (12 random lowercase letters/digits). This is the stable handle — `contentRefId` in the campaign plan equals this `id`. Never derive the id from the slug/title; never change it after creation.
-- **`campaignId`:** set to the campaign's id so posts can be filtered by campaign.
+- **`id` and `campaignId`:** do NOT author these. The system stamps the canonical `content_ref_id` (`blog-post-<id>`) and the owning `campaignId` into the post's frontmatter at SUMMARY (`campaignPlanCreate` → `setFrontmatterField`); they're the stable, system-owned handles used for lookup, campaign filtering, and delete cleanup. Never derive them from the slug/title.
 - No separate `posts.json` registration — the content-plugin discovers all files in `src/content/data/blog/` automatically.
 - Each post: 400-600 words, headings, tips, CTA linking to the campaign landing page.
 - One file per post — never combine posts into one file, never skip a post.
@@ -162,9 +136,9 @@ Brand voice: [voice]
 === WHAT NOT TO CREATE ===
 - Do NOT create any file in a marketing/ directory
 - Do NOT create summary/planning documents
-- Do NOT put social posts, email copy, or ad copy into any file (already created in Steps 1–2)
+- Do NOT put social posts into any file (already created in Step 1)
 - Do NOT recreate src/pages/lp/[campaign-slug].tsx from scratch — EDIT it (replace the placeholder content)
-- Do NOT edit src/routes.tsx — the /lp/:slug landing-page route is permanent and registered by the scaffold tool.
+- Do NOT edit src/routes.tsx **for the landing page** — the /lp/:slug route is permanent and registered by the scaffold tool. (The blog index route below is still yours to add — see "Files to CREATE".)
 - Files to EDIT: src/pages/lp/[campaign-slug].tsx
 - Files to CREATE: blog index/listing + route (if missing), and the blog post(s)
 ```

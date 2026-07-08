@@ -238,11 +238,22 @@ export class SimpleCampaignRepository {
   }
 
   delete(id: string): boolean {
-    const info: Database.RunResult = this.db.prepare(`DELETE FROM simple_campaign WHERE id = ?`).run(id);
-    if (info.changes > 0) {
+    // Delete the campaign and all of its dependent rows atomically. `simple_campaign_content`
+    // cascades via its FK, but `social_posts` (campaign_id has no FK) and `marketing_utm`
+    // (simple_campaign_id is ON DELETE SET NULL) would otherwise be left orphaned — so remove
+    // them explicitly here. (Landing-page files + manifest entry are cleaned in the route,
+    // which has workspace access.)
+    const runDelete: (campaignId: string) => number = this.db.transaction((campaignId: string): number => {
+      this.db.prepare(`DELETE FROM social_posts WHERE campaign_id = ?`).run(campaignId);
+      this.db.prepare(`DELETE FROM marketing_utm WHERE simple_campaign_id = ?`).run(campaignId);
+      const info: Database.RunResult = this.db.prepare(`DELETE FROM simple_campaign WHERE id = ?`).run(campaignId);
+      return info.changes;
+    });
+    const changes: number = runDelete(id);
+    if (changes > 0) {
       logger.info('simpleCampaign.deleted', { id });
     }
-    return info.changes > 0;
+    return changes > 0;
   }
 
   /**

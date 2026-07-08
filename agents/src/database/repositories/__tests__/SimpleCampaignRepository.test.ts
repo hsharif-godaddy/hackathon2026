@@ -50,6 +50,9 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
     };
     mockDb = {
       prepare: vi.fn().mockReturnValue(mockStatement),
+      // better-sqlite3's transaction(fn) returns a function that runs fn in a transaction;
+      // the mock just returns fn so delete()'s cascade runs against the mocked statements.
+      transaction: vi.fn((fn: (...args: unknown[]) => unknown) => fn),
     };
 
     const { getDatabase } = await import('../../connection.js');
@@ -207,6 +210,23 @@ describe('SimpleCampaignRepository', function campaignRepoTests() {
     it('should return false when campaign not found', function notDeleted() {
       mockStatement.run.mockReturnValue({ changes: 0 });
       expect(repo.delete('nonexistent')).toBe(false);
+    });
+
+    it('cascades deletes to social_posts and marketing_utm, removing the campaign row last', function cascade() {
+      mockStatement.run.mockReturnValue({ changes: 1 });
+
+      repo.delete('camp_casc');
+
+      const prepared: string[] = mockDb.prepare.mock.calls.map((call: unknown[]): string => call[0] as string);
+      expect(prepared).toEqual(expect.arrayContaining([
+        expect.stringContaining('DELETE FROM social_posts WHERE campaign_id = ?'),
+        expect.stringContaining('DELETE FROM marketing_utm WHERE simple_campaign_id = ?'),
+        expect.stringContaining('DELETE FROM simple_campaign WHERE id = ?'),
+      ]));
+      // The campaign row delete runs last — its changes count is what drives the boolean result.
+      expect(prepared[prepared.length - 1]).toContain('DELETE FROM simple_campaign WHERE id = ?');
+      expect(mockDb.transaction).toHaveBeenCalled();
+      expect(mockStatement.run).toHaveBeenCalledWith('camp_casc');
     });
   });
 

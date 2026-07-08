@@ -10,6 +10,7 @@ import { Logger } from '../../logging/index.js'
 import type { AuthenticatedRequest } from '../middleware/jwt-auth.js'
 import { validateAppOwnership } from '../middleware/app-ownership.js'
 import { buildCampaignToken } from '../../utils/campaign-utm-signer.js'
+import { deleteCampaignLandingPages, deleteCampaignBlogPosts } from '../../skills/marketing-campaigns/landing-pages.js'
 
 const router: IRouter = Router()
 const campaignRepo = new SimpleCampaignRepository()
@@ -258,12 +259,28 @@ router.post('/:id/:campaignId/launch', (req: Request, res: Response): void => {
 /**
  * DELETE /campaigns/:id/:campaignId - Delete campaign
  */
-router.delete('/:id/:campaignId', (req: Request, res: Response): void => {
+router.delete('/:id/:campaignId', async (req: Request, res: Response): Promise<void> => {
   try {
     const existing = resolveCampaignForApp(req, res)
     if (!existing) return
 
     campaignRepo.delete(existing.id)
+
+    // Best-effort: remove the campaign's workspace files — landing-page .tsx + manifest entries,
+    // and blog-post .md files (matched by frontmatter campaignId). The DB rows are gone via
+    // campaignRepo.delete; these files live in the workspace, which only the route can reach. A
+    // cleanup failure must not fail the delete — the campaign is already gone.
+    try {
+      await deleteCampaignLandingPages(req.params.id as string, existing.id)
+    } catch (cleanupError) {
+      logger.warn('campaigns.delete.landing_cleanup_failed', { campaignId: existing.id, error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
+    }
+    try {
+      await deleteCampaignBlogPosts(req.params.id as string, existing.id)
+    } catch (cleanupError) {
+      logger.warn('campaigns.delete.blog_cleanup_failed', { campaignId: existing.id, error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
+    }
+
     res.json({ success: true })
   } catch (error) {
     logger.error('campaigns.delete.error', { error: error instanceof Error ? error.message : String(error) })

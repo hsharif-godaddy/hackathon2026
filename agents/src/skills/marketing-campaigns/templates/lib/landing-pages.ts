@@ -6,7 +6,7 @@
  * metadata used to gate the single permanent /lp/:slug route.
  */
 export interface LandingPage {
-  /** Stable id from landing-pages.json (`page-<nanoid>`) — the handle a campaign references. */
+  /** Stable id from landing-pages.json (`lp-<nanoid>`) — the handle a campaign references. */
   id?: string;
   /** URL-friendly identifier. */
   slug: string;

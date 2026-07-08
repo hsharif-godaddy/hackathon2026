@@ -4,7 +4,7 @@
  * Pages are listed in `landing-pages.json` (the manifest: a stable `id`, slug,
  * `componentPath`, publish date, and status). The page content is rich TSX —
  * each `.tsx` in this folder default-exports a React page component. The manifest
- * `id` (`page-<nanoid>`) is the stable handle a marketing campaign references
+ * `id` (`lp-<nanoid>`) is the stable handle a marketing campaign references
  * (simple_campaign_content.contentRefId) — slugs can change, ids should not.
  *
  * Modules are imported EAGERLY (NOT lazy) so server-side renderToString resolves
@@ -20,7 +20,7 @@ import { setLandingPages, getPageBySlug, type LandingPage as LandingPageData } f
 import { landingPages as landingPagesManifest } from 'virtual:content';
 
 export interface PageManifestEntry {
-  /** Stable id (`page-<nanoid>`) — what a campaign references (contentRefId). */
+  /** Stable id (`lp-<nanoid>`) — what a campaign references (contentRefId). */
   id: string;
   /** URL slug used for the /lp/:slug route. */
   slug: string;

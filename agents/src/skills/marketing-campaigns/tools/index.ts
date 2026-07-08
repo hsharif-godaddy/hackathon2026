@@ -16,6 +16,7 @@ import { workspaceScopeFromAppId, customerIdFromContext } from '../../../memory/
 import { createForWorkspace } from '../../../workspace/index.js'
 import { readJsonSidecar } from '../../../workspace/json-sidecar.js'
 import type { WorkspaceFiles } from '../../../workspace/files.js'
+import { MANIFEST_PATH, type LandingPageManifestEntry } from '../landing-pages.js'
 import { isDevSupervisorNotFound } from '../../../services/DevSupervisorClient.js'
 import { serializeSocialRawContent } from '../../../services/social/social-raw-content.js'
 import type { SocialRawContent } from '../../../services/social/social-raw-content.js'
@@ -28,9 +29,12 @@ import { customAlphabet } from 'nanoid'
 
 const logger = Logger.create({ component: 'marketing-campaigns-tools' })
 
-// Stable page id (`page-<nanoid>`), same alphabet/length as social post ids.
+// Stable, self-describing artifact ids (typed prefix + nanoid), mirroring social_posts ids.
+// These become the campaign content row's content_ref_id — the handle publish/edit/schedule
+// look up, independent of filename. Always system-generated here, never authored by the LLM.
 const nano = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 12)
-const generatePageId = (): string => `page-${nano()}`
+const generateLandingPageId = (): string => `lp-${nano()}`
+const generateBlogPostId = (): string => `blog-post-${nano()}`
 
 function jsonArray<T extends z.ZodTypeAny>(field: string, schema: T): z.ZodType<z.output<T>> {
   return z.preprocess((v: unknown): unknown => {
@@ -141,18 +145,7 @@ const LANDING_PAGE_INFRA: ReadonlyArray<{ dest: string; template: string }> = [
   { dest: 'src/lib/landing-pages.ts', template: '../templates/lib/landing-pages.ts' },
 ]
 
-const MANIFEST_PATH = 'src/content/data/landingPages.json'
 const ROUTES_PATH = 'src/routes.tsx'
-
-interface LandingPageManifestEntry {
-  id: string
-  slug: string
-  componentPath: string
-  startDate?: string
-  endDate?: string
-  status?: 'published' | 'scheduled' | 'draft'
-  campaignId?: string
-}
 
 export function sanitizeSlug(raw: string): string {
   const slug = raw
@@ -192,6 +185,36 @@ async function readWorkspaceFile(files: WorkspaceFiles, filePath: string): Promi
   }
 }
 
+// Set a single field in a markdown post's YAML frontmatter (`<key>: '<value>'`), returning the
+// updated markdown. Surgical on purpose: only the matching line is replaced (or inserted at the top
+// of the block); every other frontmatter line is left byte-for-byte intact. We do NOT round-trip
+// through a YAML serializer — the customer app's content plugin uses a lightweight parser, and
+// reflowing arrays/dates it may not round-trip could break rendering. If the file has no frontmatter
+// block, one is prepended. This is how the campaign stamps its system-owned blog `id`
+// (blog-post-<id>) and `campaignId` onto the post the build wrote — so the file, the DB
+// content_ref_id, and the delete-cleanup match all agree, without depending on the LLM to author them.
+export function setFrontmatterField(markdown: string, key: string, value: string): string {
+  const fmMatch: RegExpMatchArray | null = markdown.match(/^(---[ \t]*\n)([\s\S]*?)(\n---[ \t]*(?:\n|$))/)
+  if (!fmMatch) {
+    return `---\n${key}: '${value}'\n---\n\n${markdown}`
+  }
+  const open: string = fmMatch[1] ?? ''
+  const body: string = fmMatch[2] ?? ''
+  const close: string = fmMatch[3] ?? ''
+  const rest: string = markdown.slice(fmMatch[0].length)
+  const fieldLine: RegExp = new RegExp(`^${key}:[ \\t]*.*$`, 'm')
+  const newBody: string = fieldLine.test(body) ? body.replace(fieldLine, `${key}: '${value}'`) : `${key}: '${value}'\n${body}`
+  return `${open}${newBody}${close}${rest}`
+}
+
+// Read the `id` from a markdown post's YAML frontmatter (the value setFrontmatterField stamped, e.g.
+// `blog-post-<nanoid>`), or null if absent. Used so the blog marketing_utm row keys on the same
+// stable id as simple_campaign_content.content_ref_id (joinable, consistent with social).
+export function frontmatterId(markdown: string): string | null {
+  const match: RegExpMatchArray | null = markdown.match(/^id:[ \t]*['"]?([^'"\n]+?)['"]?[ \t]*$/m)
+  return match?.[1] ?? null
+}
+
 // Write each infra file only if it does not already exist (idempotent).
 async function ensureInfraFiles(files: WorkspaceFiles, filesWritten: string[]): Promise<void> {
   for (const { dest, template } of LANDING_PAGE_INFRA) {
@@ -216,12 +239,37 @@ async function upsertManifestEntry(
     path: MANIFEST_PATH,
     fallback: [],
     validate: (parsed) => Array.isArray(parsed) ? (parsed as LandingPageManifestEntry[]) : null,
+    onMalformed: (error: SyntaxError): LandingPageManifestEntry[] => {
+      logger.warn('campaign.manifest.malformed', { path: MANIFEST_PATH, op: 'upsert', error: error.message })
+      return []
+    },
   })
   const idx = manifest.findIndex(e => e.slug === entry.slug)
   if (idx >= 0) manifest[idx] = entry
   else manifest.push(entry)
   await files.write({ path: MANIFEST_PATH, content: JSON.stringify(manifest, null, 2) })
   filesWritten.push(MANIFEST_PATH)
+}
+
+// Stamp the owning campaign id onto the landing-page manifest entry for `slug`. campaignScaffoldPage
+// runs before the campaign exists (campaignId omitted there), so this is called at SUMMARY once the
+// id is known. It's the key the delete cleanup uses to find a campaign's landing page(s).
+async function stampManifestCampaignId(files: WorkspaceFiles, slug: string, campaignId: string): Promise<void> {
+  const manifest: LandingPageManifestEntry[] = await readJsonSidecar<LandingPageManifestEntry[]>({
+    files,
+    path: MANIFEST_PATH,
+    fallback: [],
+    validate: (parsed) => Array.isArray(parsed) ? (parsed as LandingPageManifestEntry[]) : null,
+    onMalformed: (error: SyntaxError): LandingPageManifestEntry[] => {
+      logger.warn('campaign.manifest.malformed', { path: MANIFEST_PATH, op: 'stamp', campaignId, error: error.message })
+      return []
+    },
+  })
+  const idx: number = manifest.findIndex((e: LandingPageManifestEntry): boolean => e.slug === slug)
+  const entry: LandingPageManifestEntry | undefined = idx >= 0 ? manifest[idx] : undefined
+  if (!entry || entry.campaignId === campaignId) return
+  manifest[idx] = { ...entry, campaignId }
+  await files.write({ path: MANIFEST_PATH, content: JSON.stringify(manifest, null, 2) })
 }
 
 // Inject the single permanent /lp/:slug route into routes.tsx if not present.
@@ -279,7 +327,7 @@ async function scaffoldLandingPage(appId: string, landingPagePath: string, start
   }
 
   const slug = sanitizeSlug(landingPagePath)
-  const pageId = generatePageId()
+  const pageId = generateLandingPageId()
   const filesWritten: string[] = []
   let routeStatus: 'wired' | 'already-present' | 'failed' = 'failed'
 
@@ -320,8 +368,12 @@ async function scaffoldLandingPage(appId: string, landingPagePath: string, start
   return { success, filesWritten, pageId, routeStatus }
 }
 
+// M1 scope: campaigns produce landing page + blog + social only. `email` and `ad` were
+// intentionally removed from the asset types for Milestone 1 and are planned for a future
+// milestone (inline email/ad copy — see RUBICON-443). Re-add them to this enum (and to the
+// GENERATE flow) when that milestone is picked up.
 const plannedAssetSchema = z.object({
-  assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Content channel'),
+  assetType: z.enum(['landing-page', 'banner', 'blog', 'social']).describe('Content channel'),
   title: z.string().describe('Asset title or headline'),
   scheduledDate: z.string().optional().describe('Planned publish date (YYYY-MM-DD)'),
   description: z.string().optional().describe('Brief description of what this content covers'),
@@ -503,12 +555,15 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build has completed.`
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     landingPageSlug: z.string().optional().describe('The canonical campaign slug (the same plan.landingPageSlug used at PLAN — the /lp/<slug> all CTAs point to). Pass it so social post captions get UTM tracking added to their landing-page link.'),
     plannedContent: jsonArray('plannedContent', z.array(z.object({
-      assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Content channel'),
+      assetType: z.enum(['landing-page', 'banner', 'blog', 'social']).describe('Content channel'),
       title: z.string().describe('Planned content title or headline'),
+      slug: z.string().optional().describe("For BLOG assets: the post's <slug>.md filename (the same slug you pass to campaignApplyBlogUtm). Used only to LOCATE the post file — the system then snapshots its markdown into raw_content and stamps a stable, system-generated content_ref_id (blog-post-<id>) into its frontmatter. You do NOT author the id. Not needed for landing (uses landingPageSlug) or social."),
       scheduledDate: z.string().optional().describe('Planned publish date (YYYY-MM-DD)'),
       contentPreview: z.string().optional().describe('Brief description of what this content will cover'),
       imageUrl: z.string().optional().describe('URL of the image used for this content piece'),
-      status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe("Publish status shown on the card badge. Use 'scheduled' for built site assets (landing page, blog) that go out at launch, and 'draft' for social/email/ad that still need the user to publish. Never 'published' before the user launches."),
+      // No `status` field: at generation the system forces every asset to 'draft' (nothing is
+      // scheduled/published pre-launch; the launch flow — RUBICON-448 — advances the state), so an
+      // agent-supplied status would only ever be ignored. Persisted status is set at line ~703.
       rawContent: z.object({
         message: z.string().describe('The post caption/body text.'),
         hashtags: z.array(z.string()).describe('Hashtags without the # symbol.'),
@@ -559,6 +614,31 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build has completed.`
     // social drafts then materialize undecorated.
     const campaignSlug: string | undefined = args.landingPageSlug ? sanitizeSlug(args.landingPageSlug) : undefined
     const publishedUrl: string | null = await resolvePublishedUrlFromToolContext(appId, context)
+    // One workspace handle for the loop: read the built blog/landing artifacts back into
+    // raw_content, and stamp campaignId onto the landing manifest after the loop. null if unbound.
+    const workspace = createForWorkspace(appId, 'preview')
+
+    // The landing page's stable content_ref_id is the lp-<nanoid> the scaffold wrote into
+    // landingPages.json — read it once here so the landing content row can reference it. (Blog
+    // ids are minted per-post inside the loop and stamped into each post's frontmatter.)
+    let landingPageId: string | undefined
+    if (workspace && campaignSlug) {
+      try {
+        const manifest: LandingPageManifestEntry[] = await readJsonSidecar<LandingPageManifestEntry[]>({
+          files: workspace.files,
+          path: MANIFEST_PATH,
+          fallback: [],
+          validate: (parsed) => Array.isArray(parsed) ? (parsed as LandingPageManifestEntry[]) : null,
+          onMalformed: (error: SyntaxError): LandingPageManifestEntry[] => {
+            logger.warn('campaign.manifest.malformed', { appId, campaignId: campaign.id, path: MANIFEST_PATH, op: 'summary-lookup', error: error.message })
+            return []
+          },
+        })
+        landingPageId = manifest.find((e: LandingPageManifestEntry): boolean => e.slug === campaignSlug)?.id
+      } catch (error) {
+        logger.warn('campaign-plan-create.manifest_read_failed', { appId, campaignId: campaign.id, slug: campaignSlug, error: error instanceof Error ? error.message : String(error) })
+      }
+    }
 
     for (const item of args.plannedContent) {
       let imageUrl: string | undefined = item.imageUrl
@@ -585,21 +665,85 @@ CRITICAL TIMING: Call this tool ONLY in SUMMARY, after the build has completed.`
         isSocial && item.rawContent
           ? materializeSocialDraft(appId, campaign.id, item.rawContent, { publishedUrl, campaignSlug })
           : undefined
-      const rawContent: string | undefined = materialized ? serializeSocialRawContent(materialized.rawContent) : undefined
-      const contentRefId: string | undefined = materialized?.postId
+      // Persist two things per built asset — social, blog, and landing (RUBICON-443 design). Banner
+      // is plan-only (no built file), so it gets neither here and its pointer is wired later (above):
+      //  • raw_content = a snapshot of the actual built artifact — social → JSON draft,
+      //    blog → the post .md, landing → the .tsx.
+      //  • content_ref_id = the artifact's stable, SYSTEM-generated record id (never the LLM's):
+      //    social → social_posts.id (above), blog → blog-post-<nanoid> stamped into the post's
+      //    frontmatter here, landing → the lp-<nanoid> the scaffold wrote to landingPages.json.
+      // The blog/landing files were written by the build (before this SUMMARY step), so we
+      // read them back from the workspace. Best-effort: a missing/unreadable file leaves both null
+      // rather than failing the campaign save.
+      let rawContent: string | undefined = materialized ? serializeSocialRawContent(materialized.rawContent) : undefined
+      let contentRefId: string | undefined = materialized?.postId
+      // The stamped blog file is written only AFTER addContent succeeds (below), so a failed DB write
+      // never leaves a stamped .md with no matching content_ref_id row (invariant: file id == DB ref).
+      let pendingBlogWrite: { path: string; content: string } | undefined
+
+      if (workspace && item.assetType === 'blog' && item.slug) {
+        const blogPath: string = `src/content/data/blog/${item.slug}.md`
+        try {
+          const markdown: string | undefined = await readWorkspaceFile(workspace.files, blogPath)
+          if (markdown !== undefined) {
+            const blogId: string = generateBlogPostId()
+            // Stamp both the stable id (content_ref_id) AND campaignId — system-owned, so the delete
+            // cleanup can match the post to its campaign without depending on the LLM to author either.
+            const stamped: string = setFrontmatterField(setFrontmatterField(markdown, 'id', blogId), 'campaignId', campaign.id)
+            contentRefId = blogId
+            rawContent = stamped
+            pendingBlogWrite = { path: blogPath, content: stamped }
+          }
+        } catch (error) {
+          logger.warn('campaign-plan-create.blog_ref_failed', { appId, campaignId: campaign.id, slug: item.slug, error: error instanceof Error ? error.message : String(error) })
+        }
+      } else if (workspace && item.assetType === 'landing-page' && campaignSlug) {
+        try {
+          rawContent = await readWorkspaceFile(workspace.files, `src/pages/lp/${campaignSlug}.tsx`)
+        } catch (error) {
+          logger.warn('campaign-plan-create.landing_raw_content_failed', { appId, campaignId: campaign.id, slug: campaignSlug, error: error instanceof Error ? error.message : String(error) })
+        }
+        contentRefId = landingPageId ?? contentRefId
+      }
 
       const assetInput: CreateSimpleCampaignContentParams = {
         simpleCampaignId: campaign.id,
         assetType: item.assetType as SimpleCampaignContentType,
         title: item.title,
         scheduledDate: item.scheduledDate,
-        status: (item.status ?? (isSocial ? 'draft' : 'scheduled')) as SimpleCampaignContentStatus,
+        // Pre-launch, ALL content is a draft — regardless of what the agent proposes. Nothing is
+        // scheduled or published until the user explicitly launches; the launch flow (RUBICON-448)
+        // is what advances these statuses. System-owned lifecycle, not LLM-chosen. Mirrors the
+        // SUMMARY "nothing is live/scheduled until launch" rule in skill.md.
+        status: 'draft' as SimpleCampaignContentStatus,
         contentPreview: item.contentPreview,
         imageUrl,
         ...(rawContent !== undefined ? { rawContent } : {}),
         ...(contentRefId !== undefined ? { contentRefId } : {}),
       }
       campaignRepo.addContent(assetInput)
+
+      // DB row persisted — only now write the stamped blog file, so its frontmatter id/campaignId
+      // always have a matching content_ref_id row (a failed addContent above threw before this and
+      // left no stamped file). Best-effort: a failed write logs but does not fail the campaign save.
+      if (pendingBlogWrite && workspace) {
+        try {
+          await workspace.files.write(pendingBlogWrite)
+        } catch (error) {
+          logger.warn('campaign-plan-create.blog_stamp_write_failed', { appId, campaignId: campaign.id, path: pendingBlogWrite.path, error: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    }
+
+    // Stamp the campaign id onto the landing-page manifest entry now that the campaign exists —
+    // campaignScaffoldPage created the entry without it (the id wasn't known yet). This is the key
+    // the delete route uses to find and clean up this campaign's landing page(s). Best-effort.
+    if (campaignSlug && workspace) {
+      try {
+        await stampManifestCampaignId(workspace.files, campaignSlug, campaign.id)
+      } catch (error) {
+        logger.warn('campaign-plan-create.landing_stamp_failed', { appId, campaignId: campaign.id, slug: campaignSlug, error: error instanceof Error ? error.message : String(error) })
+      }
     }
 
     // Deterministically check social-connection prerequisite (local SQLite read,
@@ -646,8 +790,8 @@ This tool persists the campaign record together with its actual generated assets
     startDate: z.string().describe('Campaign start date (YYYY-MM-DD)'),
     endDate: z.string().describe('Campaign end date (YYYY-MM-DD)'),
     assets: jsonArray('assets', z.array(z.object({
-      assetType: z.enum(['landing-page', 'banner', 'blog', 'social', 'email', 'ad']).describe('Type of asset'),
-      externalRef: z.string().describe('Reference: file path for blogs/pages, post ID for social, or description for email/ad'),
+      assetType: z.enum(['landing-page', 'banner', 'blog', 'social']).describe('Type of asset'),
+      externalRef: z.string().describe('Reference: file path for blogs/pages, or post ID for social'),
       title: z.string().describe('Asset title or headline'),
       scheduledDate: z.string().optional().describe('Scheduled publish/send date (YYYY-MM-DD)'),
       status: z.enum(['draft', 'scheduled', 'published', 'failed']).optional().describe('Current status'),
@@ -808,11 +952,15 @@ export const campaignApplyBlogUtm: SkillToolDefinition = {
         continue
       }
 
-      // Mints the marketing_utm row (contentRefId = slug) and returns the relative decorated link.
+      // Mints the marketing_utm row keyed on the post's stable content id (the `blog-post-<id>`
+      // stamped into the frontmatter at campaignPlanCreate) so it matches simple_campaign_content
+      // .content_ref_id and stays joinable — same as social. Falls back to the slug only if the id
+      // isn't present (e.g. the post wasn't stamped). Returns the relative decorated link.
+      const contentRefId: string = frontmatterId(markdown) ?? post.slug
       const relativePath: string = decorateBlogCta({
         publishedUrl,
         campaignSlug: slug,
-        contentRefId: post.slug,
+        contentRefId,
         simpleCampaignId: campaign.id,
         topicSlug: post.topicSlug,
       }).relativePath

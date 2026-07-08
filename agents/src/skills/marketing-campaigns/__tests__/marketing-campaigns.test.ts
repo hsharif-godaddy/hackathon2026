@@ -95,7 +95,7 @@ vi.mock('../../../database/repositories/SimpleCampaignRepository.js', () => ({
   },
 }))
 
-import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, campaignApplyBlogUtm, sanitizeSlug, buildLandingPage } from '../tools/index.js'
+import { tools, campaignPlanPropose, campaignPlanCreate, campaignCreate, campaignScaffoldPage, campaignApplyBlogUtm, sanitizeSlug, buildLandingPage, setFrontmatterField, frontmatterId } from '../tools/index.js'
 import { createForWorkspace } from '../../../workspace/index.js'
 import { createStubWorkspaceFiles } from '../../../workspace/__tests__/test-workspace-files.js'
 import { setLandingPages, getPageBySlug, getPageById, getAllPages } from '../templates/lib/landing-pages.js'
@@ -429,9 +429,11 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(summary).toMatch(/built and ready to launch/i)
     // the example template must not model "live on your site/blog" wording (the model copied it)
     expect(summary).not.toMatch(/live on your (site|blog)/i)
-    // per-asset status honesty: nothing is 'published'/'sent' at summary time
-    expect(summary).toMatch(/Set .*status.* honestly/i)
-    expect(summary).toMatch(/never use .*published.* or .*sent/i)
+    // per-asset status honesty: status is system-owned and every asset is a draft pre-launch,
+    // so the summary never models a 'scheduled'/'published' status the customer hasn't earned
+    expect(summary).toMatch(/status is system-owned/i)
+    expect(summary).toMatch(/persists every asset as .*draft/i)
+    expect(summary).toMatch(/nothing is scheduled or published/i)
   })
 
   it('skill.md routes PLAN education into structured tool fields + keeps SUMMARY honesty', () => {
@@ -444,7 +446,7 @@ describe('marketing-campaigns orchestration contract', () => {
     expect(skill).toMatch(/`expectation`/)
     expect(skill).toMatch(/populate every field/i)
     // SUMMARY honesty unchanged
-    expect(skill).toMatch(/NEVER say the campaign or any asset is "live", "launched", or "published"/i)
+    expect(skill).toMatch(/NEVER say the campaign or any asset is "live", "launched", "published", "up", or "reachable"/i)
     expect(skill).toMatch(/built and ready to launch/i)
   })
 
@@ -731,7 +733,7 @@ describe('campaignScaffoldPage scaffold behavior', () => {
     }, enabledContext)
 
     expect(result.success).toBe(true)
-    expect(result.pageId).toMatch(/^page-[0-9a-z]{12}$/)
+    expect(result.pageId).toMatch(/^lp-[0-9a-z]{12}$/)
     expect(write).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'src/pages/lp/summer-sale.tsx' }),
     )
@@ -853,13 +855,15 @@ describe('campaignPlanCreate persists social raw_content', () => {
     }))
   })
 
-  it('leaves non-social assets without raw_content and keeps their status', async () => {
+  it('forces non-social assets to draft and leaves raw_content unset when no slug is given', async () => {
     await run(campaignPlanCreate, {
       name: 'Spring', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
       plannedContent: [{ assetType: 'blog', title: 'SEO post', status: 'scheduled', imageUrl: 'http://img' }],
     }, enabledContext)
 
-    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'blog', status: 'scheduled' }))
+    // Status is system-owned pre-launch: the 'scheduled' the caller passed is overridden to 'draft'.
+    expect(mockCampaignAddContent).toHaveBeenCalledWith(expect.objectContaining({ assetType: 'blog', status: 'draft' }))
+    // No slug -> no .md located -> raw_content stays unset.
     expect(mockCampaignAddContent.mock.calls[0][0].rawContent).toBeUndefined()
   })
 
@@ -1075,5 +1079,105 @@ describe('campaignPlanCreate schema — rawContent required for social assets (R
       plannedContent: [{ assetType: 'blog', title: 'SEO post' }],
     })
     expect(result.success).toBe(true)
+  })
+
+  it('strips an agent-supplied status (the field was removed; status is system-owned)', () => {
+    const result = campaignPlanCreate.parameters.safeParse({
+      ...base,
+      plannedContent: [{ assetType: 'blog', title: 'SEO post', status: 'scheduled' }],
+    })
+    expect(result.success).toBe(true)
+    expect((result as { data: { plannedContent: Array<Record<string, unknown>> } }).data.plannedContent[0]).not.toHaveProperty('status')
+  })
+})
+
+describe('setFrontmatterField / frontmatterId (frontmatter stamping)', () => {
+  it('replaces an existing field in place and leaves every other line intact', () => {
+    const md: string = "---\ntitle: 'Hello'\nid: 'old-id'\ntags: ['a', 'b']\n---\n\nBody text."
+    const out: string = setFrontmatterField(md, 'id', 'blog-post-xyz')
+    expect(out).toBe("---\ntitle: 'Hello'\nid: 'blog-post-xyz'\ntags: ['a', 'b']\n---\n\nBody text.")
+  })
+
+  it('inserts a missing field at the top of an existing frontmatter block', () => {
+    const md: string = "---\ntitle: 'Hello'\n---\n\nBody."
+    const out: string = setFrontmatterField(md, 'campaignId', 'camp_x')
+    expect(out).toBe("---\ncampaignId: 'camp_x'\ntitle: 'Hello'\n---\n\nBody.")
+  })
+
+  it('prepends a frontmatter block when the markdown has none', () => {
+    const out: string = setFrontmatterField('Just body, no frontmatter.', 'id', 'blog-post-1')
+    expect(out).toBe("---\nid: 'blog-post-1'\n---\n\nJust body, no frontmatter.")
+  })
+
+  it('round-trips: frontmatterId reads back the value setFrontmatterField stamped', () => {
+    const stamped: string = setFrontmatterField("---\ntitle: 'X'\n---\n\nB", 'id', 'blog-post-roundtrip')
+    expect(frontmatterId(stamped)).toBe('blog-post-roundtrip')
+  })
+
+  it('frontmatterId reads an unquoted id and returns null when absent', () => {
+    expect(frontmatterId('---\nid: blog-post-bare\n---\n\nB')).toBe('blog-post-bare')
+    expect(frontmatterId("---\ntitle: 'no id here'\n---\n\nB")).toBeNull()
+  })
+})
+
+describe('campaignPlanCreate stamps blog frontmatter and defers the write past the DB row (RUBICON-443)', () => {
+  const BLOG_PATH: string = 'src/content/data/blog/seo-post.md'
+  const BLOG_MD: string = "---\ntitle: 'SEO Post'\npublishedAt: '2026-07-02T00:00:00Z'\npublished: true\n---\n\nRead more and [grab the deal](/lp/summer)."
+
+  beforeEach(() => {
+    mockCampaignFindByAppId.mockReturnValue([])
+    mockCampaignCreate.mockReturnValue({ id: 'camp_x' })
+    mockCampaignTransition.mockReturnValue({ id: 'camp_x', status: 'ready' })
+    mockMediaSearch.searchMedia.mockResolvedValue({ success: false })
+    mockResolvePublishedUrl.mockResolvedValue(null)
+    mockCampaignAddContent.mockReset().mockReturnValue({})
+  })
+
+  function fakeBlogWorkspace(markdownByPath: Record<string, string>): { writes: { path: string; content: string }[] } {
+    const writes: { path: string; content: string }[] = []
+    vi.mocked(createForWorkspace).mockReturnValue({
+      files: createStubWorkspaceFiles({
+        readText: vi.fn(async ({ path }: { path: string }): Promise<string> => {
+          if (markdownByPath[path] === undefined) throw new Error('not found')
+          return markdownByPath[path]
+        }),
+        write: vi.fn(async (opts: { path: string; content: string }): Promise<unknown> => { writes.push(opts); return {} }),
+      }),
+    } as never)
+    return { writes }
+  }
+
+  it('stamps id + campaignId into the file and sets contentRefId to that same id', async () => {
+    const { writes } = fakeBlogWorkspace({ [BLOG_PATH]: BLOG_MD })
+
+    await run(campaignPlanCreate, {
+      name: 'Summer', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{ assetType: 'blog', title: 'SEO Post', slug: 'seo-post' }],
+    }, enabledContext)
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0].path).toBe(BLOG_PATH)
+    const stamped: string = writes[0].content
+    expect(stamped).toContain("campaignId: 'camp_x'")
+    expect(frontmatterId(stamped)).toMatch(/^blog-post-/)
+
+    const addContentArg: Record<string, unknown> = mockCampaignAddContent.mock.calls[0][0]
+    expect(addContentArg.assetType).toBe('blog')
+    expect(addContentArg.status).toBe('draft')
+    expect(addContentArg.contentRefId).toBe(frontmatterId(stamped))
+    expect(addContentArg.rawContent).toBe(stamped)
+  })
+
+  it('does not write the stamped file when the DB row write throws (no orphaned file id)', async () => {
+    const { writes } = fakeBlogWorkspace({ [BLOG_PATH]: BLOG_MD })
+    mockCampaignAddContent.mockImplementation((): never => { throw new Error('db unavailable') })
+
+    await expect(run(campaignPlanCreate, {
+      name: 'Summer', offer: 'Save', startDate: '2026-07-01', endDate: '2026-07-31',
+      plannedContent: [{ assetType: 'blog', title: 'SEO Post', slug: 'seo-post' }],
+    }, enabledContext)).rejects.toThrow('db unavailable')
+
+    // The write is deferred until after addContent succeeds, so a failed DB row leaves no stamped file.
+    expect(writes).toHaveLength(0)
   })
 })
