@@ -81,7 +81,7 @@ export function resolveCommerceMcpUrl(): string {
  *   - commerce.store:read
  *   - commerce.order:read
  *   - commerce.channel:read
- *   - apps.app-registry:write
+ *   - apps.app-registry:read, apps.app-registry:write
  *
  * Not registered on the client (do NOT add here without updating the
  * client registration first):
@@ -93,7 +93,7 @@ function buildCommerceServer(): McpServerConfig {
     id: 'commerce',
     displayName: 'GoDaddy Commerce',
     url: resolveCommerceMcpUrl(),
-    protocolVersion: '2024-11-05',
+    protocolVersion: '2025-11-25',
     initializeCapabilities: {},
     allowedScopes: [
       'commerce.product:read',
@@ -103,6 +103,7 @@ function buildCommerceServer(): McpServerConfig {
       'commerce.onboarding-application:write',
       'commerce.order:read',
       'commerce.channel:read',
+      'apps.app-registry:read',
       'apps.app-registry:write',
     ] as const,
     // Minimal authenticated token for discovery. search_tools itself

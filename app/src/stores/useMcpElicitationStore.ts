@@ -1,11 +1,8 @@
 /**
- * Transient bridge between future browser-driven MCP elicitation handling and
- * the above-composer panel that renders the current request.
+ * Transient bridge between browser-driven MCP elicitation handling and the
+ * above-composer panel that renders the current request.
  *
- * Nothing publishes requests in this PR. The store exists so the UI shell can be
- * mounted and tested independently before the MCP client-action loop is wired.
- * Future wiring must call cancel() on unmount/navigation so pending request()
- * promises always settle.
+ * Call cancel() on unmount/navigation so pending request() promises always settle.
  */
 
 import { create } from 'zustand'
@@ -34,7 +31,7 @@ export interface PendingMcpElicitation {
   values?: Record<string, ElicitContentValue>
   /** url mode: page the user opens out of band. */
   url?: string
-  /** Opaque server state; carried by the later client-action loop. */
+  /** Opaque server state echoed back by the client-action continuation loop. */
   requestState?: string
   /** url mode: true when the server asks the user to retry/check completion. */
   awaitingCompletion?: boolean

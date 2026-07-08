@@ -287,12 +287,15 @@ describe('POST /api/mcp/proxy', () => {
     expect(initCall[0]).toBe('https://mcp.commerce.api.dev-godaddy.com/mcp')
     const initHeaders = initCall[1].headers as Record<string, string>
     expect(initHeaders['Authorization']).toBe('Bearer oauth-token')
-    expect(initHeaders['MCP-Protocol-Version']).toBe('2024-11-05')
+    expect(initHeaders['MCP-Protocol-Version']).toBe('2025-11-25')
     expect(initHeaders['X-Airo-App-Id']).toBe('app-1')
     const initBody = JSON.parse(initCall[1].body as string)
     expect(initBody.method).toBe('initialize')
     expect(initBody.params.capabilities).toEqual({})
-    expect(mockCheckSwitchboardFlag).not.toHaveBeenCalled()
+    expect(mockCheckSwitchboardFlag).toHaveBeenCalledWith(
+      'aab-mcp-elicitation',
+      expect.any(NextRequest),
+    )
 
     const initializedCall = fetchSpy.mock.calls[1]! as [string, RequestInit]
     const initializedHeaders = initializedCall[1].headers as Record<string, string>
@@ -316,10 +319,12 @@ describe('POST /api/mcp/proxy', () => {
       }),
     )
 
-    const POST = await getRouteHandler()
+    const POST = await getRouteHandler(
+      registerCommerceServerWithProtocol('2024-11-05', 'commerce-2024'),
+    )
     const res = await POST(
       makeRequest({
-        serverId: 'commerce',
+        serverId: 'commerce-2024',
         request: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
       }),
     )
@@ -470,6 +475,7 @@ describe('POST /api/mcp/proxy', () => {
     expect(scopes).toContain('commerce.product:write')
     expect(scopes).toContain('commerce.store:read')
     expect(scopes).toContain('commerce.order:read')
+    expect(scopes).toContain('apps.app-registry:read')
     expect(scopes).toContain('apps.app-registry:write')
     // Still outside the approved scope ceiling -> must not be requested.
     expect(scopes).not.toContain('commerce.store:create')

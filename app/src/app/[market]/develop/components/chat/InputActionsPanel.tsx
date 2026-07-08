@@ -168,7 +168,10 @@ function McpElicitationCard({
   const t = useTranslations()
   const pending = useMcpElicitationStore((state) => state.pending)
   const respond = useMcpElicitationStore((state) => state.respond)
+  const cancel = useMcpElicitationStore((state) => state.cancel)
   const [expanded, setExpanded] = useState(true)
+  const cancelOnUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const settledRef = useRef(false)
   const requestedByLabel = t(
     'builder_mcp_elicitation_requested_by',
     { server: pending?.serverDisplayName ?? '' },
@@ -181,10 +184,34 @@ function McpElicitationCard({
   )
 
   useEffect(() => {
+    settledRef.current = false
     if (pending?.id) setExpanded(true)
-  }, [pending?.id])
+  }, [pending])
+
+  useEffect(() => {
+    if (cancelOnUnmountTimerRef.current) {
+      clearTimeout(cancelOnUnmountTimerRef.current)
+      cancelOnUnmountTimerRef.current = null
+    }
+
+    return () => {
+      if (settledRef.current) return
+      const pendingAtUnmount = pending
+      cancelOnUnmountTimerRef.current = setTimeout(() => {
+        if (useMcpElicitationStore.getState().pending === pendingAtUnmount) {
+          cancel()
+        }
+        cancelOnUnmountTimerRef.current = null
+      }, 0)
+    }
+  }, [cancel, pending])
 
   if (!pending) return null
+
+  const respondAndMarkSettled = (result: Parameters<typeof respond>[0]) => {
+    settledRef.current = true
+    respond(result)
+  }
 
   const body: ReactNode =
     pending.mode === 'url' && pending.url ? (
@@ -214,8 +241,8 @@ function McpElicitationCard({
           'Only HTTPS links can be opened from this request.',
         )}
         invalidUrlLabel={t('builder_mcp_elicitation_invalid_url', undefined, 'This link is not a valid URL.')}
-        onAccept={() => respond({ action: 'accept' })}
-        onCancel={() => respond({ action: 'cancel' })}
+        onAccept={() => respondAndMarkSettled({ action: 'accept' })}
+        onCancel={() => respondAndMarkSettled({ action: 'cancel' })}
       />
     ) : pending.requestedSchema ? (
       <McpElicitationFormPanel
@@ -269,8 +296,8 @@ function McpElicitationCard({
           validEmail: t('builder_mcp_elicitation_valid_email', undefined, 'Enter a valid email'),
           validUrl: t('builder_mcp_elicitation_valid_url', undefined, 'Enter a valid URL'),
         }}
-        onSubmit={(content) => respond({ action: 'accept', content })}
-        onSkip={() => respond({ action: 'decline' })}
+        onSubmit={(content) => respondAndMarkSettled({ action: 'accept', content })}
+        onSkip={() => respondAndMarkSettled({ action: 'decline' })}
       />
     ) : null
 

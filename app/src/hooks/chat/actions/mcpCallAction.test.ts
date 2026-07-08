@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useMcpElicitationStore } from '@/stores/useMcpElicitationStore'
 import { mcpCallAction } from './mcpCallAction'
 import type { ClientActionContext } from './types'
 
@@ -29,6 +30,7 @@ describe('mcpCallAction', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
+    useMcpElicitationStore.setState({ pending: null, resolve: null })
     fetchSpy = vi.spyOn(globalThis, 'fetch')
   })
 
@@ -223,4 +225,341 @@ describe('mcpCallAction', () => {
       ).rejects.toThrow(/empty response/)
     })
   })
+
+  describe('MCP elicitation continuations', () => {
+    it('publishes a form elicitation, waits for accept, and retries with inputResponses', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          mockProxyResponse({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              resultType: 'input_required',
+              requestState: 'state-1',
+              inputRequests: {
+                taxRate: {
+                  method: 'elicitation/create',
+                  params: {
+                    message: 'Confirm tax rate',
+                    requestedSchema: {
+                      type: 'object',
+                      properties: {
+                        rate: { type: 'number', title: 'Rate' },
+                      },
+                      required: ['rate'],
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          mockProxyResponse({ jsonrpc: '2.0', id: 1, result: { saved: true } }),
+        )
+
+      const resetActionTimeout = vi.fn()
+      const resultPromise = mcpCallAction(
+        {
+          serverId: 'commerce',
+          request: {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            id: 1,
+            params: { name: 'configure_tax', arguments: { country: 'US' } },
+          },
+        },
+        { ...baseContext, resetActionTimeout },
+        'client-action-1',
+      )
+
+      const pending = await waitForPendingElicitation()
+      expect(pending).toMatchObject({
+        id: 'taxRate',
+        serverId: 'commerce',
+        serverDisplayName: 'commerce',
+        toolName: 'configure_tax',
+        mode: 'form',
+        message: 'Confirm tax rate',
+        requestState: 'state-1',
+      })
+      expect(pending.requestedSchema?.properties.rate).toEqual({ type: 'number', title: 'Rate' })
+      expect(resetActionTimeout).toHaveBeenCalledWith('client-action-1')
+
+      useMcpElicitationStore.getState().respond({ action: 'accept', content: { rate: 8.25 } })
+
+      await expect(resultPromise).resolves.toEqual({ saved: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      const continuationInit = fetchSpy.mock.calls[1]![1] as RequestInit
+      const continuationBody = JSON.parse(continuationInit.body as string) as {
+        request: {
+          params: {
+            name: string
+            arguments: Record<string, unknown>
+            requestState: string
+            inputResponses: Record<string, unknown>
+          }
+        }
+      }
+      expect(continuationBody.request.params).toMatchObject({
+        name: 'configure_tax',
+        arguments: { country: 'US' },
+        requestState: 'state-1',
+        inputResponses: {
+          taxRate: { action: 'accept', content: { rate: 8.25 } },
+        },
+      })
+    })
+
+    it('sends decline responses back through the continuation request', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          mockProxyResponse({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              resultType: 'input_required',
+              inputRequests: {
+                settings: {
+                  method: 'elicitation/create',
+                  params: {
+                    message: 'Optional settings',
+                    requestedSchema: { type: 'object', properties: {} },
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          mockProxyResponse({ jsonrpc: '2.0', id: 1, result: { skipped: true } }),
+        )
+
+      const resultPromise = mcpCallAction(
+        {
+          serverId: 'commerce',
+          request: {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            id: 1,
+            params: { name: 'configure_settings', arguments: {} },
+          },
+        },
+        baseContext,
+      )
+
+      await waitForPendingElicitation()
+      useMcpElicitationStore.getState().respond({ action: 'decline' })
+
+      await expect(resultPromise).resolves.toEqual({ skipped: true })
+      const continuationInit = fetchSpy.mock.calls[1]![1] as RequestInit
+      const continuationBody = JSON.parse(continuationInit.body as string) as {
+        request: { params: { inputResponses: Record<string, unknown> } }
+      }
+      expect(continuationBody.request.params.inputResponses).toEqual({
+        settings: { action: 'decline' },
+      })
+    })
+
+    it('handles input_required returned through an execute_tool structuredContent envelope', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(
+          mockProxyResponse({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              resultType: 'complete',
+              content: [{ type: 'text', text: 'Executed commerce_app_settings_configure.' }],
+              structuredContent: {
+                data: {
+                  resultType: 'input_required',
+                  inputRequests: {
+                    commerce_app_settings: {
+                      method: 'elicitation/create',
+                      params: {
+                        mode: 'form',
+                        message: 'Configure Commerce Tax',
+                        requestedSchema: {
+                          type: 'object',
+                          properties: {
+                            manualTaxRatePercentage: { type: 'number', title: 'Tax rate' },
+                          },
+                          required: ['manualTaxRatePercentage'],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          mockProxyResponse({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              resultType: 'complete',
+              structuredContent: { data: { status: 'configured' } },
+            },
+          }),
+        )
+
+      const resultPromise = mcpCallAction(
+        {
+          serverId: 'commerce',
+          request: {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            id: 1,
+            params: {
+              name: 'execute_tool',
+              arguments: {
+                tool: 'commerce_app_settings_configure',
+                arguments: {
+                  entityType: 'store',
+                  entityId: 'store_123',
+                  applicationName: 'wes-aab-manual-tax',
+                },
+              },
+            },
+          },
+        },
+        baseContext,
+      )
+
+      const pending = await waitForPendingElicitation()
+      expect(pending).toMatchObject({
+        id: 'commerce_app_settings',
+        serverId: 'commerce',
+        toolName: 'commerce_app_settings_configure',
+        mode: 'form',
+        message: 'Configure Commerce Tax',
+      })
+
+      useMcpElicitationStore.getState().respond({
+        action: 'accept',
+        content: { manualTaxRatePercentage: 8.25 },
+      })
+
+      await expect(resultPromise).resolves.toEqual({
+        resultType: 'complete',
+        structuredContent: { data: { status: 'configured' } },
+      })
+      const continuationInit = fetchSpy.mock.calls[1]![1] as RequestInit
+      const continuationBody = JSON.parse(continuationInit.body as string) as {
+        request: {
+          params: {
+            name: string
+            arguments: Record<string, unknown>
+            inputResponses: Record<string, unknown>
+          }
+        }
+      }
+      expect(continuationBody.request.params.name).toBe('execute_tool')
+      expect(continuationBody.request.params.arguments).toMatchObject({
+        tool: 'commerce_app_settings_configure',
+      })
+      expect(continuationBody.request.params.inputResponses).toEqual({
+        commerce_app_settings: {
+          action: 'accept',
+          content: { manualTaxRatePercentage: 8.25 },
+        },
+      })
+    })
+
+    it('marks repeated URL elicitation requests as awaiting completion', async () => {
+      const urlInputRequired = {
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          resultType: 'input_required',
+          inputRequests: {
+            connect: {
+              method: 'elicitation/create',
+              params: {
+                mode: 'url',
+                message: 'Connect account',
+                url: 'https://example.com/oauth',
+              },
+            },
+          },
+        },
+      }
+
+      fetchSpy
+        .mockResolvedValueOnce(mockProxyResponse(urlInputRequired))
+        .mockResolvedValueOnce(mockProxyResponse(urlInputRequired))
+        .mockResolvedValueOnce(
+          mockProxyResponse({ jsonrpc: '2.0', id: 1, result: { connected: true } }),
+        )
+
+      const resultPromise = mcpCallAction(
+        {
+          serverId: 'commerce',
+          request: {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            id: 1,
+            params: { name: 'connect_account', arguments: {} },
+          },
+        },
+        baseContext,
+      )
+
+      const firstPending = await waitForPendingElicitation()
+      expect(firstPending).toMatchObject({
+        mode: 'url',
+        url: 'https://example.com/oauth',
+        awaitingCompletion: false,
+      })
+      useMcpElicitationStore.getState().respond({ action: 'accept' })
+
+      const secondPending = await waitForPendingElicitation()
+      expect(secondPending).toMatchObject({
+        mode: 'url',
+        url: 'https://example.com/oauth',
+        awaitingCompletion: true,
+      })
+      useMcpElicitationStore.getState().respond({ action: 'accept' })
+
+      await expect(resultPromise).resolves.toEqual({ connected: true })
+      expect(fetchSpy).toHaveBeenCalledTimes(3)
+    })
+
+    it('rejects malformed input_required responses without hanging the client action', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockProxyResponse({
+          jsonrpc: '2.0',
+          id: 1,
+          result: { resultType: 'input_required' },
+        }),
+      )
+
+      await expect(
+        mcpCallAction(
+          {
+            serverId: 'commerce',
+            request: {
+              jsonrpc: '2.0',
+              method: 'tools/call',
+              id: 1,
+              params: { name: 'configure_settings', arguments: {} },
+            },
+          },
+          baseContext,
+        ),
+      ).rejects.toThrow(/did not include inputRequests/)
+      expect(useMcpElicitationStore.getState().pending).toBeNull()
+    })
+  })
 })
+
+async function waitForPendingElicitation() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const pending = useMcpElicitationStore.getState().pending
+    if (pending) return pending
+    await Promise.resolve()
+  }
+  throw new Error('Timed out waiting for pending MCP elicitation')
+}

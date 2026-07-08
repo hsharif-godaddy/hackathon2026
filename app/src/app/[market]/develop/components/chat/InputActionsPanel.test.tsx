@@ -1685,5 +1685,34 @@ describe('InputActionsPanel', () => {
 
       await expect(promise).resolves.toEqual({ action: 'accept', content: { threshold: 5 } })
     })
+
+    it('cancels an unresolved elicitation request when the takeover unmounts', async () => {
+      const promise = useMcpElicitationStore.getState().request(pendingForm)
+
+      const { unmount } = renderWithProviders(<InputActionsPanel />)
+      expect(screen.getByText('Configure inventory')).toBeInTheDocument()
+
+      unmount()
+
+      await expect(promise).resolves.toEqual({ action: 'cancel' })
+      expect(useMcpElicitationStore.getState().pending).toBeNull()
+    })
+
+    it('does not cancel a follow-up elicitation after resolving the current one', async () => {
+      const first = useMcpElicitationStore.getState().request(pendingForm)
+
+      renderWithProviders(<InputActionsPanel />)
+      fireEvent.click(screen.getByRole('button', { name: 'builder_common_submit' }))
+      await expect(first).resolves.toEqual({ action: 'accept', content: { threshold: 5 } })
+
+      const followUp = { ...pendingForm, message: 'Confirm inventory schedule' }
+      const second = useMcpElicitationStore.getState().request(followUp)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      expect(useMcpElicitationStore.getState().pending).toBe(followUp)
+
+      useMcpElicitationStore.getState().cancel()
+      await expect(second).resolves.toEqual({ action: 'cancel' })
+    })
   })
 })

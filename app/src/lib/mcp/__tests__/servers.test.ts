@@ -102,7 +102,7 @@ describe('mcp servers registry', () => {
       expect(server?.id).toBe('commerce')
       expect(server?.displayName).toBe('GoDaddy Commerce')
       expect(server?.url).toBe('https://mcp.commerce.api.dev-godaddy.com/mcp')
-      expect(server?.protocolVersion).toBe('2024-11-05')
+      expect(server?.protocolVersion).toBe('2025-11-25')
     })
 
     it('returns undefined for unknown server ids', () => {
@@ -120,6 +120,7 @@ describe('mcp servers registry', () => {
       expect(server.allowedScopes).toContain('commerce.store:read')
       expect(server.allowedScopes).toContain('commerce.order:read')
       expect(server.allowedScopes).toContain('commerce.channel:read')
+      expect(server.allowedScopes).toContain('apps.app-registry:read')
       expect(server.allowedScopes).toContain('apps.app-registry:write')
 
       // Still not approved for AAB MCP proxy.
