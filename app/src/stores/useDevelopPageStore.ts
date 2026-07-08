@@ -220,6 +220,7 @@ const createDefaultPublishState = () => {
     lastPublishedCommitHash: null,
     deploymentsRefetch: null,
     deploymentInProgressId: null,
+    publishConnectFqdn: null as string | null,
     showSuccessAlert: false,
     showPaywallModal: false,
     showPublishLimitModal: false,
@@ -359,6 +360,7 @@ interface DevelopPageStore {
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
+    publishConnectFqdn: string | null
     showSuccessAlert: boolean
     showPaywallModal: boolean
     // Publish limit modal state
@@ -513,6 +515,7 @@ interface DevelopPageStore {
   setLastPublishedCommitHash: (appId: string, commitHash: string | null) => void
   setDeploymentsRefetch: (appId: string, refetch: (() => Promise<any>) | null) => void
   setDeploymentInProgressId: (appId: string, deploymentId: string | null) => void
+  setPublishConnectFqdn: (appId: string, fqdn: string | null) => void
   setPublishSuccess: (appId: string, showSuccess: boolean) => void
   dismissPublishSuccess: (appId: string) => void
   clearPublishStatus: (appId: string) => void
@@ -536,6 +539,7 @@ interface DevelopPageStore {
     lastPublishedCommitHash: string | null
     deploymentsRefetch: (() => Promise<any>) | null
     deploymentInProgressId: string | null
+    publishConnectFqdn: string | null
     showSuccessAlert: boolean
     showPublishLimitModal: boolean
     publishLimitData: PublishLimitData | null
@@ -1228,6 +1232,13 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
         state.publishStates[appId] = createDefaultPublishState();
       }
       state.publishStates[appId].deploymentInProgressId = deploymentId;
+    }),
+
+    setPublishConnectFqdn: (appId: string, fqdn: string | null) => set((state) => {
+      if (!state.publishStates[appId]) {
+        state.publishStates[appId] = createDefaultPublishState();
+      }
+      state.publishStates[appId].publishConnectFqdn = fqdn;
     }),
 
     setDomainJobInProgress: (appId: string, job: DomainJobInProgress) => set((state) => {

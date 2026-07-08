@@ -88,11 +88,12 @@ async function handleLocalDevPublishSuccess(
   fetchSitesList: (siteId: string) => Promise<any>
 ) {
   const siteBeforePublish = useSiteStore.getState().getSite(appId);
-  const pendingFirstPublish =
-    useDevelopPageStore.getState().getPublishState(appId).firstPublishDeployPending;
-  const isFirstPublish = pendingFirstPublish || !hasBeenPublished(siteBeforePublish);
+  const publishStateBeforePublish = useDevelopPageStore.getState().getPublishState(appId);
+  const isFirstPublish = publishStateBeforePublish.firstPublishDeployPending || !hasBeenPublished(siteBeforePublish);
 
-  if (isFirstPublish) {
+  // Mirror the deployed path: suppress first-publish confetti when this publish is also connecting a
+  // custom domain (communicated via chat + the domain page instead) (AIROBUILD-3501).
+  if (isFirstPublish && !publishStateBeforePublish.publishConnectFqdn) {
     useDevelopPageStore.getState().setShowFirstPublishCongrats(appId, true);
   }
 
