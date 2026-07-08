@@ -9,7 +9,6 @@ describe('createDeveloperTypecheckConfig', () => {
     expect(config.model).toBe('claude-haiku-4-5')
     expect(config.maxSteps).toBe(40)
     expect(config.temperature).toBe(0.1)
-    expect(config.providerOptions).toEqual({ anthropic: { toolStreaming: false } })
     expect(config.system.length).toBeGreaterThan(0)
     expect(Object.keys(config.tools).sort()).toEqual(
       ['directoryListing', 'grepSearch', 'readFile', 'reference', 'str_replace_based_edit_tool', 'terminalCommand'].sort(),

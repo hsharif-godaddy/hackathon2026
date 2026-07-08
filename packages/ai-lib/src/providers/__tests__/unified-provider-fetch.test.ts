@@ -298,9 +298,29 @@ describe('model provider defaults middleware', () => {
 
   it('omits default provider options for models without defaults', async () => {
     const { __test__ } = await import('../unified-provider.js')
-    const [middleware] = __test__.getModelMiddleware('haiku')
+    const [middleware] = __test__.getModelMiddleware('claude-sonnet-4-5')
 
     expect(middleware).not.toHaveProperty('transformParams')
+  })
+
+  it('disables tool streaming for haiku (GoCode rejects eager_input_streaming)', async () => {
+    const transformed = await transformAll('haiku', {
+      providerOptions: {},
+    })
+
+    expect(transformed.providerOptions).toEqual({
+      anthropic: { toolStreaming: false },
+    })
+  })
+
+  it('preserves caller anthropic options while disabling tool streaming for haiku', async () => {
+    const transformed = await transformAll('haiku', {
+      providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
+    })
+
+    expect(transformed.providerOptions).toEqual({
+      anthropic: { toolStreaming: false, cacheControl: { type: 'ephemeral' } },
+    })
   })
 
   it('strips temperature from requests for claude-opus-4-8', async () => {

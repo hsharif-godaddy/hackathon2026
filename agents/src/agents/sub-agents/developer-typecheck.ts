@@ -14,8 +14,5 @@ export async function createDeveloperTypecheckConfig(): Promise<SubAgentConfig> 
     maxSteps: 40,
     temperature: 0.1,
     enablePromptCaching: true,
-    // GoCode/LiteLLM rejects tools.*.eager_input_streaming; @ai-sdk/anthropic
-    // enables it by default when streaming with tools (toolStreaming defaults true).
-    providerOptions: { anthropic: { toolStreaming: false } },
   }
 }

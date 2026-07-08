@@ -198,7 +198,14 @@ const MODELS: Record<string, ModelDefinition> = {
   },
   'claude-haiku-4-5': {
     normalizedName: 'claude-haiku-4-5',
-    anthropic: 'claude-haiku-4-5-20251001'
+    anthropic: 'claude-haiku-4-5-20251001',
+    // GoCode/LiteLLM rejects tools.*.eager_input_streaming for Haiku; @ai-sdk/anthropic
+    // enables it by default when streaming with tools (toolStreaming defaults true).
+    providerOptions: {
+      anthropic: {
+        toolStreaming: false,
+      },
+    },
   },
 }
 

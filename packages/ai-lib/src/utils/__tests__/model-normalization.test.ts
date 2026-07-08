@@ -383,8 +383,10 @@ describe('model-normalization', () => {
       })
     })
 
-    it('returns undefined for claude-haiku-4-5', () => {
-      expect(getDefaultProviderOptions('claude-haiku-4-5')).toBeUndefined()
+    it('disables tool streaming for claude-haiku-4-5', () => {
+      expect(getDefaultProviderOptions('claude-haiku-4-5')).toEqual({
+        anthropic: { toolStreaming: false }
+      })
     })
 
     it('returns undefined for unsupported models', () => {
@@ -445,8 +447,16 @@ describe('model-normalization', () => {
       })
     })
 
+    it('returns tool streaming disabled for claude-haiku-4-5', () => {
+      expect(getDefaultModelSettings('claude-haiku-4-5')).toEqual({
+        providerOptions: {
+          anthropic: { toolStreaming: false }
+        }
+      })
+    })
+
     it('returns undefined for models without defaults', () => {
-      expect(getDefaultModelSettings('claude-haiku-4-5')).toBeUndefined()
+      expect(getDefaultModelSettings('claude-sonnet-4-5')).toBeUndefined()
     })
   })
 
