@@ -33,6 +33,7 @@ export function SubmitInitialPrompt({
       data-eid={generateClickEID('homepage.prompt.submit')}
       disabled={disabled}
       design="primary"
+      className="!rounded-lg"
       icon={isLoading ? <Spinner size="sm" /> : icon}
       size={isBelowSmBreakpoint ? 'sm' : 'md'}
       aria-label={

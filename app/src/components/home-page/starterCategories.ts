@@ -8,6 +8,9 @@ import WorldIcon from '@ux/icon/world'
 /** The five homepage prompt-starter categories (single-select). */
 export type StarterCategory = 'new_website' | 'rebuild_site' | 'app' | 'logo' | 'something_else'
 
+/** Highlighted by default (and the effective selection when the user submits without tapping a button). */
+export const DEFAULT_STARTER_CATEGORY: StarterCategory = 'new_website'
+
 export interface StarterCategoryConfig {
   id: StarterCategory
   /** i18n key for the button label. */

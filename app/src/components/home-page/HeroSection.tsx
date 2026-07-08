@@ -9,6 +9,7 @@ import DesignKitGallery, { DesignKitChip } from '@/app/[market]/components/Desig
 import StartAsControls from '@/app/[market]/components/StartAsControls'
 import TemplateSelector from '@/app/[market]/components/TemplateSelector'
 import type { HeroSectionProps, HeroSectionRef } from '@/app/[market]/components/types'
+import { LOGO_DESIGNER_TEMPLATE } from '@/app/[market]/components/types'
 import { AnimatedDisclaimer } from '@/components/home/AnimatedDisclaimer'
 import { GenerateButton } from '@/components/home/GenerateButton'
 import { HeroBenefits } from '@/components/home/HeroBenefits'
@@ -19,7 +20,7 @@ import { SpeechToggleButton } from '@/components/home/SpeechToggleButton'
 import { SubmitInitialPrompt } from '@/components/home/SubmitInitialPrompt'
 import ExamplesSection from '@/components/home-page/HeroExamples'
 import { StarterButtons } from '@/components/home-page/StarterButtons'
-import { STARTER_PLACEHOLDERS } from '@/components/home-page/starterCategories'
+import { STARTER_PLACEHOLDERS, type StarterCategory } from '@/components/home-page/starterCategories'
 import { useAnimatedPlaceholder } from '@/hooks/home/useAnimatedPlaceholder'
 import { useFileUploadState } from '@/hooks/home/useFileUploadState'
 import { useHeroPromptState } from '@/hooks/home/useHeroPromptState'
@@ -103,6 +104,19 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
     getFirstInputTime: () => firstInputTimeRef.current
   }), [typeText])
 
+  function handleStarterSelect(category: StarterCategory): void {
+    const isSelectingLogo: boolean = category === 'logo' && selectedStarterCategory !== 'logo'
+    selectCategory(category)
+    if (isSelectingLogo) {
+      // Route the Logo starter into logo-designer mode (mirrors the pills / example cards).
+      onTemplateChange?.(LOGO_DESIGNER_TEMPLATE)
+    } else if (selectedTemplate === LOGO_DESIGNER_TEMPLATE) {
+      // Only exit logo mode — don't clobber a template the user picked via the
+      // TemplateSelector pills if both flags happen to be enabled at once.
+      onTemplateChange?.('default')
+    }
+  }
+
   return (
     <Box className="flex flex-col gap-2 md:gap-3 px-2 sm:px-3 lg:px-4 pt-12 min-h-[calc(100vh-3rem)] items-center justify-center" {...dragProps}>
       <text.h1
@@ -137,6 +151,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
 
       <div className="w-full max-w-2xl mx-auto my-2 md:my-4">
         <Box gap={isMobile ? 'lg' : 'md'}>
+          {isPromptStarterEnabled && isMobile && (
+            <StarterButtons variant="hero" selected={selectedStarterCategory} onSelect={handleStarterSelect} />
+          )}
           <div
             className={clsx('relative transition-all duration-300 ease-out glowing-input', {
               'glowing-input--disabled': isLoading,
@@ -154,9 +171,9 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
               elevation="float"
               gap={isMobile ? 'sm' : 'md'}
             >
-              {isPromptStarterEnabled && (
+              {isPromptStarterEnabled && !isMobile && (
                 <>
-                  <StarterButtons selected={selectedStarterCategory} onSelect={selectCategory} />
+                  <StarterButtons selected={selectedStarterCategory} onSelect={handleStarterSelect} />
                   <div className="border-b border-intents-ux-box-borderColor" />
                 </>
               )}
@@ -187,7 +204,7 @@ const HeroSection = forwardRef<HeroSectionRef, HeroSectionProps>(({
                 dir="auto"
                 disabled={isLoading || isListening}
                 className={clsx(
-                  'w-full min-h-6 md:min-h-8 max-h-20 md:max-h-24 bg-transparent overflow-y-auto font-light resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-300',
+                  'w-full min-h-20 md:min-h-24 max-h-40 md:max-h-48 bg-transparent overflow-y-auto font-light resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed transition-opacity duration-300',
                   isPromptStarterEnabled ? 'text-base' : 'text-md sm:text-xl',
                 )}
                 placeholder={isTyping ? "" : animatedPlaceholder}

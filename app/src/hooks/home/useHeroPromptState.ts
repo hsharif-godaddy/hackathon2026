@@ -2,11 +2,11 @@
 
 import { type ChangeEvent, type KeyboardEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
-import { type StarterCategory } from '@/components/home-page/starterCategories'
+import { DEFAULT_STARTER_CATEGORY, type StarterCategory } from '@/components/home-page/starterCategories'
 import { useAuthContext } from '@/components/providers/AuthProvider'
 import { usePromptStarter } from '@/experiments/prompt-starter/usePromptStarter'
+import { useTemplateSelector } from '@/hooks/home/useTemplateSelector'
 import { useAnalytics } from '@/hooks/useAnalytics'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTextareaHoverTracking } from '@/hooks/useTextareaHoverTracking'
 import { JourneyTracker } from '@/lib/journeyTracker'
 import { getByteLength, MAX_PROMPT_BYTES, validateAndClampPrompt } from '@/lib/waf-validation'
@@ -59,7 +59,7 @@ export function useHeroPromptState({
   setError,
   isRTL = false,
 }: UseHeroPromptStateParams): UseHeroPromptStateReturn {
-  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
+  const isTemplateSelectorEnabled = useTemplateSelector()
   const { isAuthenticated } = useAuthContext()
   const { logAnalytics } = useAnalytics({
     baseData: { isAuthenticated },
@@ -184,8 +184,8 @@ export function useHeroPromptState({
     JourneyTracker.current()?.trackMilestone('homepage_prompt_submitted', {
       promptLength: displayText.trim().length,
     })
-    const analytics: Record<string, unknown> = isPromptStarterEnabled && selectedStarterCategory
-      ? { starter_category: selectedStarterCategory }
+    const analytics: Record<string, unknown> = isPromptStarterEnabled
+      ? { starter_category: selectedStarterCategory ?? DEFAULT_STARTER_CATEGORY }
       : {}
     onStartBuilding({ analytics })
   }

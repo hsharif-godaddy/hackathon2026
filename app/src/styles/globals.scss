@@ -568,6 +568,15 @@ body:has(#UpgradeLibraryPortal .ux-modal) .tooltip[role="tooltip"] {
 }
 
 @layer utilities {
+  /* Scrollable region with no visible scrollbar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Shadcn animations */
   .animate-in {
     animation-fill-mode: both;

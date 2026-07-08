@@ -1,49 +1,53 @@
 'use client'
 
-import clsx from 'clsx'
+import { type ReactElement } from 'react'
 
-import { useTranslations } from '@/hooks/useTranslations'
-import { generateClickEID, logClickEvent } from '@/utils/instrumentation'
-import { STARTER_CATEGORIES, type StarterCategory } from './starterCategories'
+import { StarterButton } from './StarterButton'
+import { DEFAULT_STARTER_CATEGORY, STARTER_CATEGORIES, type StarterCategory } from './starterCategories'
+
+type StarterButtonsVariant = 'card' | 'hero'
 
 interface StarterButtonsProps {
   /** Currently selected category, or null when none is chosen. */
   selected: StarterCategory | null
   onSelect: (category: StarterCategory) => void
+  /**
+   * `card` (default) — inside the white prompt card, centered wrap (desktop).
+   * `hero` — on the dark hero background above the card, a single horizontally
+   * scrollable row (mobile).
+   */
+  variant?: StarterButtonsVariant
 }
 
-export function StarterButtons({ selected, onSelect }: StarterButtonsProps) {
-  const t = useTranslations()
+export function StarterButtons({ selected, onSelect, variant = 'card' }: StarterButtonsProps) {
+  const isHero: boolean = variant === 'hero'
+
+  function renderStarterButton(category: (typeof STARTER_CATEGORIES)[number]): ReactElement {
+    const isSelected: boolean = selected === category.id
+    const isHighlighted: boolean = isSelected || (selected === null && category.id === DEFAULT_STARTER_CATEGORY)
+    return (
+      <StarterButton
+        key={category.id}
+        category={category}
+        isSelected={isSelected}
+        isHighlighted={isHighlighted}
+        isHero={isHero}
+        onSelect={onSelect}
+      />
+    )
+  }
+
+  if (isHero) {
+    return (
+      <div role="group" className="no-scrollbar flex items-center gap-[10px] overflow-x-auto scroll-smooth">
+        {STARTER_CATEGORIES.map(renderStarterButton)}
+      </div>
+    )
+  }
 
   return (
     <div role="group" className="flex flex-wrap items-center justify-center gap-[10px]">
-      {STARTER_CATEGORIES.map(function renderStarterButton({ id, labelKey, labelDefault, Icon }) {
-        const isSelected: boolean = selected === id
-        const isHighlighted: boolean = isSelected || (selected === null && id === 'new_website')
-        return (
-          <button
-            key={id}
-            type="button"
-            data-testid={`starter-button-${id}`}
-            data-eid={generateClickEID(`homepage.starter.${id}`)}
-            aria-pressed={isSelected}
-            onClick={function handleStarterClick() {
-              onSelect(id)
-              logClickEvent(`homepage.starter.${id}`)()
-            }}
-            className={clsx(
-              'flex cursor-pointer flex-col items-center justify-center whitespace-nowrap border-2 transition-all hover:brightness-95 gap-1 py-1.5 px-2.5 rounded-xl font-medium min-h-[68px]',
-              {
-                'border-ai bg-light-purple text-ai': isHighlighted,
-                'border-transparent bg-intents-ux-boxLowContrast-backgroundColor text-intents-ux-box-foregroundColor': !isHighlighted,
-              },
-            )}
-          >
-            <Icon width={20} height={20} aria-hidden="true" />
-            <span style={{ fontSize: '0.675rem' }}>{t(labelKey, undefined, labelDefault)}</span>
-          </button>
-        )
-      })}
+      {STARTER_CATEGORIES.map(renderStarterButton)}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { HeroSectionRef, LOGO_DESIGNER_TEMPLATE, type UploadedDesignFile, validateTemplate } from '@/app/[market]/components/types'
 import { useAuthContext } from '@/components/providers/AuthProvider'
+import { useTemplateSelector } from '@/hooks/home/useTemplateSelector'
 import { useAnalytics } from '@/hooks/useAnalytics'
 import { useAuthGateTracking } from '@/hooks/useAuthGateTracking'
 import { useCanonicalizeModeParam } from '@/hooks/useCanonicalizeModeParam'
@@ -14,7 +15,6 @@ import { useLogoDesignerEntryTracking } from '@/hooks/useLogoDesignerEntryTracki
 import { useSafariClass } from '@/hooks/useSafariClass'
 import { useSsoSignIn } from '@/hooks/useSsoSignIn'
 import { useSubscription } from '@/hooks/useSubscription'
-import { useSwitchboard } from '@/hooks/useSwitchboard'
 import { useTranslations } from '@/hooks/useTranslations'
 import type { DesignKit } from '@/lib/design-kits'
 import { validateDomainName } from '@/lib/domain-validation'
@@ -67,7 +67,7 @@ export function useHomepageSubmission(options?: HomepageSubmissionOptions) {
     const queryString = params.toString()
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false })
   }, [pathname, router, searchParams])
-  const isTemplateSelectorEnabled = useSwitchboard('appbuilder-template-selector')
+  const isTemplateSelectorEnabled = useTemplateSelector()
 
   // Internal-only "start-as" axes (both gated + validated server-side; a
   // non-internal user setting these has no effect).
