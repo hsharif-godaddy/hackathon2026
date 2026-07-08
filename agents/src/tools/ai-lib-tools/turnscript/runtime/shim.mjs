@@ -128,13 +128,46 @@ function isImmutable(abs) {
   }
 }
 
-function editGuards(path, content) {
+// The model pipes readFile/view DISPLAY output (optional `path [N lines]` header +
+// numbered lines) back into writes despite the tool instructions — fingerprint and
+// reject it. EVERY non-empty line must be sequentially numbered (≥3 lines): the
+// homogeneity requirement spares genuine numbered data, whose header rows or
+// surrounding code break the pattern. Accepted residuals: sub-3-line echoes and
+// headerless sequential-id data (the error message offers the way out).
+function looksLikeReadDisplayOutput(content, headerOnly = false) {
+  const lines = content.split('\n')
+  // Only \r is stripped — a display line for an empty source line is `N\t`, and a full
+  // trim would eat the separator.
+  const nonEmpty = lines.map(l => l.replace(/\r$/, '')).filter(l => l !== '')
+  const numbered = l => /^\s*(\d+)[\t|]/.exec(l)
+  // A header alone isn't display output (prose can end in "[3 lines]") — require a
+  // numbered line after it.
+  if (/^.+ \[\d+ lines\]$/.test((lines[0] || '').trimEnd()) && nonEmpty[1] && numbered(nonEmpty[1])) return true
+  if (headerOnly) return false
+  if (nonEmpty.length < 3) return false
+  let prev = null
+  for (const line of nonEmpty) {
+    const m = numbered(line)
+    if (!m) return false
+    const n = Number(m[1])
+    if (prev !== null && n !== prev + 1) return false
+    prev = n
+  }
+  return true
+}
+
+function editGuards(path, content, command) {
   if (isProtected(path)) throw new Error(`${path} is in a protected directory and cannot be modified.`)
   const abs = resolveInApp(path)
   if (existsSync(abs) && isImmutable(abs)) throw new Error('File is immutable (contains "TREAT AS IMMUTABLE") — cannot edit.')
   if (content != null) {
     const v = validateNoApiPaths(content, path)
     if (!v.valid) throw new Error(v.error)
+    // insert_text is a fragment — numbered continuation rows are legitimate, so insert
+    // gets only the header check.
+    if (looksLikeReadDisplayOutput(content, command === 'insert')) {
+      throw new Error('Content looks like line-numbered readFile/view DISPLAY output (every line has a sequential number prefix). Line numbers are display-only — write the raw source without the number prefixes and header line. If this is genuine data with a sequential id column, include the file\'s real first line (e.g. a header row) in the same write.')
+    }
   }
 }
 
@@ -201,7 +234,7 @@ function tolerantLineReplace(content, oldStr, newStr) {
 }
 
 function _strReplace(path, oldStr, newStr) {
-  editGuards(path, newStr)
+  editGuards(path, newStr, 'str_replace')
   const abs = resolveInApp(path)
   if (!existsSync(abs)) throw new Error(`File not found: ${path}`)
   const content = readFileSync(abs, 'utf8')
@@ -237,7 +270,7 @@ function _strReplace(path, oldStr, newStr) {
 }
 
 function _create(path, fileText) {
-  editGuards(path, fileText)
+  editGuards(path, fileText, 'create')
   const abs = resolveInApp(path)
   // Parity with the canonical workspace write (dev-supervisor os.MkdirAll): create missing
   // parent dirs so `create` into a new directory succeeds instead of throwing ENOENT.
@@ -250,7 +283,7 @@ function _create(path, fileText) {
 }
 
 function _insert(path, insertLine, insertText) {
-  editGuards(path, insertText)
+  editGuards(path, insertText, 'insert')
   const abs = resolveInApp(path)
   if (!existsSync(abs)) throw new Error(`File not found: ${path}`)
   const lines = readFileSync(abs, 'utf8').split('\n')

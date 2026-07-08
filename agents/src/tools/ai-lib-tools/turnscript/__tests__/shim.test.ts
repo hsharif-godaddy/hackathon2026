@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -119,6 +119,113 @@ describe('turnscript in-container shim', () => {
     const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'str_replace', path: 'dup.txt', old_str: 'x', new_str: 'y' })`)
     expect(env.ok).toBe(true) // dispatch error returned as data
     expect(env.editedPaths ?? []).toEqual([])
+  })
+
+  it('REJECTS writing readFile display output back as content (prod corruption repro)', () => {
+    const original = 'import { RouteObject } from "react-router-dom";\nexport const routes = [];\n'
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src/routes.tsx'), original)
+    // The exact incident shape: pipe a readFile result variable straight into create.
+    const env = run(dir, `async () => {
+      const c = await turnscript.readFile({ path: 'src/routes.tsx' })
+      return turnscript.str_replace_based_edit_tool({ command: 'create', path: 'src/routes.tsx', file_text: c })
+    }`)
+    expect(env.ok).toBe(true) // guard error is returned as dispatch data, not a crash
+    expect(String(env.result)).toContain('[error]')
+    expect(String(env.result)).toContain('DISPLAY output')
+    // The file is untouched and the failed write is not reported as an edit.
+    expect(readFileSync(join(dir, 'src/routes.tsx'), 'utf8')).toBe(original)
+    expect(env.editedPaths ?? []).toEqual([])
+  })
+
+  it('REJECTS the legacy header + pipe-numbered display format (pre-#6106 reads echoed from history)', () => {
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'legacy.tsx', file_text: ${JSON.stringify('legacy.tsx [3 lines]\n     1|import x from "y"\n     2|const a = 1\n     3|export default a')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('[error]')
+    expect(existsSync(join(dir, 'legacy.tsx'))).toBe(false)
+  })
+
+  it('does NOT reject numbered rows wrapped in code (homogeneity broken by the wrapper lines)', () => {
+    // Lines DO start with number+tab (like a TSV in a template literal), but the numbers are
+    // non-sequential — real display output is sequential.
+    const content = 'const tsv = `\n7\talpha\n3\tbeta\n4\tgamma\n9\tdelta\n`\nexport default tsv\n'
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'notes.ts', file_text: ${JSON.stringify('const tsv = `\n7\talpha\n3\tbeta\n4\tgamma\n9\tdelta\n`\nexport default tsv\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+    expect(readFileSync(join(dir, 'notes.ts'), 'utf8')).toBe(content)
+  })
+
+  it('does NOT reject sequential-id data wrapped in code (standings template literal)', () => {
+    // Sequential 1/2/3 rows, but the surrounding code lines break homogeneity —
+    // display output numbers EVERY line.
+    const content = 'export const standings = `rank\tteam\tpts\n1\tAustralia\t24\n2\tIndia\t22\n3\tEngland\t18\n`\n'
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'standings.ts', file_text: ${JSON.stringify('export const standings = `rank\tteam\tpts\n1\tAustralia\t24\n2\tIndia\t22\n3\tEngland\t18\n`\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+    expect(readFileSync(join(dir, 'standings.ts'), 'utf8')).toBe(content)
+  })
+
+  it('does NOT reject a seed TSV/PSV with a header row and sequential ids', () => {
+    const content = 'id\tname\tscore\n1\tAlice\t98\n2\tBob\t95\n3\tCarol\t92\n'
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'data/scores.tsv', file_text: ${JSON.stringify('id\tname\tscore\n1\tAlice\t98\n2\tBob\t95\n3\tCarol\t92\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+    expect(readFileSync(join(dir, 'data/scores.tsv'), 'utf8')).toBe(content)
+  })
+
+  it('REJECTS a mid-file display slice (offset read echoed back, numbering not starting at 1)', () => {
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'slice.ts', file_text: ${JSON.stringify('47\tconst a = compute()\n48\treturn a\n49\t}')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('[error]')
+    expect(existsSync(join(dir, 'slice.ts'))).toBe(false)
+  })
+
+  it('REJECTS display output pasted as str_replace new_str (not just create)', () => {
+    writeFileSync(join(dir, 'target.ts'), 'const OLD = 1\n')
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'str_replace', path: 'target.ts', old_str: 'const OLD = 1', new_str: ${JSON.stringify('1\tconst a = 1\n2\tconst b = 2\n3\texport default a')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('[error]')
+    expect(readFileSync(join(dir, 'target.ts'), 'utf8')).toBe('const OLD = 1\n')
+  })
+
+  it('does NOT reject pure headerless NON-sequential numbered rows (sequentiality is load-bearing)', () => {
+    // Homogeneous numbered lines, but out of order — real display output is always
+    // sequential, so this must pass. Pins the `n !== prev + 1` branch.
+    const content = '7\talpha\n3\tbeta\n4\tgamma\n9\tdelta\n'
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'rows.tsv', file_text: ${JSON.stringify('7\talpha\n3\tbeta\n4\tgamma\n9\tdelta\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+    expect(readFileSync(join(dir, 'rows.tsv'), 'utf8')).toBe(content)
+  })
+
+  it('does NOT reject 2-line numbered content (documented sub-3-line limitation)', () => {
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'two.tsv', file_text: ${JSON.stringify('1\talpha\n2\tbeta\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+  })
+
+  it('does NOT reject insert of sequential continuation rows (fragments are exempt from the numbered-run check)', () => {
+    writeFileSync(join(dir, 'scores.tsv'), 'id\tname\tscore\n1\tAlice\t98\n2\tBob\t95\n3\tCarol\t92\n')
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'insert', path: 'scores.tsv', insert_line: 4, insert_text: ${JSON.stringify('4\tDave\t90\n5\tEve\t88\n6\tFrank\t85')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully inserted')
+    expect(readFileSync(join(dir, 'scores.tsv'), 'utf8')).toContain('4\tDave\t90')
+  })
+
+  it('REJECTS insert of a full legacy display (header still guards fragments)', () => {
+    writeFileSync(join(dir, 'ins.ts'), 'const a = 1\n')
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'insert', path: 'ins.ts', insert_line: 1, insert_text: ${JSON.stringify('ins.ts [2 lines]\n     1|const a = 1\n     2|export default a')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('[error]')
+    expect(readFileSync(join(dir, 'ins.ts'), 'utf8')).toBe('const a = 1\n')
+  })
+
+  it('does NOT reject prose whose first line happens to end in "[N lines]" (header needs a numbered follow-up)', () => {
+    const content = 'Summary of output [3 lines]\nplain prose here\nmore prose\n'
+    const env = run(dir, `async () => turnscript.str_replace_based_edit_tool({ command: 'create', path: 'notes.md', file_text: ${JSON.stringify('Summary of output [3 lines]\nplain prose here\nmore prose\n')} })`)
+    expect(env.ok).toBe(true)
+    expect(String(env.result)).toContain('Successfully created')
+    expect(readFileSync(join(dir, 'notes.md'), 'utf8')).toBe(content)
   })
 
   it('str_replace recovers from indentation/whitespace drift via tolerant retry (P0)', () => {
