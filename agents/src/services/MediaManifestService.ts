@@ -12,6 +12,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { AIRO_ASSET_UPLOADS_URL_PREFIX } from '@airo/shared/media';
+import { AIRO_HOST_SUFFIXES } from '../constants/airo-hosts.js';
 import { AppRepository } from '../database/repositories/AppRepository.js';
 import { createForWorkspace } from '../workspace/index.js';
 import { GitUtils } from '../utils/git.js';
@@ -494,12 +495,10 @@ function deriveSlotPath(
   return `${category}/${segmentName}/${imageName}`;
 }
 
-const AIRO_PREVIEW_HOST_SUFFIXES = ['.airoapp.ai', '.test-airoapp.ai'] as const;
-
 function isAiroPreviewHostname(hostname: string): boolean {
   return (
     hostname.includes('.preview.') &&
-    AIRO_PREVIEW_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
+    AIRO_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix))
   );
 }
 
