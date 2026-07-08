@@ -222,7 +222,7 @@ describe('SSE routes', () => {
       expect(capturedData.slice(openingFrameEnd + 2)).toContain('retry: 1000')
     })
 
-    it('sends initialize event with serverConfig (no connectionId)', async () => {
+    it('emits stub initialize event for backward compatibility', async () => {
       let capturedData = ''
       await request(app)
         .get('/api/conversations/abcdefghij/conv_1/stream')
@@ -234,7 +234,7 @@ describe('SSE routes', () => {
         })
 
       expect(capturedData).toContain('event: initialize')
-      expect(capturedData).toContain('serverConfig')
+      expect(capturedData).toContain('data: {}')
       expect(capturedData).not.toContain('connectionId')
     })
 

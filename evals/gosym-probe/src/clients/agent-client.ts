@@ -18,7 +18,6 @@ export type AgentEvent =
   | { type: 'step_complete'; content: string; data?: Record<string, unknown> }
   | { type: 'step_start'; agentName: string }
   | { type: 'error'; error: string }
-  | { type: 'agents_available'; agents: string[] }
   // AAB-specific diagnostic events. The evaluator
   // degrades gracefully when these are absent.
   // Adding a new diagnostic type requires changes

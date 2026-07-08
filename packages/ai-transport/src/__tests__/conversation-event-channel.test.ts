@@ -981,7 +981,7 @@ describe('ConversationEventChannel', () => {
 
       await channel.publish('conv1', {
         conversationId: 'conv1',
-        type: 'agents_available',
+        type: 'budget_update',
         content: '',
         data: { messageId: 'msg-3' },
         agentName: 'test'

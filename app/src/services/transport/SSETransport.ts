@@ -11,8 +11,6 @@ import type { ChatTransport, ChatTransportCallbacks, SendMessageParams, Transpor
 export const SSE_INTENTIONALLY_IGNORED: ReadonlySet<StreamingEventType> = new Set([
   'budget_status',
   'conversation_info',
-  'agents_available',
-  'server_config',
   'catchup_status',
   'catchup_complete',
 ] as const)
@@ -99,7 +97,7 @@ export class SSETransport implements ChatTransport {
   // Active-turn cooldown budget + the latched active/idle decision for the
   // current outage. activeCooldowns persists across cooldown-timer reopens
   // (so the ~5-min budget keeps counting) and is reset only by recovery
-  // (initialize) or explicit intent. outageActive is latched on the first
+  // (replay_complete) or explicit intent. outageActive is latched on the first
   // error of a streak — see onerror.
   private readonly maxActiveCooldowns: number
   private activeCooldowns = 0
@@ -286,7 +284,7 @@ export class SSETransport implements ChatTransport {
   // resetCooldown(): the active-cooldown timer must PRESERVE activeCooldowns so
   // the ~5-minute budget keeps counting across reopen cycles, whereas explicit
   // intent (connect / manual reconnect / disconnect) and a successful
-  // initialize forget the outage entirely.
+  // replay_complete forget the outage entirely.
   private resetReconnectState(): void {
     this.activeCooldowns = 0
     this.outageActive = false
@@ -629,35 +627,6 @@ export class SSETransport implements ChatTransport {
       }
     }
 
-    this.eventSource.addEventListener('initialize', (e: MessageEvent) => {
-      this.noteFirstStreamEvent()
-      let data: any
-      try {
-        data = JSON.parse(e.data)
-      } catch (err) {
-        logger.warn('sse.transport.initialize.parse_failed', {
-          appId: this.appId, conversationId: this.conversationId, error: errMessage(err),
-        })
-        this.setState('error')
-        this.callbacks?.onError(new Error('initialize_parse_failed'))
-        return
-      }
-      // Successful initialize = transport is healthy again. Clear the
-      // circuit-breaker counter so a fresh streak of failures has to occur
-      // before we'd cool down again.
-      this.consecutiveErrors = 0
-      this.config.qualityMonitor?.resetErrorBuckets()
-      this.resetReconnectState()
-      this.setState('connected')
-
-      if (data.serverConfig) {
-        this.callbacks?.onEvent({ type: 'server_config', data: data.serverConfig })
-      }
-      if (data.agents?.length) {
-        this.callbacks?.onEvent({ type: 'agents_available', data: { agents: data.agents } })
-      }
-    })
-
     this.eventSource.addEventListener(REQUEST_IDP_TOKEN, () => {
       void this.prefetchIdpToken()
     })
@@ -733,7 +702,12 @@ export class SSETransport implements ChatTransport {
       sequence: Number.isFinite(parsedSequence) ? parsedSequence : undefined,
     }
 
-    if (type === 'complete') {
+    if (type === 'replay_complete') {
+      this.consecutiveErrors = 0
+      this.config.qualityMonitor?.resetErrorBuckets()
+      this.resetReconnectState()
+      this.setState('connected')
+    } else if (type === 'complete') {
       this.setState('connected')
     } else if (type === 'error' || type === 'stream_error') {
       this.setState('connected')

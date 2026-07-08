@@ -13,11 +13,10 @@ import { isEmployeeAuthType } from '@airo/shared/auth'
 import type { ConversationLifecycleStore, MessageStore } from '../../memory/interfaces/index.js'
 import { workspaceScopeFromAppId } from '../../memory/interfaces/scope.js'
 import { BYPASS_SITE_IDS } from '../../services/features.js'
-import { getAgentFactory, getActionService } from '../agent-runtime.js'
+import { getActionService } from '../agent-runtime.js'
 import { performBudgetPreCheck } from '../budget-pre-check.js'
 import { getBudgetServiceClient } from '../../services/budget-service-instance.js'
 import { BudgetExceededError } from '@airo/ai-common'
-import { ConnectionInitializer } from '../connection-initializer.js'
 import type { AgentRouterParams, AgentStateManager } from '../agent-router.js'
 import { resolveInitialAgentId, resolveStartOverrideAgentId } from '../resolve-initial-agent.js'
 import { buildContextAttachments } from '@airo/shared/context-attachment'
@@ -86,23 +85,6 @@ function validateConversationOwnership(lifecycle: ConversationLifecycleStore) {
 
 export function createSSERoutes(deps: SSERouteDeps): Router {
   const router = Router()
-
-  const connectionInitializer = new ConnectionInitializer(
-    () => {
-      const factory = getAgentFactory()
-      if (!factory) return null
-      return {
-        agents: {
-          list: () => (factory.agents.list() as string[]).map((name: string) => ({
-            id: name,
-            name: factory.agents.get(name as any)?.getName?.() ?? name,
-            description: `${name} agent`,
-          })),
-        },
-      }
-    },
-    { version: '2.0' },
-  )
 
   const convOwnership = validateConversationOwnership(deps.lifecycle)
 
@@ -398,11 +380,7 @@ export function createSSERoutes(deps: SSERouteDeps): Router {
       logger.warn('sse.connection.no_execution_service', { appId, conversationId })
     }
 
-    const initData = connectionInitializer.initialize()
-    writeFormatted('initialize', {
-      serverConfig: { supportsConnectThenAuth: false, serverVersion: initData.serverConfig.version },
-      agents: initData.agents,
-    })
+    writeFormatted('initialize', {})
 
     const heartbeat = setInterval(() => {
       if (writer.isClosed()) {

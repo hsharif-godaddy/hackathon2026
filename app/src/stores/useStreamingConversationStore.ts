@@ -34,7 +34,6 @@ import { QUEUE_MAX } from './useStreamingConversationStore.types'
 
 // Re-export all store types to preserve the public import surface.
 export type {
-  AgentSummary,
   AppChatHistoryEntry,
   ChatMessage,
   ConnectionState,
@@ -42,7 +41,6 @@ export type {
   PlanItem,
   QueuedMessage,
   QueuedSendPayload,
-  ServerCapabilities,
   StreamingConversationState,
   StreamingMessage,
   StreamSegment,
@@ -70,8 +68,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   aiEditContext: null,
   aiEditContexts: [],
   buildErrorContext: null,
-  availableAgents: [],
-  defaultAgentId: null,
   currentAgentName: null,
   developmentPlan: [],
   appChatHistory: {},
@@ -85,7 +81,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   historyHasMore: true, // Assume there might be more until we know
   historyNextCursor: null,
   historyLoadingMore: false,
-  serverCapabilities: null,
   resolvedSecretsComposerToolCallIds: {},
   subagentEvents: {},
   queuedMessages: [],
@@ -848,8 +843,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         aiEditContext: null,
         aiEditContexts: [],
         buildErrorContext: null,
-        availableAgents: [],
-        defaultAgentId: null,
         currentAgentName: null, // Reset agent name when switching apps
         appChatHistory: newAppChatHistory,
         connection: { connected: false, status: 'idle' as const },
@@ -859,7 +852,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
         historyHasMore: true,
         historyNextCursor: null,
         historyLoadingMore: false,
-        serverCapabilities: null, // Reset capabilities when switching apps
         queuedMessages: [],
         queueStoppedOnError: false,
         resolvedSecretsComposerToolCallIds,
@@ -880,10 +872,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
   },
   clearAiEditContexts: () => set({ aiEditContexts: [] }),
   setBuildErrorContext: (context) => set({ buildErrorContext: context }),
-  setAgentCatalog: (agents, defaultAgentId) => set({
-    availableAgents: agents,
-    defaultAgentId: defaultAgentId ?? null
-  }),
   setCurrentAgentName: (agentName) => set({ currentAgentName: agentName }),
   setDevelopmentPlan: (plan) => set({ developmentPlan: plan }),
 
@@ -999,7 +987,6 @@ export const useStreamingConversationStore = create<StreamingConversationState>(
       aiEditContexts: [],
       appChatHistory: {},
       connection: { connected: false, status: 'idle' },
-      serverCapabilities: null,
       historyLoadRequested: false,
       historyLoadingComplete: false,
       queuedMessages: [],

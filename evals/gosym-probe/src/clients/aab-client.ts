@@ -13,11 +13,6 @@ interface RawTool {
   error?: string;
 }
 
-interface RawAgentEntry {
-  id: string;
-  name: string;
-}
-
 export interface AgentContext {
   siteId: string;
   /** Optional: only set for scenarios that pin an agent profile. */
@@ -329,12 +324,6 @@ export class AABClient implements AgentClient {
         });
       });
     }
-
-    on('agents_available', (data) => {
-      const entries = data.agents as RawAgentEntry[] | undefined;
-      const names = (entries ?? []).map((a) => a.name ?? a.id);
-      this.dispatch({ type: 'agents_available', agents: names });
-    });
 
     on('step_complete', (data) => {
       this.dispatch({

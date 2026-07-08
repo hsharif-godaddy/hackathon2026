@@ -129,14 +129,5 @@ describe('AgentClient interface contract', () => {
       }
     });
 
-    it('agents_available event has agents array', () => {
-      const event: AgentEvent = {
-        type: 'agents_available',
-        agents: ['a', 'b'],
-      };
-      if (event.type === 'agents_available') {
-        expect(event.agents).toEqual(['a', 'b']);
-      }
-    });
   });
 });

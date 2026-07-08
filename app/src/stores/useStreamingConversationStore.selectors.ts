@@ -161,7 +161,6 @@ export const useSetInputValue = () => useStreamingConversationStore(state => sta
 export const useSetIsLoading = () => useStreamingConversationStore(state => state.setIsLoading)
 export const useSetAiEditContext = () => useStreamingConversationStore(state => state.setAiEditContext)
 export const useSetBuildErrorContext = () => useStreamingConversationStore(state => state.setBuildErrorContext)
-export const useSetAgentCatalog = () => useStreamingConversationStore(state => state.setAgentCatalog)
 export const useSetDevelopmentPlan = () => useStreamingConversationStore(state => state.setDevelopmentPlan)
 
 export const useSetStreamingState = () => useStreamingConversationStore(state => state.setStreamingState)
@@ -182,8 +181,6 @@ export const useAddAiEditContext = () => useStreamingConversationStore(state => 
 export const useRemoveAiEditContext = () => useStreamingConversationStore(state => state.removeAiEditContext)
 export const useClearAiEditContexts = () => useStreamingConversationStore(state => state.clearAiEditContexts)
 export const useBuildErrorContext = () => useStreamingConversationStore(state => state.buildErrorContext)
-export const useAvailableAgents = () => useStreamingConversationStore(state => state.availableAgents)
-export const useDefaultAgentId = () => useStreamingConversationStore(state => state.defaultAgentId)
 export const useCurrentAgentName = () => useStreamingConversationStore(state => state.currentAgentName)
 
 // Latest pinned-skill name surfaced from server metadata. Walks newest →

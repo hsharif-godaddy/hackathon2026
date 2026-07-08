@@ -15,7 +15,7 @@ useSSEChat hook                            Express routes (/api/conversations)
 SSETransport                                  |
   |-- GET  .../:conversationId/stream ---->  EventStreamRegistry
   |     (EventSource, persistent)              |-- SSESubscriber per connection
-  |     <--- initialize event                  |-- per-conversation sequences
+  |     <--- replay_complete (stream ready)     |-- per-conversation sequences
   |     <--- chunk / tool_* / complete         |-- heartbeat (15s)
   |                                           |
   |-- POST .../:conversationId/messages -->  MessageExecutionService
@@ -68,10 +68,13 @@ Server responds with `Content-Type: text/event-stream` and sends:
 retry: 1000
 
 event: initialize
-data: {"serverConfig":{...},"agents":[...]}
+data: {}
+
+event: replay_complete
+data: {"lastSequence":0,"replayedCount":0}
 ```
 
-The conversationId is already known (it's in the URL). No connectionId is assigned or needed.
+The `initialize` event is a vestigial empty stub retained for backward compatibility during rolling deploys (will be removed in a follow-up PR). The `replay_complete` event signals that the stream is ready for use. The conversationId is already known (it's in the URL). No connectionId is assigned or needed.
 
 ### 3. Send Message
 
@@ -133,7 +136,7 @@ Multiple tabs to the same app share the conversation stream. All tabs open Event
 
 | Event             | When                            | Payload                                               |
 | ----------------- | ------------------------------- | ----------------------------------------------------- |
-| `initialize`      | On stream open                  | `{serverConfig, agents[]}`                            |
+| `initialize`      | On stream open (vestigial stub) | `{}` — empty; retained for backward compat, planned removal |
 | `recovery_status` | On reconnect with Last-Event-ID | `{hasBufferedEvents, bufferedCount, streamCompleted}` |
 | `replay_complete` | After replay                    | `{lastSequence, replayedCount}`                       |
 
@@ -320,7 +323,6 @@ Planned gate: SSE transport should be gated behind the `app-builder-sse-transpor
 | `agents/src/server/sse/MessageExecutionService.ts`        | Agent execution pipeline            |
 | `agents/src/server/sse/EventStreamRegistry.ts`            | Connection tracking                 |
 | `agents/src/server/sse/SSEClientActionService.ts`         | Client action request/response      |
-| `agents/src/server/connection-initializer.ts`             | Initialize event data               |
 | `packages/ai-transport/src/stream-part-processor.ts`      | Shared stream part state machine    |
 | `packages/ai-transport/src/client-action-registry.ts`     | Shared pending request pattern      |
 | `packages/ai-transport/src/subscribers/sse-subscriber.ts` | SSE event formatting subscriber     |

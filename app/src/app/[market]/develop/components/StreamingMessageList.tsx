@@ -640,7 +640,7 @@ export default function StreamingMessageList({
   // Safety timeout: re-fire load_history if historyLoadingComplete is still false after 15s.
   // Covers two cases: (1) server returned history_loaded with an error field — handler leaves
   // historyLoadingComplete false so we retry here; (2) network drop mid-flight — history_loaded
-  // never arrived, reconnect + agents_available will also retry, but this is a belt-and-braces
+  // never arrived, reconnect + onStateChange('connected') will also retry, but this is a belt-and-braces
   // guard. After 2 retries the skeleton is cleared; user interaction is unaffected throughout.
   //
   // historyRetryCount uses useState (not useRef) so each increment re-triggers this effect and

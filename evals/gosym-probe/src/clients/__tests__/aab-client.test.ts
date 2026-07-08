@@ -450,19 +450,6 @@ describe('AABClient (SSE)', () => {
       expect(received[0]).toEqual({ type: 'error', error: 'Unknown error' });
     });
 
-    it('maps agents_available (array of objects) to names', () => {
-      source.dispatch('agents_available', {
-        agents: [
-          { id: 'aab', name: 'aab' },
-          { id: 'coder', name: 'coder' },
-        ],
-      });
-      expect(received[0]).toEqual({
-        type: 'agents_available',
-        agents: ['aab', 'coder'],
-      });
-    });
-
     it('maps step_start with agentName', () => {
       source.dispatch('step_start', { agentName: 'develop' });
       expect(received[0]).toEqual({ type: 'step_start', agentName: 'develop' });

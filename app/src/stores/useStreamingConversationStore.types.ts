@@ -56,17 +56,6 @@ export interface ToolCall {
   partialInput?: string  // Accumulated partial input from deltas
 }
 
-export interface AgentSummary {
-  id: string
-  name?: string
-  description?: string
-}
-
-// Server capabilities advertised in the server_config message
-export interface ServerCapabilities {
-  version?: string
-}
-
 // Streaming message (actively being built)
 export interface StreamingMessage {
   id: string
@@ -204,8 +193,6 @@ export interface StreamingConversationState {
   // Multi-element selection (flag: appbuilder-multi-element-select)
   aiEditContexts: AiEditContext[]
   buildErrorContext: { error: string; details: string; exitCode?: number } | null
-  availableAgents: AgentSummary[]
-  defaultAgentId: string | null
   currentAgentName: string | null
   developmentPlan: PlanItem[]
 
@@ -225,9 +212,6 @@ export interface StreamingConversationState {
   historyHasMore: boolean
   historyNextCursor: string | null
   historyLoadingMore: boolean
-
-  // Server capabilities (for backwards compatibility)
-  serverCapabilities: ServerCapabilities | null
 
   /** requestSecrets toolCallIds dismissed or saved in the secrets composer (mirrored per app in appChatHistory) */
   resolvedSecretsComposerToolCallIds: Record<string, true>
@@ -295,7 +279,6 @@ export interface StreamingConversationState {
   removeAiEditContext: (number: number) => void
   clearAiEditContexts: () => void
   setBuildErrorContext: (context: { error: string; details: string; exitCode?: number } | null) => void
-  setAgentCatalog: (agents: AgentSummary[], defaultAgentId: string | null) => void
   setCurrentAgentName: (agentName: string | null) => void
   setDevelopmentPlan: (plan: PlanItem[]) => void
 

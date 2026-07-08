@@ -33,9 +33,9 @@ vi.mock('eventsource', () => ({
       onmessage: null,
     }
     setTimeout(() => {
-      const initHandlers = eventListeners['initialize'] ?? []
-      for (const h of initHandlers) {
-        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+      const replayHandlers = eventListeners['replay_complete'] ?? []
+      for (const h of replayHandlers) {
+        h({ data: JSON.stringify({ lastSequence: 0, replayedCount: 0 }), lastEventId: '0' } as MessageEvent)
       }
     }, 0)
     return instance

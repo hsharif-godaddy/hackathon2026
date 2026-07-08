@@ -1983,23 +1983,6 @@ describe('useSSEChat', () => {
       expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
     })
 
-    it('loads initial history on legacy server_config fallback when recovery_status is absent', async () => {
-      mockConversationIdFromCookie = 'conv-abc-123'
-      await setupHook()
-
-      expect(lastTransport.loadHistory).not.toHaveBeenCalled()
-
-      act(() => {
-        lastTransport.callbacks?.onEvent({
-          type: 'server_config',
-          data: { supportsConnectThenAuth: false, serverVersion: '2.0' },
-        })
-      })
-
-      expect(lastTransport.loadHistory).toHaveBeenCalledTimes(1)
-      expect(mockSetHistoryLoadRequested).toHaveBeenCalledWith(true)
-    })
-
     it('marks history complete when connected fallback finds no conversation cookie', async () => {
       mockConversationIdFromCookie = 'conv-abc-123'
       await setupHook()

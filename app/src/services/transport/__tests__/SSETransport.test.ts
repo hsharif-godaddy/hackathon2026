@@ -55,9 +55,9 @@ vi.mock('eventsource', () => ({
     if (autoFireInitialize) {
       setTimeout(() => {
         instance.onopen?.({ type: 'open' })
-        const initHandlers = eventListeners['initialize'] ?? []
-        for (const h of initHandlers) {
-          h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+        const replayHandlers = eventListeners['replay_complete'] ?? []
+        for (const h of replayHandlers) {
+          h({ data: JSON.stringify({ lastSequence: 0, replayedCount: 0 }), lastEventId: '0' } as MessageEvent)
         }
       }, 0)
     }
@@ -108,7 +108,7 @@ describe('SSETransport', () => {
     )
   })
 
-  it('transitions to connected on initialize event', async () => {
+  it('transitions to connected on replay_complete event', async () => {
     transport.connect('app_1', 'token_123', 'conv_1')
     await vi.waitFor(() => {
       expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
@@ -522,7 +522,7 @@ describe('SSETransport', () => {
       t.destroy()
     })
 
-    it('successful initialize resets the consecutive-error counter', async () => {
+    it('replay_complete resets the consecutive-error counter', async () => {
       const t = new SSETransport({
         baseUrl: 'http://localhost:4000',
         maxConsecutiveErrors: 3,
@@ -531,7 +531,7 @@ describe('SSETransport', () => {
       t.on(callbacks)
       t.connect('app_1', 'token_123', 'conv_1')
 
-      // Wait for the auto-fired initialize to land.
+      // Wait for the auto-fired replay_complete to land.
       await vi.waitFor(() => {
         expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
       })
@@ -541,16 +541,83 @@ describe('SSETransport', () => {
       lastEventSourceInstance?.onerror?.({ message: 'a' })
       lastEventSourceInstance?.onerror?.({ message: 'b' })
 
-      // Re-fire initialize to simulate recovery.
-      const handlers = eventListeners['initialize'] ?? []
+      // Re-fire replay_complete to simulate recovery.
+      const handlers = eventListeners['replay_complete'] ?? []
       for (const h of handlers) {
-        h({ data: JSON.stringify({ serverConfig: {}, agents: [] }) } as MessageEvent)
+        h({ data: JSON.stringify({ lastSequence: 0, replayedCount: 0 }), lastEventId: '0' } as MessageEvent)
       }
 
       lastEventSourceInstance?.onerror?.({ message: 'c' })
       lastEventSourceInstance?.onerror?.({ message: 'd' })
 
       expect(lastEventSourceInstance.close).not.toHaveBeenCalled()
+      t.destroy()
+    })
+
+    it('does not reset circuit breaker without replay_complete even after other typed events', async () => {
+      autoFireInitialize = false
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 5,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await Promise.resolve()
+
+      // Dispatch typed events that are NOT replay_complete.
+      const fireTyped = (type: string, data: unknown) => {
+        for (const h of eventListeners[type] ?? []) {
+          h({ data: JSON.stringify(data), lastEventId: '1' } as MessageEvent)
+        }
+      }
+      fireTyped('recovery_status', { hasBufferedEvents: false })
+      fireTyped('chunk', { content: 'hello' })
+      fireTyped('complete', {})
+
+      // Fire errors past the threshold — if the above events reset the counter
+      // the transport would survive 5 more, but since they don't, it trips.
+      for (let i = 0; i < 5; i++) {
+        lastEventSourceInstance?.onerror?.({ message: `err_${i}` })
+      }
+
+      // Without replay_complete, the circuit breaker fires (idle → dormant).
+      expect(lastEventSourceInstance.close).toHaveBeenCalled()
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
+      t.destroy()
+    })
+
+    it('complete event transitions to connected but does not reset consecutiveErrors', async () => {
+      const t = new SSETransport({
+        baseUrl: 'http://localhost:4000',
+        maxConsecutiveErrors: 5,
+        cooldownMs: 1000,
+      })
+      t.on(callbacks)
+      t.connect('app_1', 'token_123', 'conv_1')
+      await vi.waitFor(() => expect(callbacks.onStateChange).toHaveBeenCalledWith('connected'))
+
+      // Accumulate 3 errors (below the threshold of 5).
+      fireError()
+      fireError()
+      fireError()
+
+      // Dispatch a 'complete' event — only transitions state, no counter reset.
+      const completeHandlers = eventListeners['complete'] ?? []
+      for (const h of completeHandlers) {
+        h({ data: JSON.stringify({}), lastEventId: '10' } as MessageEvent)
+      }
+
+      // State transitions to connected (that's what complete does).
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('connected')
+
+      // If complete had reset consecutiveErrors, 5 more errors would be needed
+      // to trip. But only 2 more should trip it (3 prior + 2 = 5 = threshold).
+      fireError()
+      fireError()
+
+      expect(lastEventSourceInstance.close).toHaveBeenCalled()
+      expect(callbacks.onStateChange).toHaveBeenCalledWith('dormant')
       t.destroy()
     })
 
@@ -803,23 +870,7 @@ describe('SSETransport', () => {
       transport.destroy()
     })
 
-    it('fires markFirstStreamEvent once when initialize arrives before typed events', () => {
-      autoFireInitialize = false
-      const monitor = makeMonitor()
-      const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
-      transport.on({ onEvent: vi.fn(), onStateChange: vi.fn(), onError: vi.fn() })
-      transport.connect('app123456', 'token_123', 'conv1')
-
-      for (const h of eventListeners['initialize'] ?? []) {
-        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
-      }
-      for (const h of eventListeners['chunk'] ?? []) h({ data: JSON.stringify({ content: 'hi' }), lastEventId: '1' } as MessageEvent)
-
-      expect(monitor.markFirstStreamEvent).toHaveBeenCalledTimes(1)
-      autoFireInitialize = true
-    })
-
-    it('reports consecutive errors and resets buckets on initialize', () => {
+    it('reports consecutive errors and resets buckets on replay_complete', () => {
       autoFireInitialize = false
       const monitor = makeMonitor()
       const transport = new SSETransport({ baseUrl: 'https://agent.example', qualityMonitor: monitor as any })
@@ -831,8 +882,8 @@ describe('SSETransport', () => {
       expect(monitor.recordEventSourceError).toHaveBeenCalledTimes(2)
       expect(monitor.recordEventSourceError).toHaveBeenLastCalledWith(2)
 
-      for (const h of eventListeners['initialize'] ?? []) {
-        h({ data: JSON.stringify({ serverConfig: { serverVersion: '2.0' }, agents: [] }) } as MessageEvent)
+      for (const h of eventListeners['replay_complete'] ?? []) {
+        h({ data: JSON.stringify({ lastSequence: 0, replayedCount: 0 }), lastEventId: '0' } as MessageEvent)
       }
       expect(monitor.resetErrorBuckets).toHaveBeenCalledTimes(1)
 

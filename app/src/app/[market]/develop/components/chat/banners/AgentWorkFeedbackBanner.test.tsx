@@ -72,7 +72,6 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 vi.mock('@/stores/useStreamingConversationStore', () => ({
   useStreamingConversationStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
-      availableAgents: [{ id: 'InitialAgent', name: 'Initial Agent' }],
       currentAgentName: 'InitialAgent',
     }),
   useIsActivelyStreaming: () => false,

@@ -209,7 +209,7 @@ export class SSEQualityMonitor {
     }
   }
 
-  /** Called by SSETransport on a successful `initialize` (transport healthy again). */
+  /** Called by SSETransport on a successful `replay_complete` (transport healthy again). */
   resetErrorBuckets(): void {
     this.lastWarnedErrorCount = 0
   }

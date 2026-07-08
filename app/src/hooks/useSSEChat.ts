@@ -498,28 +498,7 @@ export function useSSEChat({ enabled = true }: { enabled?: boolean } = {}) {
                 ensureSSEActiveStream(type, event.conversationId)
               }
 
-              if (type === 'server_config') {
-                if (recoveryHandshakePendingRef.current) {
-                  recoveryHandshakePendingRef.current = false
-                  releaseDeferredInitialHistoryLoad()
-                }
-                useStreamingConversationStore.setState({
-                  serverCapabilities: {
-                    version: (event.data as any)?.serverVersion as string | undefined
-                  }
-                })
-              } else if (type === 'agents_available') {
-                const payload = event.data as any
-                const rawAgents = Array.isArray(payload?.agents) ? payload.agents : []
-                const agents = rawAgents
-                  .map((a: any) => {
-                    const id = a?.id ?? a?.name
-                    if (!id) return null
-                    return { id: String(id), name: String(a?.name ?? id), description: a?.description }
-                  })
-                  .filter(Boolean)
-                store.setAgentCatalog(agents, payload?.defaultAgent ? String(payload.defaultAgent) : null)
-              } else if (type === 'step_start') {
+              if (type === 'step_start') {
                 if (eventRequestId) currentStreamRequestIdRef.current = eventRequestId
                 const agentNameRaw = (event.data as any)?.agentName
                 if (agentNameRaw) store.setCurrentAgentName(String(agentNameRaw))
