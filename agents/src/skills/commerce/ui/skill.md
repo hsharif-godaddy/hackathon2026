@@ -190,6 +190,24 @@ skill({ action: 'install', skill: 'payment/godaddy-payments', sellingCountry: 'U
 
 Do not stop after loading the payment skill. Do not build replacement `/api/commerce/checkout`, shipping-update, place-order, or order-status routes by hand. The installed GoDaddy Payments templates own hosted checkout session creation and order-status verification.
 
+## Completion Signal
+
+This skill owns the durable completion marker for Commerce storefront UI. Only call completion after all of these are true:
+
+- `commerce__provision` returned `status: 'ready'`.
+- `commerce/ui` templates are installed.
+- Catalog data has been handled: products were created/updated when provided, or the user chose starter products, Commerce Home management, or an empty catalog.
+- Product catalog, product detail, and cart UI requested by the user are wired to the installed `/api/commerce/*` routes and `src/lib/commerce/*` helpers.
+- If checkout, buy buttons, hosted checkout, order pages, or order confirmation are in scope: `payment/godaddy-payments` has been provisioned, its templates are installed, its completion signal has been called, and `commerce__validate_checkout` has passed with no findings.
+
+Once the storefront UI work is fully done, signal completion as the final internal step before your final summary:
+
+```typescript
+skill({ action: 'complete', skill: 'commerce/ui' });
+```
+
+Do this exactly once per app. Do not call `skill({ action: 'complete', skill: 'commerce' })`.
+
 Cart checkout request shape after `payment/godaddy-payments` is installed:
 
 ```ts

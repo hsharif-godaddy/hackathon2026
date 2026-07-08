@@ -45,11 +45,7 @@ For `needs_store_choice`: the response includes a `stores` array. Call `askQuest
 11. When reporting a connected store to the user, include full Store ID, Channel ID, Business ID when available, and Commerce Home link when available. Do not abbreviate or truncate UUIDs.
 12. If the original request includes cart checkout, buy buttons, hosted checkout, place order, order confirmation, or a complete shop, follow `commerce__provision`'s `capabilityChecklists.fullShopWithCheckout`. That checklist requires loading the `payment` router and determining merchant selling country before selecting a provider. Commerce cart checkout is currently supported only through GoDaddy Payments for confirmed US/CA merchants; for non-US/Canada merchants, block Commerce checkout before building checkout UI and recommend Stripe or another third-party processor for a non-Commerce payment flow.
 13. Before reporting checkout as complete, run `commerce__validate_checkout` and fix every finding.
-14. Once the Commerce work is fully done — the store/business is selected, the channel is ensured (`commerce__provision` returned `status: 'ready'`), all required files are created (templates installed, catalog/UI/checkout wired), and any checkout has passed `commerce__validate_checkout` — signal completion as the final step:
-    ```typescript
-    skill({ action: 'complete', skill: 'commerce' });
-    ```
-    Do this exactly once per app, after everything above is finished and before your final summary to the user.
+14. Do not call `skill({ action: 'complete', skill: 'commerce' })`. The `commerce` skill owns setup, store/channel binding, and catalog operations; storefront UI completion is owned by `commerce/ui` after templates are installed and the UI is wired. For catalog-only/admin work with no storefront UI, finish the requested catalog operation and summarize it without a `complete` action for `commerce`.
 
 ## Catalog Data Decisions
 

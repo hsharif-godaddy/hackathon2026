@@ -276,6 +276,14 @@ Provide the `url` from Step B so the user can open the real GoDaddy hosted check
 
 ### Only after Steps A–C pass, report checkout as live.
 
+After Steps A–C pass (or after Steps A–B pass when Step C is skipped because Step B returned `draftOrderId: null` for a non-catalog checkout), signal completion as the final internal step before your final summary:
+
+```typescript
+skill({ action: 'complete', skill: 'payment/godaddy-payments' });
+```
+
+Do this exactly once per app after provisioning is ready, templates are installed, checkout creation is verified, and order status is verified when a draft order exists. For storefront/cart checkout work, this payment completion must happen before `commerce/ui` completion.
+
 **Do NOT claim checkout is working based on:**
 - Templates being installed
 - A fake or placeholder draft order ID (e.g., one containing the literal string `"test"`)
