@@ -61,7 +61,7 @@ export default function AboutPage() {
         <meta name="twitter:image" content={ogImage} />
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
       </Helmet>
-      <section>{/* page content */}</section>
+      <main>{/* page content — RootLayout supplies header/footer */}</main>
     </>
   );
 }
@@ -129,7 +129,65 @@ Other pages emit their page-purpose `@type` and reference the homepage `Organiza
 
 - Exactly ONE `<h1>` per page, aligned with `<Helmet>` `<title>`
 - Use `<header>`, `<nav>`, `<main>`, `<section>`, `<article>`, `<aside>`, `<footer>`
-- Heading levels nest correctly — don't skip `<h1>` to `<h4>`
+- Heading levels nest correctly — don't skip levels (e.g. `<h1>` → `<h2>` → `<h3>`)
+
+### `<main>`
+
+One `<main>` per page wrapping the primary content — not the shared header or footer. `RootLayout` renders `Header` and `Footer`; page components return `<Helmet>` and `<main>` only. Never substitute a plain `<div>` when `<main>` is semantically correct.
+
+```tsx
+export default function ServicesPage() {
+  return (
+    <>
+      <Helmet>{/* head tags */}</Helmet>
+      <main>
+        <h1>Our Services</h1>
+        {/* page content */}
+      </main>
+    </>
+  );
+}
+```
+
+### `<nav aria-label>`
+
+Every `<nav>` must carry a unique `aria-label`, even when only one exists on the page. Screen readers announce the label so users can distinguish navigation regions.
+
+```tsx
+<nav aria-label="Main navigation">...</nav>
+<nav aria-label="Footer links">...</nav>
+```
+
+### `<figure>` and `<figcaption>`
+
+When an image has a visible caption, wrap both in `<figure>/<figcaption>` rather than a `<div>/<p>` pair. This creates an explicit semantic relationship between image and caption.
+
+```tsx
+<figure>
+  <img src={photo.src} alt={photo.alt} width={800} height={600} />
+  <figcaption>{photo.caption}</figcaption>
+</figure>
+```
+
+### `<time datetime>`
+
+Any displayed date or time must use `<time datetime="...">` with a machine-readable ISO 8601 value. Crawlers and assistive technology use the `datetime` attribute, not the visible text.
+
+```tsx
+<time dateTime="2024-06-15">June 15, 2024</time>
+<time dateTime="2024-06-15T09:00">9:00 AM, June 15</time>
+```
+
+### ARIA for filter and category UI
+
+Filter bars and category selectors must declare their role — visual styling alone is not enough for crawlers or screen readers.
+
+| Pattern | Markup |
+|---------|--------|
+| Filter group / checkbox cluster | `<div role="group" aria-label="Filter by category">` wrapping filter controls |
+| Tag cloud / browse-by | `<nav aria-label="Browse by tag">` with `<a>` links |
+
+**Do NOT use `role="tablist"` / `role="tab"` unless you implement the full ARIA tabs contract:** `role="tabpanel"` on each panel, `aria-controls` on each tab pointing to its panel, `aria-labelledby` on each panel pointing back to its tab, and roving-tabindex + arrow-key keyboard navigation. An incomplete tablist is actively worse for screen-reader users than plain semantic markup. For tab-like navigation where the full contract isn't in place, use `<nav aria-label="...">` with `<a>` or `<button>` links instead.
 
 ---
 
@@ -166,3 +224,8 @@ Items marked (validator) are checked by the post-publish `SeoValidator`. Other i
 - [ ] All `<img>` have `width`, `height`, descriptive `alt`
 - [ ] LCP image has `fetchpriority="high"`; below-fold images have `loading="lazy"`
 - [ ] New public pages added to `src/lib/seo-routes.ts`
+- [ ] ONE `<main>` per page wrapping primary content
+- [ ] Every `<nav>` has a unique `aria-label`
+- [ ] Images with visible captions use `<figure>/<figcaption>`
+- [ ] Displayed dates/times use `<time datetime="...">` with ISO 8601 value
+- [ ] Filter/category UI uses `role="group"` or `<nav aria-label>` (not bare `role="tablist"` without the full ARIA tabs contract)

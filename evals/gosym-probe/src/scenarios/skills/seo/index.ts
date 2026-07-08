@@ -12,3 +12,5 @@ export { addStructuredDataScenario }
   from './add-structured-data.js';
 export { registerNewRouteScenario }
   from './register-new-route.js';
+export { useSemanticHtmlScenario }
+  from './use-semantic-html.js';

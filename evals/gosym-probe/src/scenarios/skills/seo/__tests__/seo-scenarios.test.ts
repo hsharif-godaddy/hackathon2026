@@ -5,6 +5,7 @@ import { noDuplicateTitlesScenario } from '../no-duplicate-titles.js';
 import { followExistingPatternScenario } from '../follow-existing-pattern.js';
 import { addStructuredDataScenario } from '../add-structured-data.js';
 import { registerNewRouteScenario } from '../register-new-route.js';
+import { useSemanticHtmlScenario } from '../use-semantic-html.js';
 import {
   makeGocodeClient,
   makeCtrlPlaneClient,
@@ -270,6 +271,51 @@ describe('seo suite scenarios', () => {
 
     it('defaults to 3 trials', () => {
       expect(scenario.trials).toBe(3);
+    });
+  });
+
+  describe('seo-semantic-html', () => {
+    const scenario = useSemanticHtmlScenario(
+      mockGocode, mockCtrlPlane,
+    );
+
+    it('has correct name and suite', () => {
+      expect(scenario.name).toBe('seo-semantic-html');
+      expect(scenario.suite).toBe('seo');
+    });
+
+    it('has 4 goals (including a negative assertion)', () => {
+      expect(scenario.goals).toHaveLength(4);
+      const negativeGoals = scenario.goals.filter(
+        (g) => g.assertion === 'negative',
+      );
+      expect(negativeGoals).toHaveLength(1);
+    });
+
+    it('includes all required evaluators', () => {
+      const names = scenario.evaluators.map((e) => e.name);
+      for (const evalName of REQUIRED_EVALUATORS) {
+        expect(names).toContain(evalName);
+      }
+    });
+
+    it('expects skill and writeFile tool calls', () => {
+      expect(scenario.expectedTools).toContainEqual(
+        expect.objectContaining({ tool: 'skill', called: true }),
+      );
+      expect(scenario.expectedTools).toContainEqual(
+        expect.objectContaining({ tool: 'writeFile', called: true }),
+      );
+    });
+
+    it('defaults to 3 trials', () => {
+      expect(scenario.trials).toBe(3);
+    });
+
+    it('uses a static first message about semantic HTML', () => {
+      expect(scenario.staticFirstMessage).toBeDefined();
+      expect(scenario.staticFirstMessage).toContain('semantic HTML');
+      expect(scenario.staticFirstMessage).toContain('aria-label');
     });
   });
 });

@@ -26,6 +26,22 @@ Every `<img>` must have `width`, `height`, descriptive `alt`, `loading` (`eager`
 
 Exactly one `<h1>` per page. Headings progress `<h2>` → `<h3>` without skipping levels.
 
+## Semantic HTML
+
+`RootLayout` renders shared header and footer — page components return `<Helmet>` plus `<main>` only. Do not import `Header`/`Footer` into pages.
+
+One `<main>` per page wrapping the primary content (sibling of header/footer in the DOM, not wrapping them). Do not use a plain `<div>` as the outermost page wrapper when `<main>` is correct.
+
+Every `<nav>` must have a unique `aria-label` (e.g. `aria-label="Main navigation"`, `aria-label="Footer links"`). Required even when only one `<nav>` exists on the page.
+
+Wrap images that have visible captions in `<figure>/<figcaption>` instead of a `<div>/<p>` pair.
+
+Render dates and times with `<time datetime="YYYY-MM-DD">` (ISO 8601). This lets crawlers and screen readers parse the value unambiguously.
+
+Filter/category UI must declare its role — use `role="group"` with `aria-label` for filter groups; `<nav aria-label="Browse by tag">` for tag clouds. Do NOT use `role="tablist"` unless you implement the full ARIA tabs contract (`role="tabpanel"`, `aria-controls`, `aria-labelledby`, roving tabindex).
+
+Before finishing a page, verify: one `<main>`, every `<nav>` has a unique `aria-label`, captioned images use `<figure>/<figcaption>`, displayed dates use `<time datetime="...">`, filter UI has explicit roles.
+
 ## Sitemap
 
 Static paths in `src/routes.tsx` auto-sync into `src/lib/seo-routes.ts` on every edit. Don't hand-edit `seo-routes.ts` except to adjust `priority` / `changefreq` / `lastmod` after the sync.

@@ -141,6 +141,18 @@ describe('SEO generation eval (static prompt assertions)', () => {
       expect(primerLower).not.toMatch(/load the .?seo.? skill/);
       expect(primer).not.toContain('seo__audit');
     });
+
+    it('RUBICON-359: semantic HTML structure rules are in the primer', () => {
+      expect(primerLower).toContain('rootlayout');
+      expect(primerLower).toContain('do not import');
+      expect(primer).toContain('<main>');
+      expect(primerLower).toContain('aria-label');
+      expect(primerLower).toContain('figure');
+      expect(primerLower).toContain('<time');
+      expect(primerLower).toContain('role="group"');
+      expect(primerLower).toContain('role="tablist"');
+      expect(primerLower).toContain('verify:');
+    });
   });
 
   describe('seo skill — identity & auto-load preserved', () => {
@@ -166,6 +178,22 @@ describe('SEO generation eval (static prompt assertions)', () => {
       expect(skillRef).toContain('WebPage');
       expect(skillRef).toContain('isPartOf');
       expect(skillRef).toContain('rather than re-declaring them');
+    });
+  });
+
+  describe('seo skill reference — semantic HTML synced to primer', () => {
+    it('RUBICON-359: main example uses RootLayout pattern, not page-level Header/Footer', () => {
+      expect(skillRef.toLowerCase()).toContain('rootlayout');
+      expect(skillRef).not.toMatch(/<Header\s*\/>/);
+      expect(skillRef).not.toMatch(/<Footer\s*\/>/);
+      expect(skillRef.toLowerCase()).toContain('<main>');
+    });
+
+    it('RUBICON-359: skill reference covers nav, figure, time, and filter ARIA', () => {
+      expect(skillRef).toContain('aria-label');
+      expect(skillRef).toContain('<figure>');
+      expect(skillRef).toContain('<time');
+      expect(skillRef).toContain('role="group"');
     });
   });
 

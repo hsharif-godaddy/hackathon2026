@@ -74,6 +74,7 @@ import {
   followExistingPatternScenario,
   addStructuredDataScenario,
   registerNewRouteScenario,
+  useSemanticHtmlScenario,
 } from './skills/seo/index.js';
 import {
   addGoogleReviewsScenario,
@@ -181,6 +182,7 @@ export function createAllScenarios(
     followExistingPatternScenario(gocode, ctrlPlane),
     addStructuredDataScenario(gocode, ctrlPlane),
     registerNewRouteScenario(gocode, ctrlPlane),
+    useSemanticHtmlScenario(gocode, ctrlPlane),
     // 1b.ii mid-conversation variance scenario. Returns null unless the
     // operator-provisioned fixed base is configured (EVAL_INCREMENT_* env),
     // so it's absent from normal runs; filter the null out.
