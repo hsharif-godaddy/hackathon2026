@@ -14,6 +14,7 @@ import { agentFetch } from '@/lib/agent-fetch';
 import { DomainType } from '@/lib/control-plane/types';
 import { appFetch, AuthDismissedError, authPreflight } from '@/lib/gasket-config';
 import { regenerateToken } from '@/lib/jwt-regeneration';
+import { shipAnalyticsLog } from '@/lib/logging';
 import type { AiroSubscription } from '@/lib/mgmt-airo/types';
 import {
   handlePublishPermissionDenied,
@@ -361,6 +362,7 @@ export function usePublishApp() {
 
           if (pollResult.phase === 'timeout') {
             logger.warn('publish.poll-timeout', { appId });
+            shipAnalyticsLog('publish.poll-timeout', { appId, trigger: 'ui' });
             throw new Error('Publish may have failed. Check the Publish panel or try again.');
           }
 
@@ -447,6 +449,7 @@ export function usePublishApp() {
 
         if (pollResult.phase === 'timeout') {
           logger.warn('publish.poll-timeout', { appId });
+          shipAnalyticsLog('publish.poll-timeout', { appId, trigger: 'ui' });
           throw new Error('Publish may have failed. Check the Publish panel or try again.');
         }
 
@@ -574,6 +577,7 @@ export function usePublishApp() {
         appId: variables.appId,
         error: error.message,
       });
+      shipAnalyticsLog('publish.error', { appId: variables.appId, error: error.message, trigger: 'ui' });
     },
   });
 }

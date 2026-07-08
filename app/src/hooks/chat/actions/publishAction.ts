@@ -578,6 +578,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
     }
 
     logger.info('websocket.client-action.publish.success', { appId, commitHash: commitHash.substring(0, 7) })
+    shipAnalyticsLog('publish.success', { appId, commitHash: commitHash.substring(0, 7), trigger: 'agent' })
 
     return {
       commitHash,
@@ -606,6 +607,7 @@ export const publishAction: ClientActionExecutor = async (params, context, reque
       appId,
       error: errorMessage,
     })
+    shipAnalyticsLog('publish.error', { appId, error: errorMessage, trigger: 'agent' })
     throw error
   }
 }

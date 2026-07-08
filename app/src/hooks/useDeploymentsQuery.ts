@@ -186,6 +186,7 @@ export function useDeploymentsQuery({
               pollCount: count,
               message: 'Polling stopped after max poll attempts - deployment may be stuck'
             });
+            shipAnalyticsLog('publish.poll-timeout', { appId, trigger: 'ui' });
             pollCountRef.current = 0;
             setDeploymentInProgressId(appId, null);
             setFirstPublishDeployPending(appId, false);
