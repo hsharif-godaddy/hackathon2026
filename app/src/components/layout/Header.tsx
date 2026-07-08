@@ -41,11 +41,15 @@ export default function Header({ actions, onShowMockLogin, location = 'unknown',
   const isMarketingPage = isHomepage || location.startsWith('landing');
   const godaddyUrl = 'https://www.godaddy.com';
   const bellAppKey = BELL_APP_KEYS[location];
-  
-  // Unique per mount so CDN bundle's `roots` Map (dom.tsx) never reuses a stale root across navigations.
-  const notifInstanceKeyRef = useRef<string>('');
-  if (!notifInstanceKeyRef.current) notifInstanceKeyRef.current = crypto.randomUUID();
-  const notifInstanceKey: string = notifInstanceKeyRef.current;
+
+  // Regenerate key on each pathname change so <Notifications> remounts on navigation.
+  const notifKeyRef = useRef<{ pathname: string; key: string }>({ pathname: '', key: crypto.randomUUID() });
+
+  if (notifKeyRef.current.pathname !== pathname) {
+    notifKeyRef.current = { pathname, key: crypto.randomUUID() };
+  }
+
+  const notifInstanceKey: string = notifKeyRef.current.key;
 
   return (
     <header data-testid="airo-header" className={clsx(

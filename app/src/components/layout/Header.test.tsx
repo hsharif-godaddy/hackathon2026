@@ -11,11 +11,13 @@ import { mockAuthContext, mockParams, mockSearchParams } from '@/tests/mocks';
 import { renderWithProviders } from '@/tests/test-utils';
 import Header from './Header';
 
+const mockUsePathname = vi.fn(() => '/');
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => mockSearchParams(),
   useParams: () => mockParams(),
-  usePathname: () => '/',
+  usePathname: () => mockUsePathname(),
 }));
 vi.mock('@/utils/instrumentation', () => ({
   generateClickEID: vi.fn(function (id) { return id; }),
@@ -53,6 +55,7 @@ vi.mock('@/stores/useDevelopPageStore', () => ({
 describe('Header', () => {
   beforeEach(() => {
     vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: false }));
+    mockUsePathname.mockReturnValue('/');
   });
 
   it('should render without crashing', () => {
@@ -140,5 +143,54 @@ describe('Header', () => {
     renderWithProviders(<Header location="homepage" />);
 
     expect(screen.queryByTestId(/^site-notifications-homepage/)).not.toBeInTheDocument();
+  });
+
+  it('should render Notifications on sites page when authenticated', () => {
+    vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: true }));
+    renderWithProviders(<Header location="sites" />);
+
+    expect(screen.getByTestId(/^site-notifications-sites/)).toBeInTheDocument();
+  });
+
+  it('should not render Notifications on sites page when not authenticated', () => {
+    renderWithProviders(<Header location="sites" />);
+
+    expect(screen.queryByTestId(/^site-notifications-sites/)).not.toBeInTheDocument();
+  });
+
+  it('should remount Notifications with a new id when pathname changes', () => {
+    vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: true }));
+    mockUsePathname.mockReturnValue('/');
+
+    const { rerender } = renderWithProviders(<Header location="sites" />);
+    const firstId: string = screen.getByTestId(/^site-notifications-sites/).getAttribute('data-testid') ?? '';
+
+    mockUsePathname.mockReturnValue('/sites/123');
+    rerender(<Header location="sites" />);
+
+    const secondId: string = screen.getByTestId(/^site-notifications-sites/).getAttribute('data-testid') ?? '';
+    expect(secondId).not.toBe(firstId);
+  });
+
+  it('should show bell on landing page, hide on apps page, then show a fresh bell on return', () => {
+    vi.mocked(useAuthContext).mockReturnValue(mockAuthContext({ isAuthenticated: true }));
+    mockUsePathname.mockReturnValue('/');
+
+    // 1. Landing page — bell present
+    const { rerender } = renderWithProviders(<Header location="homepage" />);
+    expect(screen.getByTestId(/^site-notifications-homepage/)).toBeInTheDocument();
+    const firstId: string = screen.getByTestId(/^site-notifications-homepage/).getAttribute('data-testid') ?? '';
+
+    // 2. Navigate to apps/develop page — no bellAppKey, bell hidden
+    mockUsePathname.mockReturnValue('/develop/123');
+    rerender(<Header location="develop" />);
+    expect(screen.queryByTestId(/^site-notifications/)).not.toBeInTheDocument();
+
+    // 3. Navigate back to landing page — bell remounts with a new id
+    mockUsePathname.mockReturnValue('/');
+    rerender(<Header location="homepage" />);
+    expect(screen.getByTestId(/^site-notifications-homepage/)).toBeInTheDocument();
+    const thirdId: string = screen.getByTestId(/^site-notifications-homepage/).getAttribute('data-testid') ?? '';
+    expect(thirdId).not.toBe(firstId);
   });
 });
