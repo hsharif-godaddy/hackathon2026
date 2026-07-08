@@ -1,4 +1,4 @@
-import { type InfiniteData, keepPreviousData, useInfiniteQuery, type UseInfiniteQueryResult,useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { type InfiniteData, useInfiniteQuery, type UseInfiniteQueryResult, useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import Growl from '@ux/growl'
 
 import { useTranslations } from '@/hooks/useTranslations'
@@ -332,7 +332,6 @@ export function useInboxConversations(
     queryKey: queryKeys.inboxConversations(brandId, page, filter),
     queryFn: () => getInboxConversations({ brandId, page, filter }),
     staleTime: 60_000,
-    placeholderData: keepPreviousData,
     retry: (failureCount) => failureCount < 3,
     enabled: !!brandId
   })
