@@ -4,7 +4,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 
-import { PublishFlowState } from '@/types/social-posts'
+import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
+import { socialV2Client } from '@/lib/social'
+import { SocialPlatform } from '@/types/social'
+import { type PendingPublish, PublishFlowState } from '@/types/social-posts'
+import { publishToPlatform, storePostResult } from './api'
 import { usePublishFlow } from './usePublishFlow'
 
 vi.mock('@/hooks/useSocial', () => ({
@@ -20,7 +24,9 @@ vi.mock('@/hooks/useTranslations', () => ({
 }))
 
 vi.mock('@/lib/social', () => ({
-  socialV2Client: {}
+  socialV2Client: {
+    getConnectionById: vi.fn()
+  }
 }))
 
 vi.mock('./api', () => ({
@@ -28,10 +34,11 @@ vi.mock('./api', () => ({
   storePostResult: vi.fn()
 }))
 
-import { useConnectionById,useSiteAssociations } from '@/hooks/useSocial'
-
 const mockUseSiteAssociations = vi.mocked(useSiteAssociations)
 const mockUseConnectionById = vi.mocked(useConnectionById)
+const mockGetConnectionById = vi.mocked(socialV2Client.getConnectionById)
+const mockPublishToPlatform = vi.mocked(publishToPlatform)
+const mockStorePostResult = vi.mocked(storePostResult)
 
 describe('usePublishFlow', () => {
   const mockCallbacks = {
@@ -40,11 +47,11 @@ describe('usePublishFlow', () => {
     onOverallStatusChange: vi.fn()
   }
 
-  const pendingPublish = {
-    platforms: ['facebook' as const],
+  const pendingPublish: PendingPublish = {
+    platforms: [SocialPlatform.FACEBOOK],
     message: 'Test post',
-    imageUrls: [] as string[],
-    platformData: [{ platform: 'facebook' as const, message: 'Test post', imageUrls: [] as string[] }]
+    imageUrls: [],
+    platformData: [{ platform: SocialPlatform.FACEBOOK, message: 'Test post', imageUrls: [] }]
   }
 
   beforeEach(() => {
@@ -53,6 +60,9 @@ describe('usePublishFlow', () => {
       data: undefined,
       isError: false
     } as any)
+    mockGetConnectionById.mockResolvedValue({ id: 'social-default' } as any)
+    mockPublishToPlatform.mockResolvedValue({ platformUrl: 'https://example.com/post/1' } as any)
+    mockStorePostResult.mockResolvedValue(undefined)
   })
 
   it('fires error when no associations exist for requested platforms', async () => {
@@ -121,5 +131,122 @@ describe('usePublishFlow', () => {
     expect(mockCallbacks.onPlatformResultChange).toHaveBeenCalledWith('facebook', {
       error: 'builder_common_unknown_error'
     })
+  })
+
+  it('replays terminal snapshot to remounted flow without republishing', async () => {
+    const pendingPublishWithId = {
+      ...pendingPublish,
+      publishId: 'pub-snapshot-replay'
+    }
+
+    mockUseSiteAssociations.mockReturnValue({
+      data: {
+        associations: [
+          { id: 'assoc-1', socialId: 'social-1', platform: 'facebook' }
+        ]
+      },
+      isLoading: false,
+      isError: false
+    } as any)
+
+    mockUseConnectionById.mockReturnValue({
+      data: { socialId: 'social-1' },
+      isError: false
+    } as any)
+
+    mockGetConnectionById.mockResolvedValue({ id: 'social-1' } as any)
+
+    const firstCallbacks = {
+      onPlatformStatusChange: vi.fn(),
+      onPlatformResultChange: vi.fn(),
+      onOverallStatusChange: vi.fn()
+    }
+
+    const { unmount } = renderHook(() =>
+      usePublishFlow('app-1', 'pub-snapshot-replay', pendingPublishWithId as any, true, firstCallbacks)
+    )
+
+    await waitFor(() => {
+      expect(firstCallbacks.onOverallStatusChange).toHaveBeenCalledWith(PublishFlowState.Success)
+    })
+
+    unmount()
+
+    const remountCallbacks = {
+      onPlatformStatusChange: vi.fn(),
+      onPlatformResultChange: vi.fn(),
+      onOverallStatusChange: vi.fn()
+    }
+
+    renderHook(() =>
+      usePublishFlow('app-1', 'pub-snapshot-replay', pendingPublishWithId as any, true, remountCallbacks)
+    )
+
+    await waitFor(() => {
+      expect(remountCallbacks.onOverallStatusChange).toHaveBeenCalledWith(PublishFlowState.Success)
+    })
+
+    expect(mockPublishToPlatform).toHaveBeenCalledTimes(1)
+  })
+
+  it('replays completion to in-flight remount subscriber without duplicate publish', async () => {
+    const pendingPublishWithId = {
+      ...pendingPublish,
+      publishId: 'pub-inflight-replay'
+    }
+
+    mockUseSiteAssociations.mockReturnValue({
+      data: {
+        associations: [
+          { id: 'assoc-2', socialId: 'social-2', platform: 'facebook' }
+        ]
+      },
+      isLoading: false,
+      isError: false
+    } as any)
+
+    mockUseConnectionById.mockReturnValue({
+      data: { socialId: 'social-2' },
+      isError: false
+    } as any)
+
+    mockGetConnectionById.mockResolvedValue({ id: 'social-2' } as any)
+
+    let resolvePublish: ((value: unknown) => void) | undefined
+    mockPublishToPlatform.mockImplementation(() => new Promise((resolve) => {
+      resolvePublish = resolve
+    }) as any)
+
+    const firstCallbacks = {
+      onPlatformStatusChange: vi.fn(),
+      onPlatformResultChange: vi.fn(),
+      onOverallStatusChange: vi.fn()
+    }
+
+    renderHook(() =>
+      usePublishFlow('app-1', 'pub-inflight-replay', pendingPublishWithId as any, true, firstCallbacks)
+    )
+
+    await waitFor(() => {
+      expect(mockPublishToPlatform).toHaveBeenCalledTimes(1)
+    })
+
+    const secondCallbacks = {
+      onPlatformStatusChange: vi.fn(),
+      onPlatformResultChange: vi.fn(),
+      onOverallStatusChange: vi.fn()
+    }
+
+    renderHook(() =>
+      usePublishFlow('app-1', 'pub-inflight-replay', pendingPublishWithId as any, true, secondCallbacks)
+    )
+
+    resolvePublish?.({ platformUrl: 'https://example.com/post/2' })
+
+    await waitFor(() => {
+      expect(secondCallbacks.onOverallStatusChange).toHaveBeenCalledWith(PublishFlowState.Success)
+    })
+
+    expect(mockPublishToPlatform).toHaveBeenCalledTimes(1)
   })
 })

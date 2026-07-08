@@ -3,9 +3,81 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useConnectionById, useSiteAssociations } from '@/hooks/useSocial'
 import { useTranslations } from '@/hooks/useTranslations'
 import { socialV2Client } from '@/lib/social'
+import { type PublishablePlatform } from '@/lib/social-platforms'
 import type { SiteAssociation } from '@/types/social'
-import { type PendingPublish, type PublishFlowCallbacks, PublishFlowState, SocialPostState } from '@/types/social-posts'
+import { type PendingPublish, type PublishFlowCallbacks, PublishFlowState, type PublishResult, SocialPostState } from '@/types/social-posts'
 import { type PublishErrorMessages, publishToPlatform, storePostResult } from './api'
+
+type PlatformSnapshot = {
+  status: PublishFlowState
+  result?: PublishResult
+  error?: string
+}
+
+type PublishSnapshot = {
+  overallStatus: PublishFlowState
+  platformStatuses: Partial<Record<PublishablePlatform, PlatformSnapshot>>
+}
+
+const MAX_TRACKED_PUBLISHES: number = 200
+const startedPublishIds = new Set<string>()
+const terminalSnapshots = new Map<string, PublishSnapshot>()
+const snapshotListeners = new Map<string, Set<(snapshot: PublishSnapshot) => void>>()
+
+function trimTrackedPublishes(): void {
+  while (startedPublishIds.size > MAX_TRACKED_PUBLISHES) {
+    const oldestStarted: string | undefined = startedPublishIds.values().next().value
+    if (!oldestStarted) {
+      break
+    }
+    startedPublishIds.delete(oldestStarted)
+    terminalSnapshots.delete(oldestStarted)
+    snapshotListeners.delete(oldestStarted)
+  }
+
+  while (terminalSnapshots.size > MAX_TRACKED_PUBLISHES) {
+    const oldestSnapshot: string | undefined = terminalSnapshots.keys().next().value
+    if (!oldestSnapshot) {
+      break
+    }
+    terminalSnapshots.delete(oldestSnapshot)
+    startedPublishIds.delete(oldestSnapshot)
+    snapshotListeners.delete(oldestSnapshot)
+  }
+}
+
+function markPublishStarted(publishId: string): void {
+  startedPublishIds.add(publishId)
+  trimTrackedPublishes()
+}
+
+function setTerminalSnapshot(publishId: string, snapshot: PublishSnapshot): void {
+  terminalSnapshots.set(publishId, snapshot)
+  const listeners: Set<(snapshot: PublishSnapshot) => void> | undefined = snapshotListeners.get(publishId)
+  listeners?.forEach((listener) => {
+    listener(snapshot)
+  })
+  snapshotListeners.delete(publishId)
+  trimTrackedPublishes()
+}
+
+function subscribeSnapshot(
+  publishId: string,
+  listener: (snapshot: PublishSnapshot) => void
+): () => void {
+  const listeners: Set<(snapshot: PublishSnapshot) => void> = snapshotListeners.get(publishId) ?? new Set()
+  listeners.add(listener)
+  snapshotListeners.set(publishId, listeners)
+
+  return function unsubscribe(): void {
+    const currentListeners: Set<(snapshot: PublishSnapshot) => void> | undefined = snapshotListeners.get(publishId)
+    if (!currentListeners) return
+    currentListeners.delete(listener)
+    if (currentListeners.size === 0) {
+      snapshotListeners.delete(publishId)
+    }
+  }
+}
 
 function findMatchingAssociation(
   associations: SiteAssociation[],
@@ -67,6 +139,7 @@ export function usePublishFlow(
   ) => {
     if (isPublishingRef.current) return
     isPublishingRef.current = true
+    const snapshot: Partial<Record<PublishablePlatform, PlatformSnapshot>> = {}
 
     try {
       // Start all publishes in parallel
@@ -128,6 +201,7 @@ export function usePublishFlow(
           // Update status and result together in single dispatch to avoid race conditions
           onPlatformStatusChange(platform, PublishFlowState.Success)
           onPlatformResultChange(platform, result)
+          snapshot[platform] = { status: PublishFlowState.Success, result }
 
           return { platform, success: true, result }
         } catch (err) {
@@ -159,6 +233,7 @@ export function usePublishFlow(
           // Update status and error together in single dispatch to avoid race conditions
           onPlatformStatusChange(platform, PublishFlowState.Error)
           onPlatformResultChange(platform, { error: errorMessage })
+          snapshot[platform] = { status: PublishFlowState.Error, error: errorMessage }
 
           return { platform, success: false, error: errorMessage }
         }
@@ -176,20 +251,60 @@ export function usePublishFlow(
 
       if (allSucceeded) {
         onOverallStatusChange(PublishFlowState.Success)
+        setTerminalSnapshot(publishId, {
+          overallStatus: PublishFlowState.Success,
+          platformStatuses: snapshot
+        })
       } else if (anySucceeded) {
         // Partial success - at least one succeeded
         onOverallStatusChange(PublishFlowState.Success)
+        setTerminalSnapshot(publishId, {
+          overallStatus: PublishFlowState.Success,
+          platformStatuses: snapshot
+        })
       } else {
         onOverallStatusChange(PublishFlowState.Error)
+        setTerminalSnapshot(publishId, {
+          overallStatus: PublishFlowState.Error,
+          platformStatuses: snapshot
+        })
       }
     } finally {
       isPublishingRef.current = false
     }
-  }, [appId, errorMessages, onPlatformStatusChange, onPlatformResultChange, onOverallStatusChange, t])
+  }, [appId, errorMessages, onPlatformStatusChange, onPlatformResultChange, onOverallStatusChange, publishId, t])
+
+  const replaySnapshot = useCallback((snapshot: PublishSnapshot): void => {
+    Object.entries(snapshot.platformStatuses).forEach(([platform, platformSnapshot]) => {
+      if (!platformSnapshot) return
+      onPlatformStatusChange(platform as PublishablePlatform, platformSnapshot.status)
+      if (platformSnapshot.result !== undefined) {
+        onPlatformResultChange(platform as PublishablePlatform, platformSnapshot.result)
+      } else if (platformSnapshot.error) {
+        onPlatformResultChange(platform as PublishablePlatform, { error: platformSnapshot.error })
+      }
+    })
+    onOverallStatusChange(snapshot.overallStatus)
+  }, [onOverallStatusChange, onPlatformResultChange, onPlatformStatusChange])
 
   useEffect(() => {
     if (!isActiveFlow || !pendingPublish) return
     if (initiatedPublishIds.current.has(publishId)) return
+    const terminalSnapshot = terminalSnapshots.get(publishId)
+    if (terminalSnapshot) {
+      replaySnapshot(terminalSnapshot)
+      initiatedPublishIds.current.add(publishId)
+      return
+    }
+    if (startedPublishIds.has(publishId)) {
+      const unsubscribe = subscribeSnapshot(publishId, function onSnapshot(snapshot: PublishSnapshot): void {
+        replaySnapshot(snapshot)
+        initiatedPublishIds.current.add(publishId)
+      })
+      return function cleanup(): void {
+        unsubscribe()
+      }
+    }
     if (isLoadingAssociations) return
     if (isAssociationsError) {
       onOverallStatusChange(PublishFlowState.Error)
@@ -231,6 +346,7 @@ export function usePublishFlow(
     if (!connection) return
 
     // Start parallel publishing
+    markPublishStarted(publishId)
     initiatedPublishIds.current.add(publishId)
     executeMultiPlatformPublish(pendingPublish, associations)
   }, [
@@ -246,6 +362,7 @@ export function usePublishFlow(
     onOverallStatusChange,
     onPlatformStatusChange,
     onPlatformResultChange,
+    replaySnapshot,
     errorMessages,
     t
   ])
