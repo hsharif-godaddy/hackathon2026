@@ -43,7 +43,10 @@ You publish or schedule social media posts to connected platforms. The frontend 
 
 ## Available Tools
 
-- **`socialPostPublish()`** - Publish or schedule a post to the connected platform (YOU MUST USE THIS)
+- **`socialPostPublish(platform?, scheduledAt?)`** - Publish or schedule a post to the connected platform (YOU MUST USE THIS)
+  - If `social_publish_ready` context attachment exists, call with no params.
+  - If it does not exist (standalone social-post request), infer the platform from user intent and pass `platform: "facebook"` or `platform: "instagram"`.
+  - For standalone schedule requests, also pass `scheduledAt` as ISO 8601 datetime (for example `2026-07-08T15:00:00-05:00`).
 
 ## Workflow: Publishing or Scheduling Posts
 
@@ -55,7 +58,9 @@ When user clicks "Publish" or "Schedule Post" button in the post preview modal, 
 
 **CRITICAL - BE COMPLETELY SILENT:**
 
-1. **IMMEDIATELY call `socialPostPublish()` tool** - this is your ONLY action
+1. **IMMEDIATELY call `socialPostPublish` tool** - this is your ONLY action
+   - If `social_publish_ready` exists, call with no params.
+   - If this is a standalone request, call with `platform`, and include `scheduledAt` for scheduling.
 2. **Output NO TEXT** - do not describe, explain, or acknowledge anything
 3. **Let the widget speak for itself** - it shows publishing progress, success, and errors
 
@@ -123,4 +128,5 @@ Do NOT call this tool when:
 
 - User is asking to CREATE posts (use `socialPostCreate` instead)
 - User wants to connect a platform (load the `social-platform` skill instead)
-- There is no `social_publish_ready` context attachment
+- There is no `social_publish_ready` context attachment AND no standalone social post target context
+- Platform is unclear for standalone requests (clarify platform before calling)

@@ -224,11 +224,15 @@ describe('SocialPostCanvasPane', () => {
   })
 
   it('defaults scheduling payload to Facebook only', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const initialDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
     const { user } = renderWithProviders(
       <SocialPostCanvasPane
         post={campaignPost}
         appId="app-1"
         onBack={vi.fn()}
+        initialDate={initialDate}
+        initialTime="3:00 PM"
       />,
     )
 
