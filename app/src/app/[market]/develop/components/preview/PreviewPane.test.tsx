@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { CanvasId } from '@/app/[market]/commander/canvas/registry';
+import { COMMANDER_LAYOUT_METRICS } from '@/app/[market]/commander/components/Commander';
+import { SET_SCROLL_GUTTER_MESSAGE_TYPE } from '@/app/[market]/commander/components/commanderMobileScroll';
+import { useCommanderStore } from '@/stores/useCommanderStore';
 import { useStreamingConversationStore } from '@/stores/useStreamingConversationStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { postMessageToIframe } from '@/utils/postMessage';
@@ -118,13 +121,40 @@ vi.mock('@/stores/useGitStore', () => ({
   useGitStore: (selector: any) => selector(mockGitStore),
 }));
 
-const mockCommanderStore: { activeCanvasId: CanvasId } = { activeCanvasId: CanvasId.Preview };
+const mockCommanderStore = {
+  activeCanvasId: CanvasId.Preview,
+  isMobileChatOpen: false,
+};
+const mockCommanderStoreListeners = new Set<() => void>();
 let mockCanvasTabsEnabled = false;
 
-vi.mock('@/stores/useCommanderStore', () => ({
-  useCommanderStore: (selector: any) => selector(mockCommanderStore),
-  useCommanderCanvasTabsEnabled: () => mockCanvasTabsEnabled,
-}));
+vi.mock('@/stores/useCommanderStore', async () => {
+  const react = await import('react');
+  const store = (selector: (state: typeof mockCommanderStore) => unknown) =>
+    react.useSyncExternalStore(
+      (onStoreChange: () => void) => {
+        mockCommanderStoreListeners.add(onStoreChange);
+        return () => {
+          mockCommanderStoreListeners.delete(onStoreChange);
+        };
+      },
+      () => selector(mockCommanderStore),
+    );
+  store.getState = () => mockCommanderStore;
+  store.setState = (partial: unknown) => {
+    Object.assign(
+      mockCommanderStore,
+      typeof partial === 'function' ? partial(mockCommanderStore) : partial,
+    );
+    for (const listener of mockCommanderStoreListeners) {
+      listener();
+    }
+  };
+  return {
+    useCommanderStore: store,
+    useCommanderCanvasTabsEnabled: () => mockCanvasTabsEnabled,
+  };
+});
 
 vi.mock('@/app/[market]/develop/components/utils', () => ({
   useAppIdFromParams: () => 'test-app-123',
@@ -271,6 +301,7 @@ describe('PreviewPane', () => {
     mockDevelopPageStore.isVersionHistoryOpen = false;
     mockCanvasTabsEnabled = false;
     mockCommanderStore.activeCanvasId = CanvasId.Preview;
+    mockCommanderStore.isMobileChatOpen = false;
     for (const key of Object.keys(mockSwitchboardResults)) {
       delete mockSwitchboardResults[key];
     }
@@ -1884,6 +1915,98 @@ describe('publish-snapshot-request handling', function publishSnapshotHandlingTe
     )
   })
 
+})
+
+describe('mobile scroll gutter', function mobileScrollGutterTests() {
+  beforeEach(function reset(): void {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockDevelopPageStore.viewMode = ViewMode.PREVIEW;
+    mockServerPollingStore.getServerState = vi.fn(function () {
+      return { isReady: true, url: 'http://localhost:3000' };
+    });
+    useCommanderStore.setState({ isMobileChatOpen: false });
+  });
+
+  afterEach(function restore(): void {
+    vi.useRealTimers();
+    useCommanderStore.setState({ isMobileChatOpen: false });
+  });
+
+  async function bootstrapIframe(container: HTMLElement): Promise<HTMLIFrameElement> {
+    await vi.advanceTimersByTimeAsync(50);
+    const iframe = container.querySelector('iframe');
+    expect(iframe).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'IFRAME_READY' },
+          source: iframe!.contentWindow,
+        }),
+      );
+    });
+    return iframe!;
+  }
+
+  it('posts scroll gutter padding when edgeToEdge and mobile chat is closed', async function postsGutter(): Promise<void> {
+    const { container } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} edgeToEdge />,
+    );
+    await bootstrapIframe(container);
+    expect(postMessageToIframe).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        type: SET_SCROLL_GUTTER_MESSAGE_TYPE,
+        paddingBottom: COMMANDER_LAYOUT_METRICS.MOBILE_BAR_RESERVE,
+      },
+    );
+  });
+
+  it('posts paddingBottom 0 when mobile chat is open', async function clearsGutterOnChatOpen(): Promise<void> {
+    useCommanderStore.setState({ isMobileChatOpen: true });
+    const { container } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} edgeToEdge />,
+    );
+    await bootstrapIframe(container);
+    expect(postMessageToIframe).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        type: SET_SCROLL_GUTTER_MESSAGE_TYPE,
+        paddingBottom: 0,
+      },
+    );
+  });
+
+  it('posts paddingBottom 0 when mobile chat opens after mount', async function togglesGutterOnChatOpen(): Promise<void> {
+    const { container } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} edgeToEdge />,
+    );
+    await bootstrapIframe(container);
+    vi.mocked(postMessageToIframe).mockClear();
+
+    await act(async () => {
+      useCommanderStore.setState({ isMobileChatOpen: true });
+    });
+
+    expect(postMessageToIframe).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        type: SET_SCROLL_GUTTER_MESSAGE_TYPE,
+        paddingBottom: 0,
+      },
+    );
+  });
+
+  it('does not post scroll gutter when edgeToEdge is false', async function skipsWithoutEdgeToEdge(): Promise<void> {
+    const { container } = renderWithProviders(
+      <PreviewPane onPreviewRefresh={vi.fn()} />,
+    );
+    await bootstrapIframe(container);
+    expect(postMessageToIframe).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: SET_SCROLL_GUTTER_MESSAGE_TYPE }),
+    );
+  });
 })
 
 describe('restoreIframeState', function restoreTests() {

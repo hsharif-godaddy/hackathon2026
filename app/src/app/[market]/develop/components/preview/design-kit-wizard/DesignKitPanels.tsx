@@ -7,6 +7,7 @@ import Button from '@ux/button';
 import Card from '@ux/card';
 import text from '@ux/text';
 
+import { commanderMobileScrollRootProps } from '@/app/[market]/commander/components/commanderMobileScroll';
 import { getSlotImageUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail';
 import type { CompletePalette } from '@/app/[market]/develop/components/types/colorScheme';
 import { previewFontInIframe } from '@/app/[market]/develop/components/utils/previewFontInIframe';
@@ -237,6 +238,7 @@ export function DesignKitPanels({ appId }: { appId: string }): JSX.Element {
     <div
       data-testid="design-kit-panels"
       className="h-full overflow-y-auto bg-intents-ux-box-backgroundColor p-2.5"
+      {...commanderMobileScrollRootProps}
     >
       <div className="mx-auto w-full px-1.5 pb-2 md:max-w-7xl md:px-0.5">
         {/* Heading matches SettingsSection (General / Model Override): text.h3 as="title" + text.p. */}

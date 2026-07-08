@@ -33,6 +33,12 @@ const INSTANT_TRANSITION: Transition = { duration: 0 }
 export const COMMANDER_LAYOUT_METRICS = {
   LEFT_DOCK_WIDTH: 406,
   FLOATING_INSET: 8,
+  /**
+   * Bottom inset for the mobile canvas area so CommanderMobileBar does not cover content:
+   * bottom-2 gap (16px) + ~80px bar height + 16px above bar for symmetry = 112px.
+   * Re-measure if bar layout or bottom-* positioning change.
+   */
+  MOBILE_BAR_RESERVE: 112,
 }
 
 const VERTICAL_INSET = 8

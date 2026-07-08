@@ -1,7 +1,9 @@
 'use client'
 
+import './commander-mobile-scroll.css'
+
 import { motion } from 'framer-motion'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { CommanderCanvasActionProvider } from '@/app/[market]/commander/canvas/CommanderCanvasActionContext'
 import { CANVAS_REGISTRY, CanvasId } from '@/app/[market]/commander/canvas/registry'
@@ -28,6 +30,11 @@ import { CommanderCanvasSettingsOverlay } from './CommanderCanvasSettingsOverlay
 import CommanderHeader from './CommanderHeader'
 import CommanderHeaderMobile from './CommanderHeaderMobile'
 import { CommanderMobileBar } from './CommanderMobileBar'
+import {
+  COMMANDER_MOBILE_BAR_RESERVE_VAR,
+  COMMANDER_MOBILE_CANVAS_ATTR,
+  commanderMobileScrollRootProps,
+} from './commanderMobileScroll'
 
 interface CommanderShellProps {
   appId: string | null
@@ -104,7 +111,17 @@ export function CommanderShell({
       <CommanderCanvasActionProvider onPreviewRefresh={onPreviewRefresh}>
         <CommanderHeaderMobile onBack={isMobileChatOpen ? closeMobileChat : undefined} backLabel={backLabel} />
         <div className="relative flex-1 min-h-0">
-          <div className="absolute inset-0 flex flex-col isolate">
+          <div
+            className="absolute inset-0 flex flex-col isolate"
+            {...(!isMobileChatOpen
+              ? {
+                  [COMMANDER_MOBILE_CANVAS_ATTR]: '',
+                  style: {
+                    [COMMANDER_MOBILE_BAR_RESERVE_VAR]: `${COMMANDER_LAYOUT_METRICS.MOBILE_BAR_RESERVE}px`,
+                  } as CSSProperties,
+                }
+              : undefined)}
+          >
             {previewPaneNode}
             {isBrandActive && brandOverlayContent && (
               <div className="absolute inset-0 z-20 overflow-hidden" data-testid="brand-book-overlay">
@@ -114,7 +131,10 @@ export function CommanderShell({
             {isAutomationsActive && (
               <div className="absolute inset-0 z-20 overflow-hidden" data-testid="automations-overlay">
                 <div className="h-full flex flex-col pr-1 pl-1">
-                  <div className="relative h-full overflow-auto rounded-lg border bg-intents-ux-box-backgroundColor">
+                  <div
+                    className="relative h-full overflow-auto rounded-lg border bg-intents-ux-box-backgroundColor"
+                    {...commanderMobileScrollRootProps}
+                  >
                     <AutomationsPanel />
                   </div>
                 </div>

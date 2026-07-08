@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { type ComponentType, useMemo } from 'react'
 
+import { commanderMobileScrollRootProps } from '@/app/[market]/commander/components/commanderMobileScroll'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import { ChatTab, SettingsSection } from '@/app/[market]/develop/components/types'
@@ -113,7 +114,11 @@ export function CommanderSettingsCanvasStack({
 
   const { canvasId, Component } = activeEntry
   return (
-    <div key={canvasId} className="h-full overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto">
+    <div
+      key={canvasId}
+      className="h-full overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto"
+      {...commanderMobileScrollRootProps}
+    >
       <ErrorBoundary>
         <Component appId={appId} />
       </ErrorBoundary>

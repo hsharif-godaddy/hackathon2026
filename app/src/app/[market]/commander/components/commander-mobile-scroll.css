@@ -1,0 +1,3 @@
+[data-commander-mobile-canvas] [data-commander-mobile-scroll] {
+  padding-bottom: var(--commander-mobile-bar-reserve);
+}

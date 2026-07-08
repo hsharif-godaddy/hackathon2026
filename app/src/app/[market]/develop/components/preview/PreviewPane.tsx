@@ -14,6 +14,13 @@ import Button from '@ux/button'
 import Growl from '@ux/growl'
 
 import { CanvasId } from '@/app/[market]/commander/canvas/registry'
+import { COMMANDER_LAYOUT_METRICS } from '@/app/[market]/commander/components/Commander'
+import {
+  coerceScrollGutterPaddingBottom,
+  commanderMobileScrollRootProps,
+  type CommanderMobileScrollSpreadProps,
+  SET_SCROLL_GUTTER_MESSAGE_TYPE,
+} from '@/app/[market]/commander/components/commanderMobileScroll'
 import AutomationsPanel from '@/app/[market]/develop/components/automations/AutomationsPanel'
 import { useLatestNBAs } from '@/app/[market]/develop/components/chat/useLatestNBAs'
 import { useThinkerIndicator } from '@/app/[market]/develop/components/chat/useThinkerIndicator'
@@ -437,6 +444,11 @@ export default function PreviewPane({
   const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0)
   const [isAuthBlocked, setIsAuthBlocked] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const isMobileChatOpen = useCommanderStore((state) => state.isMobileChatOpen)
+  const commanderMobileScrollGutter: number =
+    edgeToEdge && !isMobileChatOpen ? COMMANDER_LAYOUT_METRICS.MOBILE_BAR_RESERVE : 0
+  const commanderMobileScrollProps: CommanderMobileScrollSpreadProps =
+    edgeToEdge ? commanderMobileScrollRootProps : {}
   const previewShellRef = useRef<HTMLDivElement>(null)
   const hasMountedBrandRef = useRef(false)
   const hasMountedDomainRef = useRef(false)
@@ -902,6 +914,16 @@ export default function PreviewPane({
       window.removeEventListener('preview-navigate-after-checkout', handleNavigateAfterCheckout)
     }
   }, [appId, applyCheckoutHint, iframeBootstrapped])
+
+  useEffect(() => {
+    if (!edgeToEdge) return
+    const iframe = iframeRef.current
+    if (!iframe) return
+    postMessageToIframe(iframe, {
+      type: SET_SCROLL_GUTTER_MESSAGE_TYPE,
+      paddingBottom: coerceScrollGutterPaddingBottom(commanderMobileScrollGutter),
+    })
+  }, [edgeToEdge, commanderMobileScrollGutter, iframeBootstrapped])
 
   // Listen for file save events and preview refresh requests to auto-refresh preview
   useEffect(() => {
@@ -1378,7 +1400,10 @@ export default function PreviewPane({
   if (viewMode === ViewMode.DOCS) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
-        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+        <div
+          className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor"
+          {...commanderMobileScrollProps}
+        >
           <ErrorBoundary>
             <Suspense fallback={null}>
               <DocsView appId={appId} />
@@ -1402,7 +1427,10 @@ export default function PreviewPane({
   if (viewMode === ViewMode.DOMAIN && isTopLevelDomainEnabled && !canvasTabsOverlayMode) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
-        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+        <div
+          className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor"
+          {...commanderMobileScrollProps}
+        >
           <div className="mx-auto max-w-[960px] p-6">
             <ErrorBoundary>
               <DomainPanel />
@@ -1426,7 +1454,10 @@ export default function PreviewPane({
   if (isInboxEnabled && viewMode === ViewMode.INBOX && !canvasTabsOverlayMode) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
-        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+        <div
+          className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor"
+          {...commanderMobileScrollProps}
+        >
           <Inbox />
         </div>
       </div>
@@ -1436,7 +1467,10 @@ export default function PreviewPane({
   if (isAutomationsEnabled && viewMode === ViewMode.AUTOMATIONS) {
     return (
       <div className="h-full flex flex-col pr-1 md:pr-2.5 pl-1">
-        <div className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor">
+        <div
+          className="relative h-full overflow-auto rounded-lg md:rounded-b-none border bg-intents-ux-box-backgroundColor"
+          {...commanderMobileScrollProps}
+        >
           <AutomationsPanel chatLoadingMessage={chatLoadingMessage} />
         </div>
       </div>
@@ -1617,6 +1651,7 @@ export default function PreviewPane({
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}
+                    {...commanderMobileScrollProps}
                   >
                     <div className="mx-auto max-w-[960px] p-6">
                       <ErrorBoundary>
@@ -1636,6 +1671,7 @@ export default function PreviewPane({
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}
+                    {...commanderMobileScrollProps}
                   >
                     <Inbox />
                   </div>
@@ -1651,6 +1687,7 @@ export default function PreviewPane({
                         ? 'opacity-100 pointer-events-auto'
                         : 'opacity-0 pointer-events-none',
                     )}
+                    {...commanderMobileScrollProps}
                   >
                     <ErrorBoundary>
                       <MarketingCanvasPane />
@@ -1776,7 +1813,7 @@ export default function PreviewPane({
                   aria-hidden={viewMode !== ViewMode.CODE ? 'true' : undefined}
                   inert={viewMode !== ViewMode.CODE || undefined}
                 >
-                  <PreviewCode appId={appId} />
+                  <PreviewCode appId={appId} commanderMobileScroll={edgeToEdge} />
                 </motion.div>
               </div>
 

@@ -14,6 +14,10 @@ import XIcon from '@ux/icon/x'
 import Spinner from '@ux/spinner'
 import Text from '@ux/text'
 
+import {
+  commanderMobileScrollRootProps,
+  type CommanderMobileScrollSpreadProps,
+} from '@/app/[market]/commander/components/commanderMobileScroll'
 import FileTree, { FileItem, FileStatus } from '@/app/[market]/develop/components/FileTree'
 import { markdownComponents } from '@/app/[market]/develop/components/preview/markdownComponents'
 import { ViewMode } from '@/app/[market]/develop/components/types'
@@ -106,9 +110,12 @@ interface OpenFile {
 
 interface PreviewCodeProps {
   appId: string
+  commanderMobileScroll?: boolean
 }
 
-export default function PreviewCode({ appId }: PreviewCodeProps) {
+export default function PreviewCode({ appId, commanderMobileScroll = false }: PreviewCodeProps) {
+  const commanderMobileScrollProps: CommanderMobileScrollSpreadProps =
+    commanderMobileScroll ? commanderMobileScrollRootProps : {}
   const t = useTranslations();
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
   const [activeFile, setActiveFile] = useState<string | null>(null)
@@ -868,7 +875,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
                 />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto" {...commanderMobileScrollProps}>
               <FileTree
                 files={files}
                 selectedFile={activeFile}
@@ -961,7 +968,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
               )}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto" {...commanderMobileScrollProps}>
             <FileTree
               files={files}
               selectedFile={activeFile}
@@ -1063,7 +1070,7 @@ export default function PreviewCode({ appId }: PreviewCodeProps) {
         </div>
 
         {/* Editor */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" {...commanderMobileScrollProps}>
           {currentFile?.isSearch ? (
             // Search tab content
             <UnifiedSearch

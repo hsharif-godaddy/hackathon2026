@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import text from '@ux/text';
 
+import { commanderMobileScrollRootProps } from '@/app/[market]/commander/components/commanderMobileScroll';
 import { getSlotImageUrl } from '@/app/[market]/develop/components/media/MediaSlotDetail';
 import { useBrandData } from '@/hooks/useBrandData';
 import { useMediaManifest } from '@/hooks/useMediaManifest';
@@ -231,6 +232,7 @@ export default function BrandBookView({ appId }: BrandBookViewProps) {
       className={`${styles.root} bg-intents-ux-boxLowContrast-backgroundColor`}
       style={intentOverrides}
       data-testid="brand-book-view"
+      {...commanderMobileScrollRootProps}
     >
       <HeroSection
         brandName={brandName}

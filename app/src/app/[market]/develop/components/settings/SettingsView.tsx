@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import React from 'react'
 
+import { commanderMobileScrollRootProps } from '@/app/[market]/commander/components/commanderMobileScroll'
 import PanelSkeleton from '@/app/[market]/develop/components/PanelSkeleton'
 import { SettingsLoadingState } from '@/app/[market]/develop/components/settings/components/SettingsLoadingState'
 import GitHubSyncSettingsSavedSnackbar from '@/app/[market]/develop/components/settings/GitHubPanel/GitHubSyncSettingsSavedSnackbar'
@@ -166,7 +167,10 @@ export default function SettingsView() {
   };
 
   return (
-    <div className={`h-full flex flex-col overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto`}>
+    <div
+      className={`h-full flex flex-col overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto`}
+      {...commanderMobileScrollRootProps}
+    >
       <GitHubSyncSettingsSavedSnackbar placement="settings-view" />
       {renderSection()}
     </div>

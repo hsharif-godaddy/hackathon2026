@@ -1375,6 +1375,14 @@ export default function DevelopmentMode() {
           setIsMultiSelectActive(false);
           return;
         }
+        // Must match SET_SCROLL_GUTTER_MESSAGE_TYPE and coerceScrollGutterPaddingBottom in
+        // app/src/app/[market]/commander/components/commanderMobileScroll.ts
+        // (dev-tools cannot import from the builder app).
+        if (event.data && event.data.type === 'SET_SCROLL_GUTTER') {
+          const paddingBottom = typeof event.data.paddingBottom === 'number' ? event.data.paddingBottom : 0;
+          document.body.style.paddingBottom = paddingBottom > 0 ? `${paddingBottom}px` : '';
+          return;
+        }
         if (event.data && event.data.type === 'RESTORE_SCROLL_POSITION') {
           if (event.data.scrollPosition) {
             try {
