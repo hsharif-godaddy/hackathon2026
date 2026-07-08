@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { logger } from '../../../logging/index.js'
 import type { TurnscriptFailureKind, TurnscriptResult } from './executor.js'
 import { runTurnscriptInContainer } from './runner.js'
+import { syntaxNotesForPaths } from './syntax-check.js'
 import { generateTurnscriptTypes } from './type-gen.js'
 
 /**
@@ -274,6 +275,8 @@ export const turnscriptAITool: Tool = createTool(
         ok: record.ok,
         status: record.status,
         resultBytes: record.resultBytes,
+        // Distinguishes a write-guard rejection from e.g. old_str-not-found in prod logs.
+        ...(record.error ? { error: record.error.slice(0, 200) } : {}),
       })
     }
 
@@ -299,6 +302,12 @@ export const turnscriptAITool: Tool = createTool(
       error: result.error,
     })
 
-    return formatted.text
+    // Turnscript applies edits opaquely in-container, bypassing the text editor's
+    // guards — syntax-gate the written files here. Notes never start a line with
+    // "[turnscript ", so they cannot trip turnscriptReportedFailure; the checker
+    // never throws by contract.
+    const syntaxNotes: string = appId ? await syntaxNotesForPaths(appId, result.editedPaths ?? []) : ''
+
+    return formatted.text + syntaxNotes
   },
 )

@@ -2,10 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { logger } from '../../../../logging/index.js'
 
-const { mockRunTurnscript } = vi.hoisted(() => ({ mockRunTurnscript: vi.fn() }))
+const { mockRunTurnscript, mockSyntaxNotes } = vi.hoisted(() => ({
+  mockRunTurnscript: vi.fn(),
+  mockSyntaxNotes: vi.fn(async (): Promise<string> => ''),
+}))
 
 vi.mock('../runner.js', () => ({
   runTurnscriptInContainer: mockRunTurnscript,
+}))
+
+vi.mock('../syntax-check.js', () => ({
+  syntaxNotesForPaths: mockSyntaxNotes,
 }))
 
 import {
@@ -216,6 +223,51 @@ describe('turnscript-turnscript-tool', () => {
       const complete = infoSpy.mock.calls.find(c => c[0] === 'turnscript.complete')
       expect(complete![1]).toMatchObject({ ok: false, failureKind: 'runtime_throw', fallbackAdvised: false })
       expect(String(out)).toContain('[turnscript runtime error] old_str not found')
+    })
+  })
+
+  describe('#turnscriptAITool post-edit syntax gate', () => {
+    afterEach(() => {
+      mockRunTurnscript.mockReset()
+      mockSyntaxNotes.mockReset()
+    })
+
+    it('appends syntax notes AFTER the [turnscript:edited] trailer and never trips the failure regex', async () => {
+      mockRunTurnscript.mockResolvedValue({
+        ok: true,
+        result: 'edited Footer',
+        logs: [],
+        dispatches: [dispatch('str_replace_based_edit_tool', true)],
+        editedPaths: ['src/layouts/parts/Footer.tsx'],
+      } satisfies TurnscriptResult)
+      mockSyntaxNotes.mockResolvedValue('\n\n🛑 SYNTAX ERROR — src/layouts/parts/Footer.tsx:6 no longer parses')
+
+      const out: unknown = await callTool({ code: 'async () => {}' })
+
+      expect(mockSyntaxNotes).toHaveBeenCalledWith('app-1', ['src/layouts/parts/Footer.tsx'])
+      expect(String(out)).toContain('SYNTAX ERROR')
+      // Ordering is a client contract: parseTurnscriptEditedPaths reads the trailer,
+      // so notes must come after it — never between body and trailer.
+      expect(String(out).indexOf('[turnscript:edited]')).toBeGreaterThan(-1)
+      expect(String(out).indexOf('[turnscript:edited]')).toBeLessThan(String(out).indexOf('SYNTAX ERROR'))
+      expect(turnscriptReportedFailure(String(out))).toBe(false)
+    })
+
+    it('passes empty editedPaths through (the checker no-ops on them by contract)', async () => {
+      mockRunTurnscript.mockResolvedValue({
+        ok: true,
+        result: 'read-only exploration',
+        logs: [],
+        dispatches: [dispatch('readFile', true)],
+        editedPaths: [],
+      } satisfies TurnscriptResult)
+      mockSyntaxNotes.mockResolvedValue('')
+
+      const out: unknown = await callTool({ code: 'async () => {}' })
+
+      expect(mockSyntaxNotes).toHaveBeenCalledWith('app-1', [])
+      expect(String(out)).toContain('read-only exploration')
+      expect(String(out)).not.toContain('SYNTAX ERROR')
     })
   })
 })
