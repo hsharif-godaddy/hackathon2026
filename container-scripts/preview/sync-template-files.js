@@ -636,8 +636,8 @@ const SYNC_MANIFEST = [
     known_hashes: [
       '51ae9ce13ccaf65010d3b28bdfb198ad', // PR #6107 - before --radius-button (rounded-md cva)
     ],
-    syncGroup: 'kitButtonRadius',
     force: false,
+    syncGroup: 'kitButtonRadius',
   },
   {
     file: 'src/styles/globals.css',
@@ -645,8 +645,8 @@ const SYNC_MANIFEST = [
     known_hashes: [
       '8e85b126a65d1fc1799baa8428a4435f', // PR #6107 - before --radius-button default
     ],
-    syncGroup: 'kitButtonRadius',
     force: false,
+    syncGroup: 'kitButtonRadius',
   }
 ];
 

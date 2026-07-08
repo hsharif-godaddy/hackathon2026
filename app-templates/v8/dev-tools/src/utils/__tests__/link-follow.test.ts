@@ -24,15 +24,29 @@ afterEach(() => {
 
 describe('link-follow', function packageTests() {
   describe('#formatLinkDisplayUrl', function formatTests() {
-    it('strips protocol and truncates long paths', function truncate() {
-      const formatted = formatLinkDisplayUrl('https://loom.com/share/c587cabe155a499fa63ae88fe0d61d23');
-      expect(formatted.startsWith('loom.com/share/')).toBe(true);
-      expect(formatted.length).toBeLessThanOrEqual(36);
+    it('shows domain + first path segment for long external URLs', function truncate() {
+      expect(formatLinkDisplayUrl('https://loom.com/share/c587cabe155a499fa63ae88fe0d61d23'))
+        .toBe('loom.com · /share');
+      expect(formatLinkDisplayUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42'))
+        .toBe('youtube.com · /watch');
+      expect(formatLinkDisplayUrl('https://www.instagram.com/reel/CxYzAbcDefGhIj'))
+        .toBe('instagram.com · /reel');
     });
 
-    it('includes hash fragments in the display label', function hashFragment() {
-      expect(formatLinkDisplayUrl('#contact')).toBe(`${window.location.host}/#contact`);
-      expect(formatLinkDisplayUrl('/about#team')).toBe(`${window.location.host}/about#team`);
+    it('shows compact URL for short external links', function shortExternal() {
+      expect(formatLinkDisplayUrl('https://example.com/pricing')).toBe('example.com/pricing');
+      expect(formatLinkDisplayUrl('https://www.example.com/pricing')).toBe('example.com/pricing');
+    });
+
+    it('shows friendly page name for internal links', function internalPage() {
+      expect(formatLinkDisplayUrl('/contact')).toBe('Contact');
+      expect(formatLinkDisplayUrl('/about-us')).toBe('About Us');
+      expect(formatLinkDisplayUrl('/')).toBe('Home');
+    });
+
+    it('includes hash fragments in the friendly name', function hashFragment() {
+      expect(formatLinkDisplayUrl('#contact')).toBe('Contact');
+      expect(formatLinkDisplayUrl('/about#team')).toBe('About');
     });
   });
 

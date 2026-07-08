@@ -15,14 +15,29 @@ export function resolveClickableElement(element: HTMLElement): HTMLElement | nul
   return element.closest(CLICKABLE_SELECTOR) as HTMLElement | null;
 }
 
-/** Human-readable URL for the link follow bar (host + path + hash, truncated). */
+/** Human-readable label for the link follow bar. Internal pages show a friendly
+ *  name (e.g. "About Us"); short external URLs show host+path; long external
+ *  URLs show domain + first path segment (e.g. "youtube.com · /watch"). */
 export function formatLinkDisplayUrl(href: string): string {
   try {
     const url = new URL(href, window.location.origin);
-    const compact = `${url.host}${url.pathname}${url.search}${url.hash}`;
+    // Internal page: show friendly name instead of full URL
+    if (url.origin === window.location.origin) {
+      const path = url.pathname;
+      if (path === "/" && !url.hash) return "Home";
+      const segments = path.split("/").filter(Boolean);
+      const last = segments[segments.length - 1] ?? (url.hash ? url.hash.slice(1) : "Home");
+      return decodeURIComponent(last)
+        .replace(/[-_]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    const host = url.host.replace(/^www\./, "");
+    const compact = `${host}${url.pathname}${url.search}${url.hash}`;
     const maxLength = 36;
     if (compact.length <= maxLength) return compact;
-    return `${compact.slice(0, maxLength - 1)}…`;
+    // Long external URLs: show domain + first path segment for readability
+    const firstSegment = url.pathname.split("/").filter(Boolean)[0];
+    return firstSegment ? `${host} · /${firstSegment}` : host;
   } catch {
     if (href.length <= 36) return href;
     return `${href.slice(0, 35)}…`;
