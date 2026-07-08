@@ -5,6 +5,7 @@ import CommentsIcon from '@ux/icon/comments';
 import ContentIcon from '@ux/icon/content';
 import DatabaseIcon from '@ux/icon/database';
 import LockedIcon from '@ux/icon/locked';
+import ProductsIcon from '@ux/icon/products';
 import RevertIcon from '@ux/icon/revert';
 import SettingsIcon from '@ux/icon/settings';
 import ShieldIcon from '@ux/icon/shield';
@@ -60,6 +61,7 @@ export function useSettingsNavItems(): SettingsNavItem[] {
   const displayAds = useSwitchboard('appbuilder-settings-display-ads');
   const githubSync = useSwitchboard('appbuilder-github-sync');
   const isTopLevelDomainEnabled = useSwitchboard('appbuilder-domain-top-level');
+  const showCommercePrototype = useSwitchboard('appbuilder-settings-commerce')
   // Show on mobile (no header tab there), or on desktop when the tab flag is off or unresolved —
   // fail open so users aren't locked out while Switchboard loads or if the flag is missing.
   const showDomainSettingsItem = isMobile || !isTopLevelDomainEnabled;
@@ -119,6 +121,12 @@ export function useSettingsNavItems(): SettingsNavItem[] {
       icon: <LockedIcon />,
       disabled: secrets !== true,
     },
+    ...(showCommercePrototype ? [{
+      id: SettingsSection.COMMERCE,
+      label: 'Commerce',
+      icon: <ProductsIcon />,
+      disabled: false,
+    }] : []),
     ...(social ? [{
       id: SettingsSection.SOCIAL,
       label: t('builder_settings_nav_social'),

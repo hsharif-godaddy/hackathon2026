@@ -19,6 +19,7 @@ const CANVAS_FLAG_NAMES = [
   'appbuilder-settings-security',
   'appbuilder-settings-social',
   'appbuilder-settings-visualscan',
+  'appbuilder-settings-commerce'
 ] as const
 
 type CanvasFlagName = (typeof CANVAS_FLAG_NAMES)[number]
@@ -38,6 +39,7 @@ export function useCanvasFlagFilter(): (canvasId: CanvasId) => boolean {
     'appbuilder-settings-security': useSwitchboard('appbuilder-settings-security') === true,
     'appbuilder-settings-social': useSwitchboard('appbuilder-settings-social') === true,
     'appbuilder-settings-visualscan': useSwitchboard('appbuilder-settings-visualscan') === true,
+    'appbuilder-settings-commerce': useSwitchboard('appbuilder-settings-commerce') === true
   }
 
   const flagKey = CANVAS_FLAG_NAMES.map((name) => (flags[name] ? '1' : '0')).join('')

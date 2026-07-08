@@ -10,6 +10,10 @@ import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { CANVAS_REGISTRY, CanvasId } from './registry'
 
+const CommercePanel = dynamic(
+  () => import('@/app/[market]/develop/components/settings/Commerce/CommercePanel').then((m) => ({ default: m.CommercePanel })),
+  { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.COMMERCE} /> },
+)
 const DatabasePanel = dynamic(
   () => import('@/app/[market]/develop/components/settings/Database/DatabasePanel').then((m) => ({ default: m.DatabasePanel })),
   { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DATABASE} /> },
@@ -60,6 +64,7 @@ const SETTINGS_CANVAS_TO_SECTION: Partial<Record<CanvasId, SettingsSection>> = {
   [CanvasId.SettingsSso]: SettingsSection.SSO,
   [CanvasId.SettingsVisualScan]: SettingsSection.VISUAL_SCAN,
   [CanvasId.SettingsGitHub]: SettingsSection.GITHUB,
+  [CanvasId.SettingsCommerce]: SettingsSection.COMMERCE,
 }
 
 const SECTION_TO_COMPONENT: Partial<Record<SettingsSection, ComponentType<{ appId: string | null }>>> = {
@@ -73,6 +78,8 @@ const SECTION_TO_COMPONENT: Partial<Record<SettingsSection, ComponentType<{ appI
   [SettingsSection.ANALYTICS]: () => <AnalyticsPanel />,
   [SettingsSection.GITHUB]: () => <GitHubPanel />,
   [SettingsSection.SSO]: () => <SsoPanel />,
+  [SettingsSection.COMMERCE]: ({appId}) => <CommercePanel appId={appId}/>,
+
 }
 
 interface CommanderSettingsCanvasStackProps {

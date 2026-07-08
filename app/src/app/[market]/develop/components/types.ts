@@ -154,6 +154,7 @@ export enum SettingsSection {
   TEAM = 'team',
   DATABASE = 'database',
   SECRETS = 'secrets',
+  COMMERCE = 'commerce',
   SOCIAL = 'social',
   VISUAL_SCAN = 'visualScan',
   ANALYTICS = 'analytics',

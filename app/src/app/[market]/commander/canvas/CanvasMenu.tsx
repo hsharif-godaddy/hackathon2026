@@ -40,6 +40,7 @@ const MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsCampaigns,
   CanvasId.SettingsGitHub,
   CanvasId.SettingsSso,
+  CanvasId.SettingsCommerce,
 ]
 
 const isMacPlatform = (): boolean => {

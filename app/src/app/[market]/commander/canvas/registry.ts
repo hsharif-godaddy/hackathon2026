@@ -12,6 +12,7 @@ import LayoutIcon from '@ux/icon/layout'
 import LockedIcon from '@ux/icon/locked'
 import MegaphoneIcon from '@ux/icon/megaphone'
 import PageIcon from '@ux/icon/page'
+import ProductsIcon from '@ux/icon/products'
 import RevertIcon from '@ux/icon/revert'
 import SettingsIcon from '@ux/icon/settings'
 import ShieldIcon from '@ux/icon/shield'
@@ -46,6 +47,7 @@ export enum CanvasId {
   SettingsSso = 'settings.sso',
   Media = 'media',
   Docs = 'docs',
+  SettingsCommerce = 'settings.commerce',
   DesignKitBuild = 'design-kit-build',
 }
 
@@ -259,6 +261,18 @@ export const CANVAS_REGISTRY: Record<CanvasId, CanvasDescriptor> = {
     defaultOpen: false,
     activation: { viewMode: ViewMode.DOCS },
   },
+  [CanvasId.SettingsCommerce]: {
+    id: CanvasId.SettingsCommerce,
+    labelKey: 'builder_canvas_commerce',
+    fallbackLabel: "Commerce",
+    Icon: ProductsIcon,
+    dismissible: true,
+    defaultOpen: false,
+    activation: {
+      settingsSection: SettingsSection.COMMERCE
+    },
+    switchboardFlag: 'appbuilder-settings-commerce',
+  },
   [CanvasId.DesignKitBuild]: {
     id: CanvasId.DesignKitBuild,
     labelKey: 'builder_canvas_designKitBuild',
@@ -297,6 +311,7 @@ export const CANVAS_MENU_ORDER: readonly CanvasId[] = [
   CanvasId.SettingsSocial,
   CanvasId.SettingsSso,
   CanvasId.SettingsVisualScan,
+  CanvasId.SettingsCommerce,
 ]
 
 export const COMMANDER_CANVAS_TABS_FLAG = 'appbuilder-commander-canvas-tabs'

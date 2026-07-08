@@ -57,6 +57,11 @@ const BRAND_UPDATE_TOOLS = new Set([
   'installDesignSystem',
 ]);
 
+const COMMERCE_BINDING_TOOLS = new Set([
+  'commerce_store_setup',
+  'commerce_store_channel_ensure',
+]);
+
 const REBUILD_INTENT_PATTERN = /\b(rebuild|redesign|start\s+over|redo|recreate)\b/i;
 
 // Eagerly detects rebuild intent from the user message to set intent_category before the stream starts.
@@ -64,10 +69,30 @@ export function detectRebuildIntent(message: string): boolean {
   return REBUILD_INTENT_PATTERN.test(message);
 }
 
+function normalizeCommerceToolNames(toolName: string): string {
+  return toolName
+    .replace(/^commerce__/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase();
+}
+
 function isBrandMemorySet(tool: { name: string; input?: any }): boolean {
   if (tool.name !== 'memorySet') return false;
   const key = tool.input?.key;
   return typeof key === 'string' && (key.startsWith('design.') || key.startsWith('brand.'));
+}
+
+function isCommerceBindingTool(tool: { name: string; input?: any }): boolean {
+  const toolName = normalizeCommerceToolNames(tool.name);
+  if (COMMERCE_BINDING_TOOLS.has(toolName)) return true;
+
+  if (toolName !== 'execute_tool') return false;
+
+  const innerToolName = tool.input?.name ?? tool.input?.tool;
+  return (
+    typeof innerToolName === 'string' &&
+    COMMERCE_BINDING_TOOLS.has(normalizeCommerceToolNames(innerToolName))
+  );
 }
 
 // A `media` search into a brand-scoped slot (e.g. "brand/mood-1") is part of the
@@ -329,6 +354,24 @@ export async function handleToolResultSideEffects(
       toolName: tool.name,
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  // commerce binding sync
+  if (!hasError && appId && isCommerceBindingTool(tool)) {
+    const queryClient = getQueryClient();
+    if (queryClient) {
+      try {
+        await queryClient.invalidateQueries({
+          queryKey: ['commerce-binding', appId],
+          refetchType: 'active',
+        });
+      } catch (error) {
+        logger.warn('toolSideEffects.commerceBinding.invalidateFailed', {
+          appId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   // Payment funnel: setup completed / verified signals from provider tool results.

@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import dynamic from 'next/dynamic'
 import React from 'react'
@@ -14,14 +14,73 @@ import { useSwitchboard } from '@/hooks/useSwitchboard'
 
 // Only one panel renders at a time, so lazy-load each to keep the initial
 // develop page bundle small (AnalyticsPanel alone pulls in recharts ~500KB gz).
-const DatabasePanel = dynamic(() => import('@/app/[market]/develop/components/settings/Database/DatabasePanel').then(m => ({ default: m.DatabasePanel })), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DATABASE} /> })
-const DomainPanel = dynamic(() => import('@/app/[market]/develop/components/settings/DomainPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} /> })
-const ProjectPanel = dynamic(() => import('@/app/[market]/develop/components/settings/ProjectPanel'), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.PROJECT} /> })
-const SecretsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecretsPanel').then(m => ({ default: m.SecretsPanel })), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.SECRETS} /> })
-const DisplayAdsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/DisplayAds/DisplayAdsPanel').then(m => ({ default: m.DisplayAdsPanel })), { loading: () => <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DISPLAY_ADS} /> })
+const DatabasePanel = dynamic(
+  () =>
+    import('@/app/[market]/develop/components/settings/Database/DatabasePanel').then((m) => ({
+      default: m.DatabasePanel,
+    })),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DATABASE} />
+    ),
+  }
+);
+const DomainPanel = dynamic(
+  () => import('@/app/[market]/develop/components/settings/DomainPanel'),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DOMAIN} />
+    ),
+  }
+);
+const ProjectPanel = dynamic(
+  () => import('@/app/[market]/develop/components/settings/ProjectPanel'),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.PROJECT} />
+    ),
+  }
+);
+const SecretsPanel = dynamic(
+  () =>
+    import('@/app/[market]/develop/components/settings/SecretsPanel').then((m) => ({
+      default: m.SecretsPanel,
+    })),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.SECRETS} />
+    ),
+  }
+);
+const CommercePanel = dynamic(
+  () =>
+    import('@/app/[market]/develop/components/settings/Commerce/CommercePanel').then((m) => ({
+      default: m.CommercePanel,
+    })),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.COMMERCE} />
+    ),
+  }
+);
+const DisplayAdsPanel = dynamic(
+  () =>
+    import('@/app/[market]/develop/components/settings/DisplayAds/DisplayAdsPanel').then((m) => ({
+      default: m.DisplayAdsPanel,
+    })),
+  {
+    loading: () => (
+      <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={SettingsSection.DISPLAY_ADS} />
+    ),
+  }
+);
 
 // Uses SettingsLoadingState as its either RemoteModulePage or is complex to create a skeleton
-const BackupsPanel = dynamic(() => import('@/app/[market]/develop/components/settings/BackupsPanel'), { loading: () => <SettingsLoadingState fullPage /> })
+const BackupsPanel = dynamic(
+  () => import('@/app/[market]/develop/components/settings/BackupsPanel'),
+  { loading: () => <SettingsLoadingState fullPage /> }
+);
+
 // Uses default skeleton as its matching the structure
 const SecurityPanel = dynamic(() => import('@/app/[market]/develop/components/settings/SecurityPanel'), { loading: () => <PanelSkeleton /> })
 const SocialPanel = dynamic(() => import('@/app/[market]/develop/components/settings/social/SocialPanel'), { loading: () => <PanelSkeleton /> })
@@ -46,8 +105,11 @@ export default function SettingsView() {
   const isGitHubEnabled = useSwitchboard('appbuilder-github-sync');
   const isSeoEnabled = useSeoSettingsEnabled();
   const isAnalyticsEnabled = useSwitchboard('appbuilder-analytics');
+  const isCommerceEnabled = useSwitchboard('appbuilder-settings-commerce');
 
-  const sectionSkeleton = <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
+  const sectionSkeleton = (
+    <PanelSkeleton panelType={ChatTab.SETTINGS} settingsSection={activeSettingsSection} />
+  );
 
   const renderSection = () => {
     switch (activeSettingsSection) {
@@ -69,6 +131,9 @@ export default function SettingsView() {
       case SettingsSection.SECRETS:
         if (isSecretsEnabled === undefined) return sectionSkeleton;
         return isSecretsEnabled ? <SecretsPanel appId={appId} variant="preview" /> : null;
+      case SettingsSection.COMMERCE:
+        if (isCommerceEnabled === undefined) return sectionSkeleton;
+        return isCommerceEnabled ? <CommercePanel appId={appId} /> : null;
       case SettingsSection.SOCIAL:
         if (isSocialEnabled === undefined) return sectionSkeleton;
         return isSocialEnabled ? <SocialPanel siteId={appId} /> : null;
@@ -98,12 +163,12 @@ export default function SettingsView() {
         if (isProjectEnabled === undefined) return sectionSkeleton;
         return isProjectEnabled ? <ProjectPanel /> : null;
     }
-  }
+  };
 
   return (
     <div className={`h-full flex flex-col overflow-y-auto w-full px-1.5 pb-2 md:px-0.5 md:max-w-7xl mx-auto`}>
       <GitHubSyncSettingsSavedSnackbar placement="settings-view" />
       {renderSection()}
     </div>
-  )
+  );
 }

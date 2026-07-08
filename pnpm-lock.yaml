@@ -1097,9 +1097,6 @@ importers:
       react:
         specifier: 19.1.0
         version: 19.1.0
-      react-device-detect:
-        specifier: 'catalog:'
-        version: 2.2.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
@@ -1109,9 +1106,6 @@ importers:
       react-filerobot-image-editor:
         specifier: 'catalog:'
         version: 5.0.0-beta.156(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react-konva@19.2.3(@types/react@19.2.14)(konva@9.3.18)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react@19.1.0)(styled-components@6.4.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0))
-      react-focus-lock:
-        specifier: 'catalog:'
-        version: 2.13.7(@types/react@19.2.14)(react@19.1.0)
       react-hook-form:
         specifier: ^7.75.0
         version: 7.79.0(react@19.1.0)
@@ -1136,9 +1130,6 @@ importers:
       react-syntax-highlighter:
         specifier: ^15.6.6
         version: 15.6.6(react@19.1.0)
-      react-transition-group:
-        specifier: 'catalog:'
-        version: 4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       recharts:
         specifier: ^3.8.1
         version: 3.8.1(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react-is@19.2.6)(react@19.1.0)(redux@4.2.1)
@@ -1236,6 +1227,15 @@ importers:
       eslint-plugin-simple-import-sort:
         specifier: ^12.1.1
         version: 12.1.1(eslint@9.28.0(jiti@2.7.0))
+      react-device-detect:
+        specifier: 'catalog:'
+        version: 2.2.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react-focus-lock:
+        specifier: 'catalog:'
+        version: 2.13.7(@types/react@19.2.14)(react@19.1.0)
+      react-transition-group:
+        specifier: 'catalog:'
+        version: 4.4.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0

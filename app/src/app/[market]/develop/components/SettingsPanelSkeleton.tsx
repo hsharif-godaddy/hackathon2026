@@ -99,6 +99,41 @@ function SecretsSkeleton({ className }: { className?: string }) {
   )
 }
 
+function CommerceSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={`@container flex flex-col gap-2.5 ${className ?? ''}`.trim()}>
+      <div className="flex gap-1">
+        <StaticSkeleton width="112px" height="36px" className="rounded-md" />
+        <StaticSkeleton width="96px" height="36px" className="rounded-md" />
+      </div>
+      <div className="flex flex-col gap-1">
+        <StaticSkeleton width="42%" height="28px" />
+        <StaticSkeleton width="100%" height="22px" />
+      </div>
+      <div className="grid gap-1.5 @2xl:grid-cols-3">
+        {[132, 154, 146].map((width) => (
+          <div key={width} className="flex flex-col gap-1 rounded-lg border border-intents-ux-box-borderColor p-1.5">
+            <StaticSkeleton width="28px" height="28px" rounding="full" />
+            <StaticSkeleton width={`${width}px`} height="22px" />
+            <StaticSkeleton width="100%" height="18px" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex items-center justify-between rounded-lg border border-intents-ux-box-borderColor px-1.5 py-1.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <StaticSkeleton width={i % 2 === 0 ? '52%' : '38%'} height="20px" />
+              <StaticSkeleton width="78%" height="18px" />
+            </div>
+            <StaticSkeleton width="18px" height="18px" rounding="full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function DefaultSkeleton({ className }: { className?: string }) {
   return (
     <div className={`@container flex flex-col gap-6 ${className ?? ''}`.trim()}>
@@ -121,6 +156,8 @@ export default function SettingsPanelSkeleton({ settingsSection, className }: { 
       return <DomainSkeleton className={className} />
     case SettingsSection.DATABASE:
       return <DatabaseSkeleton className={className} />
+    case SettingsSection.COMMERCE:
+      return <CommerceSkeleton className={className} />
     case SettingsSection.SECRETS:
       return <SecretsSkeleton className={className} />
     default:

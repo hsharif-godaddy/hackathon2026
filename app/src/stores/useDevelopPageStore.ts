@@ -89,6 +89,7 @@ const WIDE_SETTINGS_SECTIONS: SettingsSection[] = [
   SettingsSection.BACKUPS,
   SettingsSection.DATABASE,
   SettingsSection.DOMAIN,
+  SettingsSection.COMMERCE,
   SettingsSection.SECRETS,
 ]
 
