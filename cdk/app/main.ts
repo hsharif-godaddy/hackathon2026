@@ -26,6 +26,7 @@ import { TransactionalEventsKinesisStack } from "../lib/transactional-events-kin
 import { TransactionalEventsKMSStack } from "../lib/transactional-events-kms-stack";
 import { FeedbackL1TranscriptStack } from "../lib/feedback-l1-transcript-stack";
 import { SupportplaneDynamoStack } from "../lib/supportplane-dynamodb-stack";
+import { LangfuseExportsS3Stack } from "../lib/langfuse-exports-s3-stack";
 import { SupportplaneTranscriptIngestStack } from "../lib/supportplane-transcript-ingest-stack";
 
 /**
@@ -101,6 +102,12 @@ async function main() {
   let feedbackS3Stack: FeedbackS3Stack | undefined;
   if (config.envName === 'dev' || config.envName === 'prod') {
     feedbackS3Stack = new FeedbackS3Stack(app, 'FeedbackS3Stack', { env });
+  }
+
+  // Langfuse exports S3 bucket — hourly JSONL exports from Langfuse Blob Storage Integration.
+  // Dev + prod only (mirrors FeedbackS3Stack gate).
+  if (config.envName === 'dev' || config.envName === 'prod') {
+    new LangfuseExportsS3Stack(app, 'LangfuseExportsS3Stack', { env });
   }
 
   // S3 bucket for marketing data lake — SEO quality snapshots written after every publish.
