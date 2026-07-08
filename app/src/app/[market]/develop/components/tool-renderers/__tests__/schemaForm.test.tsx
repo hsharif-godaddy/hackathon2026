@@ -9,6 +9,7 @@ import {
   getArrayOptions,
   getOptions,
   getPropertyType,
+  isChoiceProperty,
   isFormValid,
   isMultiSelect,
   type SchemaFormFields,
@@ -79,6 +80,21 @@ describe('schemaForm helpers', () => {
     )
     expect(submitted).toEqual({ rate: 8.5, method: 'ADDITIVE' })
   })
+
+  it('truncates integers and preserves the submitted zero value', () => {
+    const schema: SchemaFormFields = { qty: { type: 'integer' }, offset: { type: 'number' } }
+    expect(
+      coerceSubmittedValues({ qty: '3', offset: '0' }, schema, new Set(['qty', 'offset'])),
+    ).toEqual({ qty: 3, offset: 0 })
+  })
+
+  it('identifies choice properties (enum/oneOf/array) even with empty option sets', () => {
+    expect(isChoiceProperty({ type: 'string', enum: [] })).toBe(true)
+    expect(isChoiceProperty(fields.method)).toBe(true)
+    expect(isChoiceProperty({ type: 'array', items: { anyOf: [] } })).toBe(true)
+    expect(isChoiceProperty({ type: 'string' })).toBe(false)
+    expect(isChoiceProperty({ type: 'number' })).toBe(false)
+  })
 })
 
 const multiField: SchemaFormFields['x'] = {
@@ -139,6 +155,30 @@ describe('validateField', () => {
     expect(validateField(rate, 150, true, validationMessages)).toMatch(/at most 100/)
     expect(validateField(rate, -1, true, validationMessages)).toMatch(/at least 0/)
     expect(validateField(rate, 8, true, validationMessages)).toBeNull()
+  })
+
+  it('allows an omitted optional array even when minItems is declared', () => {
+    const optionalArray = { ...multiField, minItems: 2 }
+    expect(validateField(optionalArray, [], false, validationMessages)).toBeNull()
+    expect(validateField(optionalArray, undefined, false, validationMessages)).toBeNull()
+  })
+
+  it('enforces minItems/maxItems on populated arrays', () => {
+    const bounded = { ...multiField, minItems: 2, maxItems: 3 }
+    expect(validateField(bounded, ['us'], false, validationMessages)).toMatch(/at least 2/)
+    expect(validateField(bounded, ['us', 'ca'], false, validationMessages)).toBeNull()
+    expect(validateField(bounded, ['us', 'ca', 'mx', 'uk'], false, validationMessages)).toMatch(/at most 3/)
+  })
+
+  it('requires a selection for a required multi-select', () => {
+    expect(validateField(multiField, [], true, validationMessages)).toMatch(/at least one/)
+    expect(validateField({ ...multiField, minItems: 2 }, [], true, validationMessages)).toMatch(/at least 2/)
+    expect(validateField(multiField, ['us'], true, validationMessages)).toBeNull()
+  })
+
+  it('enforces integer wholeness', () => {
+    expect(validateField({ type: 'integer' }, 3.5, true, validationMessages)).toMatch(/whole number/)
+    expect(validateField({ type: 'integer' }, 3, true, validationMessages)).toBeNull()
   })
 
   it('validates email/uri formats', () => {

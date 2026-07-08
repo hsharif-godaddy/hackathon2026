@@ -4,6 +4,7 @@ import { type FormEvent, type ReactNode, useMemo, useState } from 'react'
 import type { ElicitationRequestedSchema, ElicitContentValue } from '@airo/shared'
 import Button from '@ux/button'
 
+import { CollapseChevron } from '@/app/[market]/develop/components/chat/CollapsibleChatInputSection'
 import {
   buildInitialValues,
   coerceSubmittedValues,
@@ -55,6 +56,7 @@ export default function McpElicitationFormPanel({
     buildInitialValues(fields, values),
   )
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [optionalExpanded, setOptionalExpanded] = useState<boolean>(false)
 
   function setValue(key: string, value: ElicitContentValue): void {
     setFormValues((current) => ({ ...current, [key]: value }))
@@ -78,7 +80,7 @@ export default function McpElicitationFormPanel({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full text-sm">
+    <form onSubmit={handleSubmit} className="w-full px-1 text-sm">
       {message ? <div className="px-1 pb-1 text-sm font-medium text-foreground">{message}</div> : null}
 
       {fieldEntries.length === 0 ? (
@@ -87,7 +89,7 @@ export default function McpElicitationFormPanel({
         </div>
       ) : null}
 
-      <div className="divide-y divide-border">
+      <div className="flex flex-col">
         {requiredEntries.map(([key, property]) => (
           <SchemaField
             key={key}
@@ -104,29 +106,37 @@ export default function McpElicitationFormPanel({
       </div>
 
       {optionalEntries.length > 0 ? (
-        <details className="group border-t border-border">
-          <summary className="flex min-h-11 cursor-pointer items-center gap-1.5 py-2 text-sm text-muted-foreground transition hover:text-foreground [&::-webkit-details-marker]:hidden">
-            {optionalFieldsLabel}
-          </summary>
-          <div className="divide-y divide-border border-t border-border">
-            {optionalEntries.map(([key, property]) => (
-              <SchemaField
-                key={key}
-                name={key}
-                property={property}
-                required={false}
-                value={formValues[key]}
-                disabled={disabled}
-                error={errorFor(key, property)}
-                notSetLabel={notSetLabel}
-                onChange={(value) => setValue(key, value)}
-              />
-            ))}
-          </div>
-        </details>
+        <div className={requiredEntries.length > 0 ? 'mt-1 border-t border-border pt-1' : undefined}>
+          <button
+            type="button"
+            onClick={() => setOptionalExpanded((current) => !current)}
+            aria-expanded={optionalExpanded}
+            className="flex w-full items-center justify-between gap-1.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <span className="min-w-0 truncate text-left">{optionalFieldsLabel}</span>
+            <CollapseChevron expanded={optionalExpanded} />
+          </button>
+          {optionalExpanded ? (
+            <div className="flex flex-col pb-0.5">
+              {optionalEntries.map(([key, property]) => (
+                <SchemaField
+                  key={key}
+                  name={key}
+                  property={property}
+                  required={false}
+                  value={formValues[key]}
+                  disabled={disabled}
+                  error={errorFor(key, property)}
+                  notSetLabel={notSetLabel}
+                  onChange={(value) => setValue(key, value)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      <div className="mt-1 flex items-center justify-end gap-2 border-t border-border pt-2">
+      <div className="mt-2 flex items-center justify-end gap-2">
         <Button type="button" design="control" size="sm" text={skipLabel} disabled={disabled} onClick={onSkip} />
         <Button type="submit" design="primary" size="sm" text={submitLabel} disabled={disabled || !valid} />
       </div>

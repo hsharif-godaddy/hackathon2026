@@ -26,13 +26,17 @@ export interface SchemaFormValidationMessages {
   validUrl: string
 }
 
-const ROW_CLASS = 'flex min-h-11 items-start justify-between gap-3 py-2'
-const LABEL_CLASS = 'flex shrink-0 flex-col gap-0.5 pt-1.5 text-sm text-muted-foreground'
-const LABEL_ROW_CLASS = 'flex items-center gap-1'
-const HELP_CLASS = 'text-xs text-muted-foreground/70'
-const ERROR_CLASS = 'text-xs text-destructive'
+const FIELD_CLASS = 'flex flex-col gap-1 py-1'
+const LABEL_ROW_CLASS = 'flex items-start gap-1 text-sm font-medium text-foreground'
+const LABEL_TEXT_CLASS = 'min-w-0 break-words'
+const HELP_CLASS = 'text-xs leading-snug text-muted-foreground'
+const ERROR_CLASS = 'text-xs leading-snug text-destructive'
+const OPTION_ROW_CLASS = 'flex items-start gap-2 text-sm text-foreground'
+const CHECKBOX_CLASS = 'mt-0.5 size-4 shrink-0 rounded border-border'
+const FALLBACK_CLASS =
+  'rounded-md border border-dashed border-border bg-intents-ux-box-backgroundColor px-2.5 py-1.5 text-sm text-muted-foreground'
 const CONTROL_CLASS =
-  'min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2 py-1 text-right text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:text-muted-foreground'
+  'w-full min-w-0 rounded-md border border-border bg-intents-ux-box-backgroundColor px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:bg-muted/40 disabled:text-muted-foreground'
 
 export function getPropertyType(property: SchemaFormProperty): SchemaFormProperty['type'] {
   return property.type
@@ -40,6 +44,21 @@ export function getPropertyType(property: SchemaFormProperty): SchemaFormPropert
 
 export function isMultiSelect(property: SchemaFormProperty): boolean {
   return getPropertyType(property) === 'array'
+}
+
+/**
+ * True when the property is meant to be chosen from a fixed option set (enum /
+ * oneOf single-select, or any array multi-select) rather than freely typed.
+ * Used to render a clear disabled fallback when the option set is empty instead
+ * of silently degrading a choice field to a free-text input.
+ */
+export function isChoiceProperty(property: SchemaFormProperty): boolean {
+  if (property.type === 'array') return true
+  return 'enum' in property || 'oneOf' in property
+}
+
+function parseNumberValue(value: ElicitContentValue | undefined): number {
+  return typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''))
 }
 
 export function getOptions(property: SchemaFormProperty): SchemaFormOption[] {
@@ -136,7 +155,7 @@ export function coerceSubmittedValues(
     if ((value === '' || value === undefined) && !required.has(key)) continue
 
     if (type === 'number' || type === 'integer') {
-      const numberValue = typeof value === 'number' ? value : Number.parseFloat(String(value))
+      const numberValue: number = parseNumberValue(value)
       if (Number.isFinite(numberValue)) {
         submitted[key] = type === 'integer' ? Math.trunc(numberValue) : numberValue
       }
@@ -159,13 +178,21 @@ export function validateField(
 
   if (type === 'array') {
     const list = Array.isArray(value) ? value : []
-    if (required && list.length === 0) return messages.selectAtLeastOne
-    if ('minItems' in property && typeof property.minItems === 'number' && list.length < property.minItems) {
-      return messages.selectAtLeastCount(property.minItems)
+    const minItems: number | undefined =
+      'minItems' in property && typeof property.minItems === 'number' ? property.minItems : undefined
+    const maxItems: number | undefined =
+      'maxItems' in property && typeof property.maxItems === 'number' ? property.maxItems : undefined
+
+    // An omitted optional array is valid even when the schema declares minItems:
+    // the constraint only applies once the field carries a value.
+    if (list.length === 0) {
+      if (!required) return null
+      return minItems !== undefined && minItems > 1
+        ? messages.selectAtLeastCount(minItems)
+        : messages.selectAtLeastOne
     }
-    if ('maxItems' in property && typeof property.maxItems === 'number' && list.length > property.maxItems) {
-      return messages.selectAtMostCount(property.maxItems)
-    }
+    if (minItems !== undefined && list.length < minItems) return messages.selectAtLeastCount(minItems)
+    if (maxItems !== undefined && list.length > maxItems) return messages.selectAtMostCount(maxItems)
     return null
   }
 
@@ -175,7 +202,7 @@ export function validateField(
   if (isEmpty) return required ? messages.required : null
 
   if (property.type === 'number' || property.type === 'integer') {
-    const numberValue = typeof value === 'number' ? value : Number.parseFloat(String(value))
+    const numberValue: number = parseNumberValue(value)
     if (!Number.isFinite(numberValue)) return messages.enterNumber
     if (property.type === 'integer' && !Number.isInteger(numberValue)) return messages.enterWholeNumber
     if (typeof property.minimum === 'number' && numberValue < property.minimum) {
@@ -236,17 +263,52 @@ export function SchemaField({
   onChange,
 }: SchemaFieldProps): ReactNode {
   const type = getPropertyType(property)
-  const label = property.title ?? name
-  const options = getOptions(property)
+  const label: string = property.title ?? name
+  const requiredMark: ReactNode = required ? (
+    <span aria-hidden className="text-destructive">
+      *
+    </span>
+  ) : null
+  const description: ReactNode = property.description ? (
+    <span className={HELP_CLASS}>{property.description}</span>
+  ) : null
+  const errorNode: ReactNode = error ? (
+    <span role="alert" className={ERROR_CLASS}>
+      {error}
+    </span>
+  ) : null
+
+  // Boolean stays a single inline row: the checkbox reads as the control and the
+  // label/description sit beside it, wrapping cleanly on narrow widths.
+  if (type === 'boolean') {
+    return (
+      <label className="flex items-start gap-2 py-1">
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked)}
+          className={CHECKBOX_CLASS}
+        />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className={LABEL_ROW_CLASS}>
+            <span className={LABEL_TEXT_CLASS}>{label}</span>
+            {requiredMark}
+          </span>
+          {description}
+          {errorNode}
+        </span>
+      </label>
+    )
+  }
 
   const labelBlock: ReactNode = (
-    <span className={LABEL_CLASS}>
+    <span className="flex flex-col gap-0.5">
       <span className={LABEL_ROW_CLASS}>
-        <span className="truncate">{label}</span>
-        {required ? <span className="text-destructive">*</span> : null}
+        <span className={LABEL_TEXT_CLASS}>{label}</span>
+        {requiredMark}
       </span>
-      {property.description ? <span className={HELP_CLASS}>{property.description}</span> : null}
-      {error ? <span className={ERROR_CLASS}>{error}</span> : null}
+      {description}
     </span>
   )
 
@@ -254,55 +316,59 @@ export function SchemaField({
     const arrayOptions = getArrayOptions(property)
     const selected = Array.isArray(value) ? value : []
     return (
-      <div className="flex flex-col gap-1 py-2">
+      <div className={FIELD_CLASS}>
         {labelBlock}
-        <div className="flex flex-col gap-1 pt-1">
-          {arrayOptions.map((option) => {
-            const checked = selected.some((entry) => entry === option.value)
-            return (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={(event) => {
-                    const next = event.target.checked
-                      ? [...selected, option.value]
-                      : selected.filter((entry) => entry !== option.value)
-                    onChange(next)
-                  }}
-                  className="size-4 rounded border-border"
-                />
-                <span className="truncate">{option.label}</span>
-              </label>
-            )
-          })}
-        </div>
+        {arrayOptions.length === 0 ? (
+          <span className={FALLBACK_CLASS}>{notSetLabel}</span>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {arrayOptions.map((option) => {
+              const checked: boolean = selected.some((entry) => entry === option.value)
+              return (
+                <label key={option.value} className={OPTION_ROW_CLASS}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={disabled}
+                    onChange={(event) => {
+                      const next: string[] = event.target.checked
+                        ? [...selected, option.value]
+                        : selected.filter((entry) => entry !== option.value)
+                      onChange(next)
+                    }}
+                    className={CHECKBOX_CLASS}
+                  />
+                  <span className={LABEL_TEXT_CLASS}>{option.label}</span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+        {errorNode}
       </div>
     )
   }
 
+  const options = getOptions(property)
+
   return (
-    <label className={ROW_CLASS}>
+    <label className={FIELD_CLASS}>
       {labelBlock}
 
-      {type === 'boolean' ? (
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.checked)}
-          className="mt-2 size-4 rounded border-border"
-        />
+      {isChoiceProperty(property) && options.length === 0 ? (
+        <span className={FALLBACK_CLASS}>{notSetLabel}</span>
       ) : options.length > 0 ? (
         <select
           value={String(value ?? '')}
           required={required}
           disabled={disabled}
+          aria-invalid={error ? true : undefined}
           onChange={(event) => onChange(event.target.value)}
           className={`${CONTROL_CLASS} cursor-pointer`}
         >
-          {!required ? <option value="">{notSetLabel}</option> : null}
+          <option value="" disabled={required} hidden={required}>
+            {notSetLabel}
+          </option>
           {options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -325,6 +391,8 @@ export function SchemaField({
           className={CONTROL_CLASS}
         />
       )}
+
+      {errorNode}
     </label>
   )
 }
