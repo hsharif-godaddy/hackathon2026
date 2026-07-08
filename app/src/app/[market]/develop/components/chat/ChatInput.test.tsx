@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { MediaType } from '@/app/[market]/develop/components/chat/AssetTypes';
+import { useMcpElicitationStore } from '@/stores/useMcpElicitationStore';
 import { renderWithProviders } from '@/tests/test-utils';
 import { logActionEvent, logClickEvent } from '@/utils/instrumentation';
 import ChatInput from './ChatInput';
@@ -108,6 +109,7 @@ describe('ChatInput', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    useMcpElicitationStore.setState({ pending: null, resolve: null });
     mockDevelopStore.isMobile = false;
     mockDevelopStore.isAssetManagerOpen = false;
     mockSpeechRecognition.isListening = false;
@@ -183,6 +185,31 @@ describe('ChatInput', () => {
     renderWithProviders(<ChatInput {...defaultProps} />);
 
     await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument());
+  });
+
+  it('mounts InputActionsPanel for the elicitation takeover even when it is otherwise disabled', () => {
+    // beforeEach leaves airo-builder-chat-plans → false, so the panel is normally
+    // suppressed. A pending elicitation must still force it to mount, because the
+    // elicitation card now renders as a takeover inside InputActionsPanel.
+    useMcpElicitationStore.setState({
+      pending: {
+        id: 'settings',
+        serverId: 'inventory',
+        serverDisplayName: 'Inventory',
+        toolName: 'inventory_settings_configure',
+        mode: 'form',
+        message: 'Configure inventory',
+        requestedSchema: {
+          type: 'object',
+          properties: { threshold: { type: 'number' } },
+        },
+      },
+      resolve: null,
+    });
+
+    renderWithProviders(<ChatInput {...defaultProps} />);
+
+    expect(mockInputActionsPanel).toHaveBeenCalled();
   });
 
   it('should display textarea with placeholder', () => {

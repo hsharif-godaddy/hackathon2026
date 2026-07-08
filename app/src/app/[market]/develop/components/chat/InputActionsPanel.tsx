@@ -25,6 +25,8 @@ import { useThinkerLabel } from '@/app/[market]/develop/components/chat/useThink
 import AskQuestionToolRenderer from '@/app/[market]/develop/components/tool-renderers/AskQuestionToolRenderer'
 import { parseChoiceListIndex } from '@/app/[market]/develop/components/tool-renderers/choiceListIndex'
 import { focusChoiceListOptionByIndex } from '@/app/[market]/develop/components/tool-renderers/focusChoiceListOptionByIndex'
+import McpElicitationFormPanel from '@/app/[market]/develop/components/tool-renderers/McpElicitationFormPanel'
+import McpUrlElicitationPanel from '@/app/[market]/develop/components/tool-renderers/McpUrlElicitationPanel'
 import OptionInput from '@/app/[market]/develop/components/tool-renderers/OptionInput'
 import RebuildPageSelectorToolRenderer from '@/app/[market]/develop/components/tool-renderers/RebuildPageSelectorToolRenderer'
 import {
@@ -49,6 +51,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { todoListService } from '@/services/TodoListService'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useMcpElicitationStore } from '@/stores/useMcpElicitationStore'
 import { useHistoryLoadingComplete, useIsActivelyStreaming, useIsLoading, useMessages, useStreamingConversationStore } from '@/stores/useStreamingConversationStore'
 import type { TodoItem } from '@/stores/useTodoListStore'
 import { useCurrentList, useTodoListStore, useViewState } from '@/stores/useTodoListStore'
@@ -150,6 +153,146 @@ function usePublishHideComposerPrompt(
     if (!onHideComposerPromptChange) return
     return () => onHideComposerPromptChange(false)
   }, [onHideComposerPromptChange])
+}
+
+/**
+ * Renders a pending MCP elicitation in the same card chrome as an askQuestion
+ * form: a required, active interaction that takes over the panel above the
+ * composer. Form mode hides the composer prompt, mirroring askQuestion forms.
+ */
+function McpElicitationCard({
+  onHideComposerPromptChange,
+}: {
+  onHideComposerPromptChange?: (hidden: boolean) => void
+}) {
+  const t = useTranslations()
+  const pending = useMcpElicitationStore((state) => state.pending)
+  const respond = useMcpElicitationStore((state) => state.respond)
+  const [expanded, setExpanded] = useState(true)
+  const requestedByLabel = t(
+    'builder_mcp_elicitation_requested_by',
+    { server: pending?.serverDisplayName ?? '' },
+    'Requested by {server}',
+  )
+
+  usePublishHideComposerPrompt(
+    Boolean(pending?.mode === 'form' && pending.requestedSchema),
+    onHideComposerPromptChange,
+  )
+
+  useEffect(() => {
+    if (pending?.id) setExpanded(true)
+  }, [pending?.id])
+
+  if (!pending) return null
+
+  const body: ReactNode =
+    pending.mode === 'url' && pending.url ? (
+      <McpUrlElicitationPanel
+        key={pending.id}
+        message=""
+        url={pending.url}
+        awaitingCompletion={pending.awaitingCompletion === true}
+        disabled={false}
+        openLabel={t('builder_common_open_new_tab')}
+        retryLabel={t('builder_common_retry')}
+        cancelLabel={t('builder_common_cancel')}
+        openHostLabel={t('builder_mcp_elicitation_opens_on', undefined, 'This opens on:')}
+        completionMessage={t(
+          'builder_mcp_elicitation_finish_in_browser',
+          { retryLabel: t('builder_common_retry') },
+          'Finish in the browser tab that opened, then choose {retryLabel}.',
+        )}
+        suspiciousUrlLabel={t(
+          'builder_mcp_elicitation_check_address',
+          undefined,
+          'Double-check this address before continuing.',
+        )}
+        httpsOnlyLabel={t(
+          'builder_mcp_elicitation_https_only',
+          undefined,
+          'Only HTTPS links can be opened from this request.',
+        )}
+        invalidUrlLabel={t('builder_mcp_elicitation_invalid_url', undefined, 'This link is not a valid URL.')}
+        onAccept={() => respond({ action: 'accept' })}
+        onCancel={() => respond({ action: 'cancel' })}
+      />
+    ) : pending.requestedSchema ? (
+      <McpElicitationFormPanel
+        key={pending.id}
+        message=""
+        requestedSchema={pending.requestedSchema}
+        values={pending.values}
+        disabled={false}
+        submitLabel={t('builder_common_submit')}
+        skipLabel={t('builder_widgets_feedback_skip')}
+        emptyFieldsLabel={t(
+          'builder_mcp_elicitation_no_form_fields',
+          undefined,
+          'No form fields were provided.',
+        )}
+        optionalFieldsLabel={t('builder_mcp_elicitation_optional_settings', undefined, 'Optional settings')}
+        notSetLabel={t('builder_mcp_elicitation_not_set', undefined, 'Not set')}
+        validationMessages={{
+          required: t('builder_mcp_elicitation_required', undefined, 'Required'),
+          selectAtLeastOne: t(
+            'builder_mcp_elicitation_select_at_least_one',
+            undefined,
+            'Select at least one option',
+          ),
+          selectAtLeastCount: (count) =>
+            t('builder_mcp_elicitation_select_at_least_count', { count }, 'Select at least {count}'),
+          selectAtMostCount: (count) =>
+            t('builder_mcp_elicitation_select_at_most_count', { count }, 'Select at most {count}'),
+          enterNumber: t('builder_mcp_elicitation_enter_number', undefined, 'Enter a number'),
+          enterWholeNumber: t(
+            'builder_mcp_elicitation_enter_whole_number',
+            undefined,
+            'Enter a whole number',
+          ),
+          minimumNumber: (minimum) =>
+            t('builder_mcp_elicitation_minimum_number', { minimum }, 'Must be at least {minimum}'),
+          maximumNumber: (maximum) =>
+            t('builder_mcp_elicitation_maximum_number', { maximum }, 'Must be at most {maximum}'),
+          minimumLength: (minimum) =>
+            t(
+              'builder_mcp_elicitation_min_length',
+              { minimum },
+              'Must be at least {minimum} characters',
+            ),
+          maximumLength: (maximum) =>
+            t(
+              'builder_mcp_elicitation_max_length',
+              { maximum },
+              'Must be at most {maximum} characters',
+            ),
+          validEmail: t('builder_mcp_elicitation_valid_email', undefined, 'Enter a valid email'),
+          validUrl: t('builder_mcp_elicitation_valid_url', undefined, 'Enter a valid URL'),
+        }}
+        onSubmit={(content) => respond({ action: 'accept', content })}
+        onSkip={() => respond({ action: 'decline' })}
+      />
+    ) : null
+
+  if (!body) return null
+
+  return (
+    <InputActionsPanelCard>
+      <CollapsibleChatInputSection
+        title={
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <PanelSectionTitle multiline>{pending.message}</PanelSectionTitle>
+            <span className="text-xs font-normal text-muted-foreground/70">{requestedByLabel}</span>
+          </span>
+        }
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+        data-testid="collapsible-section-mcp-elicitation"
+      >
+        {body}
+      </CollapsibleChatInputSection>
+    </InputActionsPanelCard>
+  )
 }
 
 function isAskQuestionToolResult(toolResult: unknown): boolean {
@@ -1617,6 +1760,7 @@ export default function InputActionsPanel({
 }: InputActionsPanelProps) {
   const isThemeSelectionChatEnabled = useSwitchboard('airo-builder-theme-selection-chat')
   const isFontSelectionChatEnabled = useSwitchboard('airo-builder-font-selection-chat')
+  const hasPendingMcpElicitation = useMcpElicitationStore((state) => state.pending !== null)
 
   // FBF lives here so it runs regardless of which variant (Legacy or ThemeSelection) is active.
   const appId = useAppIdFromParams()
@@ -1682,6 +1826,12 @@ export default function InputActionsPanel({
     }
     userMessageCountRef.current = currentCount
   }, [messages, feedback, historyLoadingComplete])
+
+  // A pending MCP elicitation is a required, active interaction — it takes over
+  // the panel above the composer, ahead of NBAs / Continue building / feedback.
+  if (hasPendingMcpElicitation) {
+    return <McpElicitationCard onHideComposerPromptChange={onHideComposerPromptChange} />
+  }
 
   if (isThemeSelectionChatEnabled || isFontSelectionChatEnabled) {
     return (

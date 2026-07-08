@@ -135,6 +135,40 @@ func TestGetApp_IncludesImageDigestAndLifecycleState(t *testing.T) {
 	}
 }
 
+func TestGetApp_ActiveAppDoesNotEmitProvisioningLifecycle(t *testing.T) {
+	srv := newTestServer(t)
+
+	app, err := srv.DB.CreateApp("sub-1", "sys-1", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	activeStatus := "active"
+	if _, err := srv.DB.UpdateApp(app.ID, &activeStatus, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/airo/v1/subscriptions/sub-1/systems/sys-1/apps/"+app.ID, nil)
+	req = setMuxVars(req, map[string]string{"subId": "sub-1", "sysId": "sys-1", "appId": app.ID})
+
+	w := httptest.NewRecorder()
+	srv.GetApp(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status: got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, w, &resp)
+
+	if resp["status"] != "active" {
+		t.Fatalf("status: got %v, want active", resp["status"])
+	}
+	if resp["lifecycleState"] != store.LifecycleStateRunning {
+		t.Errorf("lifecycleState: got %v, want %q", resp["lifecycleState"], store.LifecycleStateRunning)
+	}
+}
+
 // --- ListApps ---
 
 func TestListAppsHandler(t *testing.T) {

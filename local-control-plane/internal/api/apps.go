@@ -190,6 +190,9 @@ func appToResponse(app *store.App) map[string]any {
 	// local computation — which will return "archived" or "paused" if those
 	// apply, else "running".
 	topLifecycleState := app.LifecycleState
+	if app.Status == "active" && topLifecycleState == store.LifecycleStateProvisioning {
+		topLifecycleState = store.LifecycleStateRunning
+	}
 	if topLifecycleState == "" || topLifecycleState == store.LifecycleStateRunning {
 		topLifecycleState = lifecycleState // local computation
 	}
@@ -946,12 +949,10 @@ func (s *Server) provisionApp(app *store.App) error {
 	if _, err := s.DB.UpdateApp(app.ID, &activeStatus, nil, nil); err != nil {
 		return fmt.Errorf("set app active: %w", err)
 	}
+	if err := s.DB.UpdateAppLifecycleState(app.ID, store.LifecycleStateRunning); err != nil {
+		return fmt.Errorf("set app lifecycle running: %w", err)
+	}
 
-	// Lifecycle transitions (provisioning → running) are deferred to Phase 4
-	// when the upgrade orchestrator becomes the consumer of lifecycle_state.
-	// Phase 1 leaves new apps at the SQL default 'running' since there's no
-	// caller that distinguishes states yet. The UpdateAppLifecycleState setter
-	// exists for Phase 4 to use.
 	// TODO(phase-4): replace with real digest from build pipeline / docker inspect
 	if err := s.DB.UpdateAppImageDigest(app.ID, "aab-template-v8:latest"); err != nil {
 		slog.Warn("provision.image_digest.update_failed", "app_id", app.ID, "error", err)

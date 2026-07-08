@@ -36,6 +36,7 @@ import { logger } from '@/lib/request-context'
 import { cn } from '@/lib/utils'
 import { hasComposerAttachments, hasComposerSendPayload } from '@/services/transport/composerAttachments'
 import { useDevelopPageStore } from '@/stores/useDevelopPageStore'
+import { useMcpElicitationStore } from '@/stores/useMcpElicitationStore'
 import { logActionEvent, logClickEvent } from '@/utils/instrumentation'
 
 const PROMPT_BOX_EDITOR_SELECTOR = '.airo-input-prompt-box__entry'
@@ -196,6 +197,7 @@ export default function ChatInput({
   const secretsComposerTakeover = useSecretsComposerTakeover();
   const isMobile = useDevelopPageStore((state) => state.isMobile);
   const isCommanderMobileSheet = useCommanderLayout() !== null && isMobile;
+  const hasPendingMcpElicitation = useMcpElicitationStore((state) => state.pending !== null)
   const isChatGaugeEnabled = useSwitchboard('appbuilder-chat-gauge');
   const isMultilineCollapseEnabled = useSwitchboard('airo-builder-chat-collapse-multiline-input');
   const attachmentSlotsUsed = selectedAssets.length + stagedFiles.length
@@ -746,7 +748,7 @@ export default function ChatInput({
   }, [isAwaitingStream, isStreaming, onStopGeneration, clickContext, isQueueModeActive])
 
   const actionsPanel =
-    showInputActionsPanel && secretsComposerTakeover == null ? (
+    (showInputActionsPanel || hasPendingMcpElicitation) && secretsComposerTakeover == null ? (
       <InputActionsPanel
         activeColorSchemeSuggest={activeColorSchemeSuggest}
         activeFontThemeSuggest={activeFontThemeSuggest}

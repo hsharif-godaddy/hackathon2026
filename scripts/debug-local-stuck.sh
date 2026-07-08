@@ -17,8 +17,8 @@
 #                             trigger phantom recompilations from tsx --watch.
 #   2. Per-process CPU      — flags any node/tsx/next-server pegged >80%
 #                             (deterministic webpack/event-loop loop).
-#   3. Listening ports      — 3000 (Next.js), 8443 (Gasket), 4000 (agents),
-#                             4100 (control plane). All four must be up.
+#   3. Listening ports      — 3000 (Next.js), 8443 (Gasket), ${AGENTS_PORT:-4000}
+#                             (agents), 4100 (control plane). All four must be up.
 #   4. Health responses     — BFF /health, agent /health, control plane /health.
 #                             Times out fast (3s) so the script doesn't itself hang.
 #   5. JWKS endpoint        — Docker preview containers fetch this for JWT auth.
@@ -38,6 +38,8 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_LOG="$REPO_ROOT/app/dev.log"
+AGENTS_PORT="${AGENTS_PORT:-4000}"
+AGENTS_HEALTH_URL="https://local.gasket.dev-godaddy.com:${AGENTS_PORT}/health"
 
 bold() { printf "\033[1m%s\033[0m\n" "$*"; }
 red()  { printf "\033[31m%s\033[0m\n" "$*"; }
@@ -80,7 +82,7 @@ ps -e -o pid,pcpu,pmem,etime,command \
 echo
 
 bold "=== 3. Port listeners ==="
-for port_pair in "3000:Next.js" "8443:Gasket-proxy" "4000:Agents" "4100:Control-plane"; do
+for port_pair in "3000:Next.js" "8443:Gasket-proxy" "${AGENTS_PORT}:Agents" "4100:Control-plane"; do
   port="${port_pair%%:*}"
   name="${port_pair##*:}"
   pid=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -1)
@@ -127,7 +129,7 @@ check_url() {
 }
 check_url "BFF /api/health         " "https://local.gasket.dev-godaddy.com:8443/api/health" 30 "-k"
 check_url "BFF JWKS                " "https://local.gasket.dev-godaddy.com:8443/.well-known/jwks.json" 30 "-k"
-check_url "Agents /health          " "http://localhost:4000/health" 5
+check_url "Agents /health          " "$AGENTS_HEALTH_URL" 5 "-k"
 check_url "Control plane /health   " "http://localhost:4100/health" 5
 echo
 

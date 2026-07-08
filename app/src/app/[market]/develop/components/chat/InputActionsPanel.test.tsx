@@ -14,6 +14,7 @@ import { previewThemeInIframe } from '@/app/[market]/develop/components/utils/pr
 import * as useNextActionsModule from '@/app/[market]/develop/hooks/useNextActions'
 import * as Switchboard from '@/hooks/useSwitchboard'
 import * as DevelopPageStore from '@/stores/useDevelopPageStore'
+import { type PendingMcpElicitation, useMcpElicitationStore } from '@/stores/useMcpElicitationStore'
 import * as StreamingStore from '@/stores/useStreamingConversationStore'
 import * as TodoListStore from '@/stores/useTodoListStore'
 import { renderWithProviders } from '@/tests/test-utils'
@@ -208,6 +209,7 @@ describe('InputActionsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    useMcpElicitationStore.setState({ pending: null, resolve: null })
     vi.mocked(Switchboard.useSwitchboard).mockImplementation(function (flag: string) {
       if (flag === 'airo-builder-theme-selection-chat') {
         return true
@@ -1651,6 +1653,37 @@ describe('InputActionsPanel', () => {
         expect(useLatestNBAsModule.useLatestNBAs).toHaveBeenLastCalledWith(false)
       })
       expect(screen.getByRole('option', { name: /Professional/ })).toBeInTheDocument()
+    })
+  })
+
+  describe('MCP elicitation takeover', () => {
+    const pendingForm: PendingMcpElicitation = {
+      id: 'settings',
+      serverId: 'inventory',
+      serverDisplayName: 'Inventory MCP',
+      toolName: 'inventory_settings_configure',
+      mode: 'form',
+      message: 'Configure inventory',
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          threshold: { type: 'number', default: 5, title: 'Threshold' },
+        },
+      },
+    }
+
+    it('takes over the panel with the elicitation form and resolves the store request on submit', async () => {
+      const promise = useMcpElicitationStore.getState().request(pendingForm)
+
+      renderWithProviders(<InputActionsPanel />)
+
+      expect(screen.getByText('Configure inventory')).toBeInTheDocument()
+      expect(screen.getByText('Requested by Inventory MCP')).toBeInTheDocument()
+
+      const submit = screen.getByRole('button', { name: 'builder_common_submit' })
+      fireEvent.click(submit)
+
+      await expect(promise).resolves.toEqual({ action: 'accept', content: { threshold: 5 } })
     })
   })
 })
