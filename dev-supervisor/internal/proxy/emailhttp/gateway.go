@@ -36,6 +36,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/email"
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy"
 )
 
 const (
@@ -214,6 +215,9 @@ type Gateway struct {
 	// slog always carries the full error regardless.
 	verboseErrors bool
 
+	retryAttempts int
+	retryDelay    time.Duration
+
 	server   *http.Server
 	listener net.Listener
 	mu       sync.Mutex
@@ -283,6 +287,12 @@ func (g *Gateway) SetSigner(fn SignFunc) {
 	g.signFn = fn
 }
 
+// SetListenRetry overrides retry parameters. Must be called before Start.
+func (g *Gateway) SetListenRetry(attempts int, delay time.Duration) {
+	g.retryAttempts = attempts
+	g.retryDelay = delay
+}
+
 // Start binds the listener and serves HTTP until Stop is called.
 // Returns nil on success even though Serve runs in a goroutine — the
 // listener is bound before this returns, so any port binding failure
@@ -298,8 +308,7 @@ func (g *Gateway) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc(SendPath, g.handleSend)
 
-	//nolint:noctx // Long-lived listener; no request context available.
-	listener, err := net.Listen("tcp", g.listenAddr)
+	listener, err := proxy.ListenWithRetry(g.listenAddr, g.retryAttempts, g.retryDelay)
 	if err != nil {
 		return fmt.Errorf("email gateway listen: %w", err)
 	}
@@ -349,6 +358,15 @@ func (g *Gateway) Stop() error {
 		if err := g.server.Shutdown(ctx); err != nil {
 			slog.Warn("email gateway shutdown error", "error", err)
 		}
+	}
+
+	// Explicitly close the listener to free the port immediately. Shutdown
+	// delegates to http.Server's tracked listener, but if the Serve goroutine
+	// hasn't registered it yet (race on startup), the port stays bound until
+	// the goroutine wakes. This Close is idempotent with Shutdown's internal
+	// close.
+	if g.listener != nil {
+		_ = g.listener.Close()
 	}
 
 	slog.Info("email gateway stopped")

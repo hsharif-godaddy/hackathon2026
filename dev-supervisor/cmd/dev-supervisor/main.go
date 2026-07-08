@@ -509,7 +509,10 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 
 	slog.Info("dev-supervisor starting", "socket_path", socketPath, "pid", os.Getpid())
 
-	// Start HTTP proxy if enabled
+	// Start proxy listeners sequentially. On the exhaustion path the HTTP
+	// proxy aborts startup, while SMTP/gateway log a warning and continue —
+	// but each still contributes up to (DefaultListenRetryAttempts-1) ×
+	// DefaultListenRetryDelay (~14s) of additive delay before proceeding.
 	if err := s.startHTTPProxyIfEnabled(); err != nil {
 		return err
 	}
@@ -545,6 +548,11 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 	// Start PID 1 manager with shutdown callback
 	s.pid1Mgr.Start(func() {
 		slog.Info("shutdown initiated by PID 1 manager")
+
+		// Close proxy listeners first so the new allocation can bind
+		// immediately rather than waiting for API drain to complete.
+		s.stopProxyListeners()
+
 		// Trigger graceful server shutdown with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
@@ -587,6 +595,10 @@ func (s *Server) startUnixServer(socketPath string, shutdownTimeout time.Duratio
 		}
 
 		slog.Info("shutting down server")
+
+		// Close proxy listeners first so the new allocation can bind
+		// immediately rather than waiting for API drain to complete.
+		s.stopProxyListeners()
 
 		// Graceful shutdown with configurable timeout
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -681,6 +693,11 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 	// Start PID 1 manager with shutdown callback
 	s.pid1Mgr.Start(func() {
 		slog.Info("shutdown initiated by PID 1 manager")
+
+		// Close proxy listeners first so the new allocation can bind
+		// immediately rather than waiting for API drain to complete.
+		s.stopProxyListeners()
+
 		// Trigger graceful server shutdown with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
@@ -723,6 +740,10 @@ func (s *Server) startTCPServer(port string, shutdownTimeout time.Duration) erro
 		}
 
 		slog.Info("shutting down TCP server")
+
+		// Close proxy listeners first so the new allocation can bind
+		// immediately rather than waiting for API drain to complete.
+		s.stopProxyListeners()
 
 		// Graceful shutdown with configurable timeout
 		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -799,6 +820,24 @@ func (s *Server) Shutdown() {
 	s.shutdownOnce.Do(func() {
 		close(s.shutdownCh)
 	})
+}
+
+// stopProxyListeners shuts down the HTTP/SMTP/email-gateway proxies (each
+// with its own short drain) so the replacement allocation can bind
+// immediately. Each Stop() is idempotent, so the deferred cleanup calls at
+// the end of startUnixServer/startTCPServer are safe no-ops after this runs.
+func (s *Server) stopProxyListeners() {
+	if s.httpProxy != nil {
+		if err := s.httpProxy.Stop(); err != nil {
+			slog.Warn("failed to stop HTTP proxy", "error", err)
+		}
+	}
+	if err := s.smtpProxy.Stop(); err != nil {
+		slog.Warn("failed to stop SMTP proxy", "error", err)
+	}
+	if err := s.emailGateway.Stop(); err != nil {
+		slog.Warn("failed to stop email gateway", "error", err)
+	}
 }
 
 func parseFlags() *Config {

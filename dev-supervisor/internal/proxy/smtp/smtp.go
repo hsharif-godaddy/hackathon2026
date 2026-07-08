@@ -12,12 +12,14 @@ import (
 	"net/mail"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/emersion/go-smtp"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/allocconfig"
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/email"
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy"
 )
 
 // SignFunc signs the outbound message and injects the JWS-bearing
@@ -40,6 +42,8 @@ type Proxy struct {
 	customHeaders   map[string]string
 	identityFn      func() (email.Identity, error)
 	signFn          SignFunc
+	retryAttempts   int
+	retryDelay      time.Duration
 	server          *smtp.Server
 	listener        net.Listener
 	mu              sync.Mutex
@@ -114,6 +118,12 @@ func (p *Proxy) LoadHeaders() {
 	slog.Info("loaded SMTP custom headers", "count", len(p.customHeaders))
 }
 
+// SetListenRetry overrides retry parameters. Must be called before Start.
+func (p *Proxy) SetListenRetry(attempts int, delay time.Duration) {
+	p.retryAttempts = attempts
+	p.retryDelay = delay
+}
+
 // SetSigner installs the JWS signing function. Must be called before
 // Start — the active backend snapshots the function by reference, so
 // post-Start changes don't reach in-flight or future sessions until
@@ -160,8 +170,7 @@ func (p *Proxy) Start() error {
 	p.server.Domain = "localhost"
 	p.server.AllowInsecureAuth = true
 
-	//nolint:noctx // Long-lived SMTP server listener, no request context available
-	listener, err := net.Listen("tcp", p.listenAddr)
+	listener, err := proxy.ListenWithRetry(p.listenAddr, p.retryAttempts, p.retryDelay)
 	if err != nil {
 		return fmt.Errorf("failed to start SMTP proxy: %w", err)
 	}
@@ -211,6 +220,14 @@ func (p *Proxy) Stop() error {
 		if err := p.server.Close(); err != nil {
 			slog.Warn("error closing SMTP server", "error", err)
 		}
+	}
+
+	// Explicitly close the listener to free the port immediately. The SMTP
+	// server's Close() delegates to its tracked listeners, but if the Serve
+	// goroutine hasn't registered the listener yet (race on startup), the
+	// port stays bound. This Close is idempotent.
+	if p.listener != nil {
+		_ = p.listener.Close()
 	}
 
 	slog.Info("SMTP proxy stopped")

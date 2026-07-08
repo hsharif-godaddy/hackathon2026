@@ -23,6 +23,7 @@ import (
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
 	"github.com/airo-ai-builder/dev-supervisor/internal/email/signing"
 	"github.com/airo-ai-builder/dev-supervisor/internal/middleware"
+	"github.com/airo-ai-builder/dev-supervisor/internal/proxy"
 )
 
 // HTTPProxy provides HTTP reverse proxy with optional TLS termination.
@@ -40,6 +41,8 @@ type HTTPProxy struct {
 	server                *http.Server
 	listener              net.Listener
 	running               bool
+	retryAttempts         int
+	retryDelay            time.Duration
 	reverseProxy          *httputil.ReverseProxy
 	corsMiddleware        *cors.Cors
 	startTime             time.Time
@@ -61,6 +64,12 @@ type HTTPProxy struct {
 	// Always wired (not gated on auth.json existence at boot). When auth.json
 	// is missing or ssoRequired=false, the middleware is a passthrough.
 	idpMiddleware *auth.IDPAuthMiddleware
+}
+
+// SetListenRetry overrides retry parameters. Must be called before Start.
+func (p *HTTPProxy) SetListenRetry(attempts int, delay time.Duration) {
+	p.retryAttempts = attempts
+	p.retryDelay = delay
 }
 
 // SetSigner installs the JWS signer the /airo/jws-debug endpoint
@@ -466,8 +475,7 @@ func (p *HTTPProxy) Start() error {
 
 	// Create listener (TLS or plain HTTP)
 	listenAddr := fmt.Sprintf(":%d", p.config.ListenPort)
-	//nolint:noctx // Long-lived server listener, no request context available
-	listener, err := net.Listen("tcp", listenAddr)
+	listener, err := proxy.ListenWithRetry(listenAddr, p.retryAttempts, p.retryDelay)
 	if err != nil {
 		return fmt.Errorf("failed to create listener on port %d: %w", p.config.ListenPort, err)
 	}
@@ -555,6 +563,15 @@ func (p *HTTPProxy) Stop() error {
 			}
 			return err
 		}
+	}
+
+	// Explicitly close the listener to free the port immediately. Shutdown
+	// delegates to http.Server's tracked listener, but if the Serve goroutine
+	// hasn't registered it yet (race on startup), the port stays bound until
+	// the goroutine wakes. This Close is idempotent with Shutdown's internal
+	// close.
+	if p.listener != nil {
+		_ = p.listener.Close()
 	}
 
 	slog.Info("HTTP proxy stopped")

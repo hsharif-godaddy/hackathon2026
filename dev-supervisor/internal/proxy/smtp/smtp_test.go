@@ -45,6 +45,72 @@ func TestSMTPProxyStartStop(t *testing.T) {
 	}
 }
 
+// TestSMTPProxyStartRetriesOnAddrInUse verifies that Start() retries
+// binding when the port is transiently occupied (rolling deploy race).
+func TestSMTPProxyStartRetriesOnAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("setup blocker: %v", err)
+	}
+	addr := blocker.Addr().String()
+
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		blocker.Close()
+	}()
+
+	proxy := smtp.NewForTesting(addr, "127.0.0.1:25", nil, email.Identity{})
+	proxy.SetListenRetry(5, 50*time.Millisecond)
+
+	if err := proxy.Start(); err != nil {
+		t.Fatalf("Start should succeed after retry: %v", err)
+	}
+	defer func() { _ = proxy.Stop() }()
+}
+
+func TestSMTPProxyStartFailsImmediatelyOnNonRetryableError(t *testing.T) {
+	t.Parallel()
+
+	proxy := smtp.NewForTesting("999.999.999.999:0", "127.0.0.1:25", nil, email.Identity{})
+
+	start := time.Now()
+	err := proxy.Start()
+	elapsed := time.Since(start)
+
+	if err == nil {
+		_ = proxy.Stop()
+		t.Fatal("Start should fail on invalid address")
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("non-retryable error should fail fast, but took %v", elapsed)
+	}
+}
+
+func TestSMTPProxyStartExhaustsRetriesOnPermanentAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("setup blocker: %v", err)
+	}
+	defer blocker.Close()
+	addr := blocker.Addr().String()
+
+	proxy := smtp.NewForTesting(addr, "127.0.0.1:25", nil, email.Identity{})
+	proxy.SetListenRetry(3, 10*time.Millisecond)
+
+	err = proxy.Start()
+	if err == nil {
+		_ = proxy.Stop()
+		t.Fatal("Start should fail when port is permanently occupied")
+	}
+	if !strings.Contains(err.Error(), "address already in use") {
+		t.Errorf("expected EADDRINUSE error, got: %v", err)
+	}
+}
+
 func TestSMTPProxyHeaderInjection(t *testing.T) {
 	t.Setenv("SITE_ID", "test-site-123")
 	t.Setenv("PRODUCT", "test-product")

@@ -1,13 +1,19 @@
 package main
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/airo-ai-builder/dev-supervisor/internal/config"
+	"github.com/airo-ai-builder/dev-supervisor/internal/email"
+	emailhttp "github.com/airo-ai-builder/dev-supervisor/internal/proxy/emailhttp"
+	httpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/http"
+	smtpproxy "github.com/airo-ai-builder/dev-supervisor/internal/proxy/smtp"
 )
 
 func TestGetSocketPath(t *testing.T) {
@@ -399,4 +405,88 @@ func TestBuildStartRequestFromArgs_SingleArg(t *testing.T) {
 	if req.Command != "sleep 10" {
 		t.Errorf("should join multiple args with spaces, got %q", req.Command)
 	}
+}
+
+func TestStopProxyListeners_FreesPortsImmediately(t *testing.T) {
+	t.Parallel()
+
+	identity := email.Identity{AppID: "test-app"}
+
+	smtp := smtpproxy.NewForTesting("127.0.0.1:0", "127.0.0.1:9925", nil, identity)
+	smtp.SetListenRetry(1, time.Millisecond)
+	if err := smtp.Start(); err != nil {
+		t.Fatalf("smtp start: %v", err)
+	}
+
+	gateway := emailhttp.NewForTesting(
+		"127.0.0.1:0", "127.0.0.1:9925",
+		func() (email.Identity, error) { return identity, nil },
+		nil, nil, true,
+	)
+	gateway.SetListenRetry(1, time.Millisecond)
+	if err := gateway.Start(); err != nil {
+		t.Fatalf("gateway start: %v", err)
+	}
+
+	// HTTPProxy rejects port 0 in validateConfig, so grab an ephemeral port
+	// and immediately start the proxy. Retry the grab→start sequence because
+	// another parallel test can steal the port between Close and Start.
+	var hp *httpproxy.HTTPProxy
+	for attempt := range 5 {
+		tmp, listenErr := net.Listen("tcp", ":0")
+		if listenErr != nil {
+			t.Fatalf("grab ephemeral port: %v", listenErr)
+		}
+		httpPort := tmp.Addr().(*net.TCPAddr).Port
+		tmp.Close()
+
+		hp = httpproxy.NewHTTPProxy(httpproxy.Config{
+			Enabled:    true,
+			ListenPort: httpPort,
+			TargetHost: "127.0.0.1",
+			TargetPort: 9999,
+		})
+		hp.SetListenRetry(1, time.Millisecond)
+		if startErr := hp.Start(); startErr == nil {
+			break
+		} else if attempt == 4 {
+			t.Fatalf("http proxy start (5 attempts): %v", startErr)
+		}
+	}
+
+	smtpAddr := smtp.Addr()
+	gatewayAddr := gateway.Addr()
+	httpAddr := hp.Addr()
+
+	s := &Server{
+		smtpProxy:    smtp,
+		emailGateway: gateway,
+		httpProxy:    hp,
+	}
+
+	s.stopProxyListeners()
+
+	// Ports must be re-bindable after stop. The HTTP proxy binds on [::]
+	// (dual-stack wildcard); on Linux the kernel may take a brief moment to
+	// fully release such ports after the listener FD is closed.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for _, addr := range []string{smtpAddr, gatewayAddr, httpAddr} {
+		var bindErr error
+		for time.Now().Before(deadline) {
+			ln, err := net.Listen("tcp", addr)
+			if err == nil {
+				ln.Close()
+				bindErr = nil
+				break
+			}
+			bindErr = err
+			time.Sleep(10 * time.Millisecond)
+		}
+		if bindErr != nil {
+			t.Errorf("port %s not free after stopProxyListeners: %v", addr, bindErr)
+		}
+	}
+
+	// Idempotent: second call must not error.
+	s.stopProxyListeners()
 }

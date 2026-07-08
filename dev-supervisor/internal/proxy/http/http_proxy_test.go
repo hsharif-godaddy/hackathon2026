@@ -1978,3 +1978,54 @@ func TestResponseHeaderTimeout_ReturnsBadGatewayWithoutHanging(t *testing.T) {
 	assert.Less(t, elapsed, 3*time.Second,
 		"request should fail fast via ResponseHeaderTimeout, not hang")
 }
+
+func TestHTTPProxy_StartRetriesOnAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	blocker, err := net.Listen("tcp", ":0")
+	require.NoError(t, err, "setup blocker")
+	addr := blocker.Addr().(*net.TCPAddr)
+
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		blocker.Close()
+	}()
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: addr.Port,
+			TargetHost: "127.0.0.1",
+			TargetPort: 9999,
+		},
+	}
+	proxy.SetListenRetry(5, 50*time.Millisecond)
+
+	err = proxy.Start()
+	require.NoError(t, err, "Start should succeed after retry")
+	defer func() { _ = proxy.Stop() }()
+}
+
+func TestHTTPProxy_StartExhaustsRetriesOnPermanentAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	// Bind all interfaces (same as HTTPProxy's ":<port>" format).
+	blocker, err := net.Listen("tcp", ":0")
+	require.NoError(t, err, "setup blocker")
+	defer blocker.Close()
+	addr := blocker.Addr().(*net.TCPAddr)
+
+	proxy := &HTTPProxy{
+		config: Config{
+			Enabled:    true,
+			ListenPort: addr.Port,
+			TargetHost: "127.0.0.1",
+			TargetPort: 9999,
+		},
+	}
+	proxy.SetListenRetry(3, 10*time.Millisecond)
+
+	err = proxy.Start()
+	require.Error(t, err, "Start should fail when port is permanently occupied")
+	assert.Contains(t, err.Error(), "address already in use")
+}

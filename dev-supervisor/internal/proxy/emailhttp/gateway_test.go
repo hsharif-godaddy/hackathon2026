@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/mail"
 	"slices"
@@ -674,6 +675,79 @@ func TestGateway_StartStopIdempotent(t *testing.T) {
 	}
 	if err := gw.Stop(); err != nil {
 		t.Errorf("idempotent Stop: %v", err)
+	}
+}
+
+// TestGateway_StartRetriesOnAddrInUse verifies that Start() retries
+// binding when the port is transiently occupied (rolling deploy race).
+func TestGateway_StartRetriesOnAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("setup blocker: %v", err)
+	}
+	addr := blocker.Addr().String()
+
+	go func() {
+		time.Sleep(60 * time.Millisecond)
+		blocker.Close()
+	}()
+
+	gw := emailhttp.NewForTesting(addr, "smtp-test:25",
+		fixedIdentity(defaultIdentity()), (&recordingForward{}).fn, nil, true)
+	gw.SetListenRetry(5, 50*time.Millisecond)
+
+	if err := gw.Start(); err != nil {
+		t.Fatalf("Start should succeed after retry: %v", err)
+	}
+	defer func() { _ = gw.Stop() }()
+}
+
+// TestGateway_StartFailsImmediatelyOnNonRetryableError verifies that
+// Start() does not retry when the listen error is not EADDRINUSE.
+func TestGateway_StartFailsImmediatelyOnNonRetryableError(t *testing.T) {
+	t.Parallel()
+
+	gw := emailhttp.NewForTesting("999.999.999.999:0", "smtp-test:25",
+		fixedIdentity(defaultIdentity()), (&recordingForward{}).fn, nil, true)
+
+	start := time.Now()
+	err := gw.Start()
+	elapsed := time.Since(start)
+
+	if err == nil {
+		_ = gw.Stop()
+		t.Fatal("Start should fail on invalid address")
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Errorf("non-retryable error should fail fast, but took %v", elapsed)
+	}
+}
+
+// TestGateway_StartExhaustsRetriesOnPermanentAddrInUse verifies that
+// Start() returns an error after all retry attempts are exhausted.
+func TestGateway_StartExhaustsRetriesOnPermanentAddrInUse(t *testing.T) {
+	t.Parallel()
+
+	blocker, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("setup blocker: %v", err)
+	}
+	defer blocker.Close()
+	addr := blocker.Addr().String()
+
+	gw := emailhttp.NewForTesting(addr, "smtp-test:25",
+		fixedIdentity(defaultIdentity()), (&recordingForward{}).fn, nil, true)
+	gw.SetListenRetry(3, 10*time.Millisecond)
+
+	err = gw.Start()
+	if err == nil {
+		_ = gw.Stop()
+		t.Fatal("Start should fail when port is permanently occupied")
+	}
+	if !strings.Contains(err.Error(), "address already in use") {
+		t.Errorf("expected EADDRINUSE error, got: %v", err)
 	}
 }
 
