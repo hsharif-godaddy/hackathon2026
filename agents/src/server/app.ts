@@ -24,7 +24,7 @@ import compression from 'compression';
 
 import { create as createServer } from './server-factory.js';
 import { corsMiddleware, timingAllowOriginMiddleware, errorHandler, notFoundHandler, requestLogger, jwtAuthMiddleware, validateProductAccess } from './middleware/index.js';
-import { appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter, rewriteAppIdentityRouter } from './routes/index.js';
+import { appsRouter, chatRouter, healthRouter, diagnosticsRouter, gitRouter, debugRouter, filesRouter, filesPublicRouter, publishRouter, publishEnvRouter, downloadRouter, dbRouter, dbImportRouter, todoListRouter, securityMisconfigScanRouter, vulnerabilityScanRouter, securityReportRouter, secretsScanRouter, videoRouter, conversationsRouter, qaAnalyzeRouter, gitRemoteRouter, goLiveRouter, adsenseRouter, complianceRouter, socialRouter, customerLogsRouter, diagnoseRouter, autoFixRouter, zipImportRouter, uiKitRouter, shareRouter, mediaRouter, modelsRouter, transferValidateRouter, runtimeErrorsRouter, formatOverridesRouter, brandDataRouter, designKitRouter, rebuildRouter, nextActionsRouter, captureScreenshotRouter, feedbackRouter, inboxAccountRouter, seoQualityRouter, campaignsRouter, appMetadataRouter, commerceRouter, dkimRouter, workflowStateRouter, rewriteAppIdentityRouter, pulseAnalyzeRouter } from './routes/index.js';
 import { automationsRouter } from './routes/automations.js';
 import { initAgentRuntime, getEventChannel, getAgentFactory, getMessageLifecycleDeps } from './agent-runtime.js';
 import { EventStreamRegistry } from './sse/EventStreamRegistry.js';
@@ -311,6 +311,7 @@ protectedRouter.use('/debug', debugRouter);
 protectedRouter.use('/', securityMisconfigScanRouter);
 protectedRouter.use('/', qaAnalyzeRouter);
 protectedRouter.use('/', vulnerabilityScanRouter);
+protectedRouter.use('/', pulseAnalyzeRouter);
 protectedRouter.use('/', securityReportRouter);
 protectedRouter.use('/', secretsScanRouter);
 protectedRouter.use('/', gitRouter);

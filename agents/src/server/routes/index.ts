@@ -49,3 +49,4 @@ export { appMetadataRouter } from './app-metadata.js';
 export { default as commerceRouter } from './commerce.js';
 export { default as rewriteAppIdentityRouter } from './rewrite-app-identity.js';
 export { default as workflowStateRouter } from './workflow-state.js';
+export { default as pulseAnalyzeRouter } from './pulse-analyze.js';

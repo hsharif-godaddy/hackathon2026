@@ -27,12 +27,12 @@ const MOCK_SITES: SiteInfo[] = [
     initial_prompt: 'Create a beautiful candle shop website for Sarah',
     agent_url: 'https://local.gasket.dev-godaddy.com:4000',
     preview_url: undefined,
-    published_url: undefined,
+    published_url: 'http://localhost:3000/sarahcandle-preview.html',
     system_id: 'mock-system-01',
     subscription_id: 'mock-subscription-01',
     created_at: NOW,
     updated_at: NOW,
-    variants: ['preview'],
+    variants: ['preview', 'publish'],
   },
 ];
 

@@ -1,0 +1,44 @@
+metadata:
+  name: Skill Loader - Pulse
+  version: 1.0.0
+
+cases:
+  # --- Positive: pulse skill should load ---
+
+  - id: fix-it-pulse
+    prompt: 'Fix it'
+    expectedSkill: pulse
+    tags: [positive]
+    rationale: User tapped "Fix it" from the Pulse insight card — primary trigger
+
+  - id: apply-pulse-fix
+    prompt: 'Apply the pulse fix'
+    expectedSkill: pulse
+    tags: [positive]
+    rationale: Explicit request to apply the pulse fix
+
+  - id: fix-it-with-suggestion
+    prompt: 'Fix it: Add a testimonials section with 3 customer reviews to your homepage.'
+    expectedSkill: pulse
+    tags: [positive]
+    rationale: Fix it message with suggestedFix appended — sent by the UI on "Fix it" click
+
+  - id: no-social-proof-fix
+    prompt: 'Fix it: Add social proof to the homepage'
+    expectedSkill: pulse
+    tags: [positive]
+    rationale: Fix it message for no_social_proof problem type
+
+  # --- Negative: pulse skill should NOT load ---
+
+  - id: general-testimonials
+    prompt: 'Add a testimonials section to my site'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Generic improvement request — not from a pulse_insight attachment, should not load pulse skill
+
+  - id: improve-cta
+    prompt: 'Move the contact button higher on the page'
+    expectedSkill: null
+    tags: [negative]
+    rationale: Generic edit request — not triggered by Pulse, should not load pulse skill

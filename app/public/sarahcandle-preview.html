@@ -263,26 +263,14 @@
     .note { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #c0a080; }
     .note-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; flex-shrink: 0; }
 
-    /* TESTIMONIALS */
-    .testimonials { background: #fff; }
+    /* TESTIMONIALS — hidden until Pulse fix is applied */
+    #testimonials { display: none; background: #fff; padding: 5rem 2rem; }
     .testi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; }
-    .testi-card {
-      background: var(--card-bg);
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      padding: 2rem;
-    }
+    .testi-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--border); padding: 2rem; }
     .stars { color: #e8a230; font-size: 1rem; margin-bottom: 0.75rem; }
     .testi-text { color: var(--text-mid); font-style: italic; margin-bottom: 1.25rem; line-height: 1.7; }
     .testi-author { display: flex; align-items: center; gap: 0.75rem; }
-    .testi-avatar {
-      width: 42px; height: 42px;
-      border-radius: 50%;
-      background: var(--warm-brown);
-      color: #fff;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1rem; font-weight: bold;
-    }
+    .testi-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--warm-brown); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: bold; }
     .testi-name { font-weight: bold; color: var(--text-dark); font-size: 0.95rem; }
     .testi-location { font-size: 0.8rem; color: var(--text-light); }
 
@@ -392,8 +380,8 @@
     </div>
     <div class="hero-badges">
       <div class="badge"><div class="badge-num">100%</div><div class="badge-lbl">Soy Wax</div></div>
-      <div class="badge"><div class="badge-num">500+</div><div class="badge-lbl">Happy Customers</div></div>
       <div class="badge"><div class="badge-num">30+</div><div class="badge-lbl">Unique Scents</div></div>
+      <div class="badge"><div class="badge-num">48h</div><div class="badge-lbl">Cure Time</div></div>
     </div>
   </div>
 
@@ -551,8 +539,8 @@
     </div>
   </section>
 
-  <!-- TESTIMONIALS -->
-  <section class="testimonials">
+  <!-- TESTIMONIALS — shown after Pulse "Fix it" -->
+  <section id="testimonials">
     <div class="container">
       <h2 class="section-title">What Our Customers Say</h2>
       <p class="section-sub">Real reviews from real candle lovers</p>
@@ -562,10 +550,7 @@
           <p class="testi-text">"The Warm Vanilla Sandalwood is absolutely incredible. My whole apartment smells amazing for hours after lighting it — and it burns so clean and even."</p>
           <div class="testi-author">
             <div class="testi-avatar">JM</div>
-            <div>
-              <div class="testi-name">Jessica M.</div>
-              <div class="testi-location">Austin, TX</div>
-            </div>
+            <div><div class="testi-name">Jessica M.</div><div class="testi-location">Austin, TX</div></div>
           </div>
         </div>
         <div class="testi-card">
@@ -573,10 +558,7 @@
           <p class="testi-text">"Ordered the gift set for my mom's birthday and she was absolutely thrilled. The packaging is gorgeous and every scent is unique and well-crafted."</p>
           <div class="testi-author">
             <div class="testi-avatar">TR</div>
-            <div>
-              <div class="testi-name">Thomas R.</div>
-              <div class="testi-location">New York, NY</div>
-            </div>
+            <div><div class="testi-name">Thomas R.</div><div class="testi-location">New York, NY</div></div>
           </div>
         </div>
         <div class="testi-card">
@@ -584,10 +566,7 @@
           <p class="testi-text">"I've tried so many candle brands. Sarah's is the only one where every single scent actually smells exactly as described. Will never buy from anywhere else."</p>
           <div class="testi-author">
             <div class="testi-avatar">AB</div>
-            <div>
-              <div class="testi-name">Amanda B.</div>
-              <div class="testi-location">Portland, OR</div>
-            </div>
+            <div><div class="testi-name">Amanda B.</div><div class="testi-location">Portland, OR</div></div>
           </div>
         </div>
       </div>
@@ -678,5 +657,13 @@
     </div>
   </footer>
 
+  <script>
+    window.addEventListener('message', function(e) {
+      if (e.data && e.data.type === 'pulse_fix') {
+        var t = document.getElementById('testimonials');
+        if (t) t.style.display = 'block';
+      }
+    });
+  </script>
 </body>
 </html>

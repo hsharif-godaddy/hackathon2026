@@ -16,6 +16,7 @@ import { ChatTab, MobileMode, ViewMode } from '@/app/[market]/develop/components
 import { useAppIdFromParams } from '@/app/[market]/develop/components/utils'
 import { useEditNudgeTooltip } from '@/app/[market]/develop/hooks/useEditNudgeTooltip'
 import AppPublish from '@/components/layout/AppPublish'
+import { PulseButton } from '@/components/pulse/PulseButton'
 import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags'
 import { useChatTabs } from '@/hooks/useChatTabs'
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
@@ -225,6 +226,8 @@ export default function ChatToolbar({
             )}
             <SettingsMenu ref={settingsMenuRef} />
           </ButtonGroup>
+
+          {!isMobile && <PulseButton />}
 
           {isMobile && (
             <Box orientation="horizontal" gap="sm">
