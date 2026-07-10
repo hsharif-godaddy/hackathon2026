@@ -27,6 +27,7 @@ export default gasket.actions.getNextConfig({
     '@aws-sdk/client-s3',
     '@aws-sdk/client-secrets-manager',
     '@aws-sdk/client-sts',
+    '@switchboard/client',
   ],
   images: {
     remotePatterns: [
@@ -142,10 +143,14 @@ export default gasket.actions.getNextConfig({
       // but it only loads in JWT mode. In mock mode the hook never runs and
       // webpack follows gd-auth-lib's dynamic native require to the .node
       // binaries, which it can't parse. Mirror the alias unconditionally.
+      // Same applies to @switchboard/client when GASKET_DISABLE_SWITCHBOARD=1
+      // omits pluginSwitchboard — its arm64-darwin/index.node binary lands in
+      // the client bundle and fails to parse.
       config.resolve.alias = {
         ...config.resolve.alias,
         'gd-auth': false,
         '@godaddy/gd-auth-lib': false,
+        '@switchboard/client': false,
       };
 
       // Add fallbacks for Node.js modules that Gasket plugins try to import

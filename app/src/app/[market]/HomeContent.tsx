@@ -1,12 +1,15 @@
 'use client'
 
-import { Suspense, useCallback } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect } from 'react'
 import Box from '@ux/box'
 import Spinner from '@ux/spinner'
 
 import { CdsEsmPreload } from '@/app/[market]/develop/components/paywall'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { HomePage } from '@/components/home-page/HomePage'
+import { isFeatureEnabled } from '@/lib/features'
+import { mockAuthManager } from '@/lib/mock-auth'
 import type { ServerFeatureFlags } from '@/lib/server-features'
 
 function hasFiles(e: React.DragEvent): boolean {
@@ -19,6 +22,22 @@ interface HomeContentProps {
 }
 
 export default function HomeContent({ serverFeatures }: HomeContentProps) {
+  const router = useRouter()
+  const params = useParams<{ market: string }>()
+
+  useEffect(() => {
+    if (!isFeatureEnabled.mockLogin()) return
+    const authState = mockAuthManager.getState()
+    if (authState.isAuthenticated) {
+      router.replace(`/${params.market}/develop/sarahcandle01`)
+    }
+    return mockAuthManager.subscribe((state) => {
+      if (state.isAuthenticated) {
+        router.replace(`/${params.market}/develop/sarahcandle01`)
+      }
+    })
+  }, [router, params.market])
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (hasFiles(e)) e.preventDefault()
   }, [])

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sarah's Candle Shop</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #fdf6ee;
+      --warm-brown: #6b4226;
+      --light-brown: #a0522d;
+      --accent: #d4a373;
+      --text-dark: #2c1810;
+      --text-mid: #5a3e2b;
+      --text-light: #8b6347;
+      --card-bg: #fff9f2;
+      --border: #e8d5bc;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      background: var(--cream);
+      color: var(--text-dark);
+      line-height: 1.6;
+    }
+
+    /* NAV */
+    nav {
+      background: var(--warm-brown);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      color: #fff;
+      font-size: 1.4rem;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .logo-icon { font-size: 1.5rem; }
+    .nav-links { display: flex; gap: 2rem; list-style: none; }
+    .nav-links a { color: #e8cfb4; text-decoration: none; font-size: 0.9rem; letter-spacing: 0.05em; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-cta {
+      background: var(--accent);
+      color: var(--text-dark);
+      border: none;
+      padding: 0.5rem 1.2rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: #c8925c; }
+
+    /* HERO */
+    .hero {
+      background: linear-gradient(135deg, #5a2d0c 0%, #8b4513 40%, #a0522d 100%);
+      color: #fff;
+      text-align: center;
+      padding: 6rem 2rem 5rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='30' cy='30' r='1.5' fill='%23ffffff10'/%3E%3C/svg%3E") repeat;
+    }
+    .hero-eyebrow {
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      position: relative;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.5rem);
+      font-weight: normal;
+      line-height: 1.2;
+      margin-bottom: 1.2rem;
+      position: relative;
+    }
+    .hero h1 em {
+      font-style: italic;
+      color: var(--accent);
+    }
+    .hero p {
+      font-size: 1.1rem;
+      color: #d9c4ad;
+      max-width: 520px;
+      margin: 0 auto 2.5rem;
+      position: relative;
+    }
+    .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; position: relative; }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--text-dark);
+      border: none;
+      padding: 0.8rem 2rem;
+      border-radius: 30px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: bold;
+      letter-spacing: 0.03em;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 18px #0003; }
+    .btn-ghost {
+      background: transparent;
+      color: #fff;
+      border: 2px solid #ffffff40;
+      padding: 0.8rem 2rem;
+      border-radius: 30px;
+      font-size: 1rem;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .btn-ghost:hover { border-color: #fff; }
+    .hero-badges {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 3rem;
+      position: relative;
+    }
+    .badge { text-align: center; }
+    .badge-num { font-size: 1.6rem; font-weight: bold; color: var(--accent); }
+    .badge-lbl { font-size: 0.75rem; color: #c0a080; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    /* SECTION SHARED */
+    section { padding: 5rem 2rem; }
+    .section-title {
+      text-align: center;
+      margin-bottom: 0.5rem;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: normal;
+      color: var(--warm-brown);
+    }
+    .section-sub {
+      text-align: center;
+      color: var(--text-light);
+      margin-bottom: 3rem;
+      font-size: 1rem;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* CATEGORIES */
+    .categories { background: #fff; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1.5rem;
+    }
+    .cat-card {
+      text-align: center;
+      padding: 2rem 1rem;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .cat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px #0001; }
+    .cat-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .cat-name { font-size: 1rem; font-weight: bold; color: var(--warm-brown); margin-bottom: 0.25rem; }
+    .cat-count { font-size: 0.8rem; color: var(--text-light); }
+
+    /* PRODUCTS */
+    .products { background: var(--cream); }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 2rem;
+    }
+    .product-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .product-card:hover { transform: translateY(-5px); box-shadow: 0 12px 30px #0002; }
+    .product-img {
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5rem;
+      position: relative;
+    }
+    .product-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--warm-brown);
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .product-body { padding: 1.25rem; }
+    .product-name { font-size: 1.1rem; font-weight: bold; color: var(--text-dark); margin-bottom: 0.25rem; }
+    .product-desc { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 1rem; line-height: 1.5; }
+    .product-footer { display: flex; align-items: center; justify-content: space-between; }
+    .product-price { font-size: 1.2rem; font-weight: bold; color: var(--warm-brown); }
+    .product-price span { font-size: 0.75rem; color: var(--text-light); font-weight: normal; text-decoration: line-through; margin-left: 0.3rem; }
+    .add-btn {
+      background: var(--warm-brown);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .add-btn:hover { background: var(--light-brown); }
+
+    /* FEATURED */
+    .featured { background: var(--warm-brown); color: #fff; }
+    .featured .section-title { color: var(--accent); }
+    .featured .section-sub { color: #c0a080; }
+    .featured-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+    @media (max-width: 700px) { .featured-layout { grid-template-columns: 1fr; gap: 2rem; } }
+    .featured-visual {
+      font-size: 8rem;
+      text-align: center;
+      background: #ffffff15;
+      border-radius: 20px;
+      padding: 2rem;
+      border: 1px solid #ffffff20;
+    }
+    .featured-content h2 { font-size: 2rem; font-weight: normal; margin-bottom: 1rem; }
+    .featured-content h2 em { font-style: italic; color: var(--accent); }
+    .featured-content p { color: #c8a880; margin-bottom: 1.5rem; line-height: 1.7; }
+    .featured-price { font-size: 2rem; font-weight: bold; color: var(--accent); margin-bottom: 1.5rem; }
+    .featured-notes { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 2rem; }
+    .note { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #c0a080; }
+    .note-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; flex-shrink: 0; }
+
+    /* TESTIMONIALS */
+    .testimonials { background: #fff; }
+    .testi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; }
+    .testi-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 2rem;
+    }
+    .stars { color: #e8a230; font-size: 1rem; margin-bottom: 0.75rem; }
+    .testi-text { color: var(--text-mid); font-style: italic; margin-bottom: 1.25rem; line-height: 1.7; }
+    .testi-author { display: flex; align-items: center; gap: 0.75rem; }
+    .testi-avatar {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--warm-brown);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; font-weight: bold;
+    }
+    .testi-name { font-weight: bold; color: var(--text-dark); font-size: 0.95rem; }
+    .testi-location { font-size: 0.8rem; color: var(--text-light); }
+
+    /* PROCESS */
+    .process { background: var(--cream); }
+    .process-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 2.5rem; position: relative; }
+    .step { text-align: center; }
+    .step-num {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--warm-brown);
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: bold;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1rem;
+    }
+    .step-icon { font-size: 1.8rem; margin-bottom: 0.75rem; }
+    .step h3 { color: var(--warm-brown); margin-bottom: 0.5rem; font-size: 1rem; }
+    .step p { font-size: 0.85rem; color: var(--text-light); }
+
+    /* NEWSLETTER */
+    .newsletter {
+      background: linear-gradient(135deg, var(--accent) 0%, #c8925c 100%);
+      text-align: center;
+      padding: 5rem 2rem;
+    }
+    .newsletter h2 { font-size: 2rem; font-weight: normal; margin-bottom: 0.75rem; color: var(--text-dark); }
+    .newsletter p { color: var(--text-mid); margin-bottom: 2rem; }
+    .newsletter-form { display: flex; gap: 0; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 20px #0002; border-radius: 30px; overflow: hidden; }
+    .newsletter-form input {
+      flex: 1;
+      padding: 0.9rem 1.5rem;
+      border: none;
+      outline: none;
+      font-size: 0.95rem;
+      background: #fff;
+    }
+    .newsletter-form button {
+      background: var(--warm-brown);
+      color: #fff;
+      border: none;
+      padding: 0.9rem 1.5rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    .newsletter-form button:hover { background: #4a1d08; }
+
+    /* FOOTER */
+    footer {
+      background: #2c1810;
+      color: #9b7a5e;
+      padding: 3.5rem 2rem 2rem;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 3rem;
+      max-width: 1100px;
+      margin: 0 auto 3rem;
+    }
+    @media (max-width: 700px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 2rem; } }
+    .footer-brand { font-size: 1.3rem; color: #fff; margin-bottom: 1rem; }
+    .footer-desc { font-size: 0.85rem; line-height: 1.7; }
+    .footer-col h4 { color: var(--accent); font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 1rem; }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+    .footer-col a { color: #9b7a5e; text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-col a:hover { color: var(--accent); }
+    .footer-bottom {
+      border-top: 1px solid #3d2418;
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #5a3e2b;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="logo">
+      <span class="logo-icon">🕯️</span>
+      Sarah's Candle Shop
+    </div>
+    <ul class="nav-links">
+      <li><a href="#">Shop</a></li>
+      <li><a href="#">Collections</a></li>
+      <li><a href="#">About</a></li>
+      <li><a href="#">Gift Sets</a></li>
+    </ul>
+    <button class="nav-cta">🛒 Cart (0)</button>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <p class="hero-eyebrow">✨ Handcrafted with love in Austin, TX</p>
+    <h1>Candles that <em>transform</em><br>your space</h1>
+    <p>Each candle is hand-poured in small batches using 100% natural soy wax and premium fragrance oils — made for moments that matter.</p>
+    <div class="hero-actions">
+      <button class="btn-primary">Shop All Candles</button>
+      <button class="btn-ghost">View Gift Sets →</button>
+    </div>
+    <div class="hero-badges">
+      <div class="badge"><div class="badge-num">100%</div><div class="badge-lbl">Soy Wax</div></div>
+      <div class="badge"><div class="badge-num">500+</div><div class="badge-lbl">Happy Customers</div></div>
+      <div class="badge"><div class="badge-num">30+</div><div class="badge-lbl">Unique Scents</div></div>
+    </div>
+  </div>
+
+  <!-- CATEGORIES -->
+  <section class="categories">
+    <div class="container">
+      <h2 class="section-title">Shop by Mood</h2>
+      <p class="section-sub">Find the perfect scent for every moment</p>
+      <div class="cat-grid">
+        <div class="cat-card">
+          <div class="cat-icon">🌿</div>
+          <div class="cat-name">Fresh & Clean</div>
+          <div class="cat-count">8 scents</div>
+        </div>
+        <div class="cat-card">
+          <div class="cat-icon">🌸</div>
+          <div class="cat-name">Floral</div>
+          <div class="cat-count">12 scents</div>
+        </div>
+        <div class="cat-card">
+          <div class="cat-icon">🍂</div>
+          <div class="cat-name">Warm & Cozy</div>
+          <div class="cat-count">10 scents</div>
+        </div>
+        <div class="cat-card">
+          <div class="cat-icon">🌲</div>
+          <div class="cat-name">Woodland</div>
+          <div class="cat-count">7 scents</div>
+        </div>
+        <div class="cat-card">
+          <div class="cat-icon">🍋</div>
+          <div class="cat-name">Citrus & Bright</div>
+          <div class="cat-count">5 scents</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="products">
+    <div class="container">
+      <h2 class="section-title">Best Sellers</h2>
+      <p class="section-sub">Our most-loved candles, hand-poured fresh every week</p>
+      <div class="product-grid">
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #fff3e0, #ffe0b2);">
+            🕯️
+            <span class="product-badge">Best Seller</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Warm Vanilla Sandalwood</div>
+            <div class="product-desc">A grounding blend of creamy vanilla, warm sandalwood, and a hint of musk. Burns for 55+ hours.</div>
+            <div class="product-footer">
+              <div class="product-price">$28 <span>$34</span></div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9);">
+            🌿
+            <span class="product-badge">New</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Fresh Eucalyptus & Mint</div>
+            <div class="product-desc">Crisp and refreshing — like a morning walk through a dewy garden. Aromatherapy-grade oils.</div>
+            <div class="product-footer">
+              <div class="product-price">$26</div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #fce4ec, #f8bbd0);">
+            🌸
+          </div>
+          <div class="product-body">
+            <div class="product-name">Peony & Rose Garden</div>
+            <div class="product-desc">Delicate florals layered with light musk — soft and romantic without being overwhelming.</div>
+            <div class="product-footer">
+              <div class="product-price">$32</div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #fff8e1, #ffecb3);">
+            🍯
+            <span class="product-badge">Limited</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Honey & Amber</div>
+            <div class="product-desc">Rich and golden — warm amber resin, wildflower honey, and a touch of beeswax undertone.</div>
+            <div class="product-footer">
+              <div class="product-price">$34</div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #e8eaf6, #c5cae9);">
+            🌙
+          </div>
+          <div class="product-body">
+            <div class="product-name">Midnight Lavender</div>
+            <div class="product-desc">Calming French lavender with hints of chamomile and cedar — perfect for winding down.</div>
+            <div class="product-footer">
+              <div class="product-price">$28</div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img" style="background: linear-gradient(135deg, #efebe9, #d7ccc8);">
+            🌲
+          </div>
+          <div class="product-body">
+            <div class="product-name">Cedar & Pine Forest</div>
+            <div class="product-desc">Earthy, clean, and a little wild — aged cedar, fresh pine, and a hint of cool air.</div>
+            <div class="product-footer">
+              <div class="product-price">$30</div>
+              <button class="add-btn">Add to Cart</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURED -->
+  <section class="featured">
+    <div class="container">
+      <div class="featured-layout">
+        <div class="featured-visual">🕯️</div>
+        <div class="featured-content">
+          <h2>The <em>Signature Collection</em> Gift Set</h2>
+          <p>Curated for gifting — five of our best-selling scents in beautiful 4 oz tins, nestled in an heirloom-quality keepsake box. The perfect gift for any occasion.</p>
+          <div class="featured-price">$78</div>
+          <div class="featured-notes">
+            <div class="note"><span class="note-dot"></span>5 × 4 oz tin candles</div>
+            <div class="note"><span class="note-dot"></span>Hand-tied ribbon & gift card</div>
+            <div class="note"><span class="note-dot"></span>Free personalized message</div>
+            <div class="note"><span class="note-dot"></span>Free shipping on all gift sets</div>
+          </div>
+          <button class="btn-primary">Shop Gift Sets</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="testimonials">
+    <div class="container">
+      <h2 class="section-title">What Our Customers Say</h2>
+      <p class="section-sub">Real reviews from real candle lovers</p>
+      <div class="testi-grid">
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"The Warm Vanilla Sandalwood is absolutely incredible. My whole apartment smells amazing for hours after lighting it — and it burns so clean and even."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">JM</div>
+            <div>
+              <div class="testi-name">Jessica M.</div>
+              <div class="testi-location">Austin, TX</div>
+            </div>
+          </div>
+        </div>
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"Ordered the gift set for my mom's birthday and she was absolutely thrilled. The packaging is gorgeous and every scent is unique and well-crafted."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">TR</div>
+            <div>
+              <div class="testi-name">Thomas R.</div>
+              <div class="testi-location">New York, NY</div>
+            </div>
+          </div>
+        </div>
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"I've tried so many candle brands. Sarah's is the only one where every single scent actually smells exactly as described. Will never buy from anywhere else."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">AB</div>
+            <div>
+              <div class="testi-name">Amanda B.</div>
+              <div class="testi-location">Portland, OR</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROCESS -->
+  <section class="process">
+    <div class="container">
+      <h2 class="section-title">How Each Candle Is Made</h2>
+      <p class="section-sub">Small-batch craftsmanship, from our hands to your home</p>
+      <div class="process-steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-icon">🌱</div>
+          <h3>Soy Wax Sourced</h3>
+          <p>We use 100% American-grown soy wax — clean burning, vegan, and sustainable.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-icon">🧪</div>
+          <h3>Fragrances Blended</h3>
+          <p>Premium phthalate-free fragrance oils blended by hand for each unique scent profile.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-icon">🫙</div>
+          <h3>Hand-Poured</h3>
+          <p>Every candle is poured in small batches and allowed to cure for 48 hours for an even burn.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-icon">📦</div>
+          <h3>Packed with Care</h3>
+          <p>Each order is wrapped by hand using recycled materials and shipped within 2 business days.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NEWSLETTER -->
+  <div class="newsletter">
+    <h2>Join the Candle Club</h2>
+    <p>Get 15% off your first order, plus early access to new scents and seasonal collections.</p>
+    <div class="newsletter-form">
+      <input type="email" placeholder="your@email.com" />
+      <button>Subscribe</button>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">🕯️ Sarah's Candle Shop</div>
+        <p class="footer-desc">Handcrafted soy candles made with love in Austin, TX. Small-batch, sustainably sourced, and poured fresh every week.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Shop</h4>
+        <ul>
+          <li><a href="#">All Candles</a></li>
+          <li><a href="#">Gift Sets</a></li>
+          <li><a href="#">New Arrivals</a></li>
+          <li><a href="#">Sale</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>About</h4>
+        <ul>
+          <li><a href="#">Our Story</a></li>
+          <li><a href="#">Sustainability</a></li>
+          <li><a href="#">FAQ</a></li>
+          <li><a href="#">Blog</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <ul>
+          <li><a href="#">Shipping Info</a></li>
+          <li><a href="#">Returns</a></li>
+          <li><a href="#">Contact Us</a></li>
+          <li><a href="#">Wholesale</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2026 Sarah's Candle Shop · Made with ❤️ in Austin, TX · All rights reserved
+    </div>
+  </footer>
+
+</body>
+</html>

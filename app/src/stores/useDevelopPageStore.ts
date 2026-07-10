@@ -1413,6 +1413,29 @@ export const useDevelopPageStore = create<DevelopPageStore>()(
 
       get().resetForNewApp(appId)
 
+      // In mock-login mode, skip all API calls and immediately mark as ready
+      // with hardcoded Sarah's Candle Shop data.
+      if (process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true') {
+        const { useSitesStore } = await import('./useSitesStore')
+        const siteStore = useSitesStore.getState()
+        const site = await siteStore.fetchSite(appId)
+        set((state) => {
+          state.loadingPhase = 'ready'
+          state.app = {
+            id: appId,
+            name: "Sarah's Candle Shop",
+            port: 4000,
+            initialPrompt: 'Create a beautiful candle shop website for Sarah',
+            status: 'running' as App['status'],
+            initialBuildComplete: true,
+            createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+            updatedAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+          }
+          state.site = site
+        })
+        return
+      }
+
       try {
         // Phase 1: Load app data
         set((state) => { state.loadingPhase = 'loading-app' })

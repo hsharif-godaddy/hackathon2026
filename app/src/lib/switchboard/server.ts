@@ -32,6 +32,12 @@ export type SwitchboardRequest = { headers: Headers | Record<string, string> };
  * absent (distinct states).
  */
 export async function getSwitchboardTree(req: SwitchboardRequest): Promise<Record<string, unknown>> {
+  // When GASKET_DISABLE_SWITCHBOARD=1 the plugin isn't loaded and the action
+  // doesn't exist. Return an empty tree so all flags resolve to their defaults
+  // rather than throwing and turning every flag-gated route into a 500.
+  if (typeof (gasket.actions as unknown as Record<string, unknown>).getSwitchboardConfig !== 'function') {
+    return {};
+  }
   try {
     const tree = await gasket.actions.getSwitchboardConfig<Record<string, unknown>>(req);
     if (!tree) {

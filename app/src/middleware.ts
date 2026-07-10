@@ -9,7 +9,7 @@ export const config = {
     // Match other paths EXCEPT /api, /_next, static assets, /.well-known, etc.
     // scripts/ is excluded like images/ and _next/ so receive-bridge.js is served as a
     // public static file without auth middleware intercepting the <script src> request.
-    '/((?!api|_next|images|scripts|favicon.ico|sitemap.xml|robots.txt|notification-beep.wav|\\.well-known).*)'
+    '/((?!api|_next|images|scripts|favicon.ico|sitemap.xml|robots.txt|notification-beep.wav|sarahcandle-preview\\.html|\\.well-known).*)'
   ]
 }
 

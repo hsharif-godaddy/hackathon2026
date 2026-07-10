@@ -467,6 +467,32 @@ export const useServerPollingStore = create<ServerPollingStore>()(
     servers: new Map(),
 
     startPollingForServer: (appId: string) => {
+      // In mock-login mode, skip the dev-supervisor health poll entirely and
+      // immediately mark the server as ready pointing at the hardcoded preview.
+      if (process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true') {
+        set((state) => {
+          state.servers.set(appId, {
+            server: {
+              appId,
+              port: null,
+              url: '/sarahcandle-preview.html',
+              status: 'running',
+              isReady: true,
+              healthCheckPassed: true,
+              cookieVerified: true,
+            },
+            isPolling: false,
+            pollCount: 0,
+            currentInterval: 0,
+            timeoutId: null,
+            lastPollTime: null,
+            realAppId: appId,
+            healthStuckSince: null,
+          })
+        })
+        return
+      }
+
       // De-dup: if any existing entry is polling for the same real app ID, skip
       // Check both realAppId (set after transition) and server.appId (may be set before realAppId)
       const existingForReal = Array.from(get().servers.values()).find(
