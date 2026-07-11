@@ -3,441 +3,429 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Marco's Pizza — Authentic Neapolitan</title>
+  <title>Marco's Pizza</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
       --red: #c0392b;
-      --dark-red: #7f1d1d;
-      --orange: #e07b39;
-      --cream: #fffbf5;
-      --text-dark: #1c1008;
-      --text-mid: #5a3a1a;
-      --border: #e8d5c0;
-      --card-bg: #fff8f0;
+      --red-dark: #922b21;
+      --red-light: #e74c3c;
+      --cream: #fdf8f2;
+      --tan: #f5ede0;
+      --text-dark: #1a0a00;
+      --text-mid: #4a2410;
+      --text-light: #8b6050;
+      --card-bg: #fffcf8;
+      --border: #e8d0bc;
     }
-    body { font-family: 'Arial', sans-serif; background: var(--cream); color: var(--text-dark); }
-    a { color: inherit; text-decoration: none; }
 
-    /* NAV */
-    nav { background: var(--dark-red); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-    .nav-brand { color: #fff; font-size: 1.3rem; font-weight: bold; }
-    .nav-links { display: flex; gap: 2rem; }
-    .nav-links a { color: #f5c6c6; font-size: 0.9rem; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Georgia', 'Times New Roman', serif; background: var(--cream); color: var(--text-dark); line-height: 1.6; }
 
-    /* HERO */
-    .hero { background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 60%, #c0392b 100%); color: #fff; padding: 5rem 2rem 4rem; text-align: center; }
-    .hero-badge { display: inline-block; background: rgba(255,255,255,0.15); color: #fecaca; font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; padding: 0.4rem 1rem; border-radius: 20px; margin-bottom: 1.5rem; border: 1px solid rgba(255,255,255,0.2); }
-    .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin-bottom: 1rem; line-height: 1.2; }
-    .hero h1 span { color: #fbbf24; }
-    .hero p { font-size: 1.1rem; color: #fecaca; max-width: 540px; margin: 0 auto; line-height: 1.7; }
+    nav { background: #1a0800; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 68px; position: sticky; top: 0; z-index: 100; }
+    .logo { color: #fff; font-size: 1.4rem; font-weight: bold; letter-spacing: 0.02em; display: flex; flex-direction: column; }
+    .logo-sub { font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--red-light); font-weight: normal; }
+    .nav-links { display: flex; gap: 2rem; list-style: none; }
+    .nav-links a { color: #d4a898; text-decoration: none; font-size: 0.9rem; letter-spacing: 0.05em; transition: color 0.2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-cta { background: var(--red); color: #fff; border: none; padding: 0.5rem 1.3rem; border-radius: 4px; font-size: 0.85rem; cursor: pointer; font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase; transition: background 0.2s; }
+    .nav-cta:hover { background: var(--red-dark); }
 
-    /* MENU */
-    .menu { background: #fff; padding: 5rem 2rem; }
-    .section-title { font-size: 2rem; color: var(--dark-red); text-align: center; margin-bottom: 0.5rem; }
-    .section-sub { text-align: center; color: var(--text-mid); margin-bottom: 3rem; }
-    .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; max-width: 1000px; margin: 0 auto; }
-    .menu-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
-    .menu-img { height: 140px; display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, #fef2f2, #fee2e2); }
-    .menu-info { padding: 1rem; }
-    .menu-name { font-weight: bold; color: var(--dark-red); margin-bottom: 0.25rem; }
-    .menu-desc { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 0.5rem; line-height: 1.5; }
-    .menu-price { color: var(--orange); font-weight: bold; }
+    .hero { position: relative; height: 580px; overflow: hidden; display: flex; align-items: center; }
+    .hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; }
+    .hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(26,8,0,0.88) 0%, rgba(26,8,0,0.55) 55%, rgba(26,8,0,0.15) 100%); }
+    .hero-content { position: relative; z-index: 2; padding: 0 4rem; max-width: 580px; }
+    .hero-eyebrow { font-size: 0.78rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--red-light); margin-bottom: 0.8rem; }
+    .hero h1 { font-size: clamp(2.2rem, 4vw, 3.4rem); font-weight: normal; line-height: 1.15; margin-bottom: 1.2rem; color: #fff; }
+    .hero h1 em { font-style: italic; color: #f5c842; }
+    .hero p { font-size: 1.05rem; color: #d4a898; max-width: 460px; margin-bottom: 2rem; }
+    .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2.5rem; }
+    .btn-primary { background: var(--red); color: #fff; border: none; padding: 0.85rem 2.2rem; border-radius: 4px; font-size: 1rem; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; transition: transform 0.15s, box-shadow 0.15s; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(192,57,43,0.4); }
+    .btn-ghost { background: transparent; color: #fff; border: 2px solid #ffffff50; padding: 0.85rem 2.2rem; border-radius: 4px; font-size: 1rem; cursor: pointer; transition: border-color 0.2s; }
+    .btn-ghost:hover { border-color: #fff; }
+    .hero-badges { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .badge-item { display: flex; align-items: center; gap: 0.5rem; color: #d4a898; font-size: 0.85rem; }
+    .badge-dot { width: 5px; height: 5px; background: var(--red-light); border-radius: 50%; }
 
-    /* STORY */
-    .story { background: var(--card-bg); padding: 5rem 2rem; text-align: center; }
-    .story h2 { font-size: 2rem; color: var(--dark-red); margin-bottom: 1.5rem; }
-    .story p { max-width: 680px; margin: 0 auto 1.25rem; color: var(--text-mid); line-height: 1.8; }
+    .ribbon { background: var(--red); padding: 0.6rem 2rem; text-align: center; font-size: 0.85rem; color: #fff; letter-spacing: 0.05em; }
+    .ribbon strong { color: #f5c842; }
 
-    /* GALLERY */
-    .gallery { background: #fff; padding: 4rem 2rem; text-align: center; }
-    .gallery h2 { font-size: 2rem; color: var(--dark-red); margin-bottom: 2rem; }
-    .gallery-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; max-width: 900px; margin: 0 auto; }
-    .gallery-item { aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 3rem; background: linear-gradient(135deg, #fef2f2, #fee2e2); }
+    section { padding: 5rem 2rem; }
+    .section-title { text-align: center; margin-bottom: 0.5rem; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: normal; color: var(--red-dark); }
+    .section-eyebrow { text-align: center; font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red-light); margin-bottom: 0.5rem; }
+    .section-sub { text-align: center; color: var(--text-light); margin-bottom: 3rem; font-size: 1rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
 
-    /* HOURS */
-    .hours { background: var(--dark-red); color: #fff; padding: 4rem 2rem; text-align: center; }
-    .hours h2 { font-size: 2rem; margin-bottom: 2rem; }
-    .hours-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; max-width: 700px; margin: 0 auto; }
-    .hours-block h3 { color: #fecaca; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem; }
-    .hours-block p { font-size: 1rem; }
+    .menu { background: var(--cream); }
+    .menu-tabs { display: flex; gap: 0.5rem; margin-bottom: 2.5rem; flex-wrap: wrap; justify-content: center; }
+    .tab { padding: 0.55rem 1.4rem; border: 2px solid var(--border); border-radius: 30px; font-size: 0.88rem; cursor: pointer; color: var(--text-mid); background: #fff; transition: all 0.2s; }
+    .tab.active, .tab:hover { background: var(--red); border-color: var(--red); color: #fff; }
 
-    /* CONTACT — buried and complex (the problem) */
-    .contact { background: var(--cream); padding: 5rem 2rem; }
-    .contact h2 { font-size: 2rem; color: var(--dark-red); text-align: center; margin-bottom: 0.5rem; }
-    .contact-sub { text-align: center; color: var(--text-mid); margin-bottom: 3rem; }
-    .contact-form { max-width: 560px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 2.5rem; border: 1px solid var(--border); }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-    .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
-    .form-group label { font-size: 0.85rem; font-weight: bold; color: var(--text-mid); }
-    .form-group input, .form-group select, .form-group textarea { border: 1px solid var(--border); border-radius: 6px; padding: 0.65rem 0.9rem; font-size: 0.95rem; background: var(--cream); color: var(--text-dark); width: 100%; }
-    .form-group textarea { height: 100px; resize: vertical; }
-    .form-note { font-size: 0.78rem; color: #9ca3af; margin-top: 0.25rem; }
-    .form-submit { width: 100%; background: var(--red); color: #fff; border: none; border-radius: 8px; padding: 0.9rem; font-size: 1rem; font-weight: bold; cursor: pointer; margin-top: 0.5rem; }
-    .form-submit:hover { background: var(--dark-red); }
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 2rem; }
+    .product-card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; transition: transform 0.2s; will-change: transform; }
+    .product-card:hover { transform: translateY(-5px); box-shadow: 0 12px 30px #0002; }
+    .product-img { height: 220px; position: relative; overflow: hidden; }
+    .product-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease; }
+    .product-card:hover .product-img img { transform: scale(1.05); }
+    .product-badge { position: absolute; top: 12px; left: 12px; background: var(--red); color: #fff; font-size: 0.7rem; padding: 0.2rem 0.65rem; border-radius: 3px; letter-spacing: 0.07em; text-transform: uppercase; }
+    .product-badge.chef { background: #1e6b3c; }
+    .product-body { padding: 1.25rem; }
+    .product-name { font-size: 1.1rem; font-weight: bold; color: var(--text-dark); margin-bottom: 0.3rem; }
+    .product-tags { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+    .tag { font-size: 0.7rem; padding: 0.15rem 0.55rem; border-radius: 3px; background: var(--tan); color: var(--text-mid); border: 1px solid var(--border); }
+    .product-desc { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 1rem; line-height: 1.5; }
+    .product-footer { display: flex; align-items: center; justify-content: space-between; }
+    .product-price { font-size: 1.2rem; font-weight: bold; color: var(--red-dark); }
+    .add-btn { background: var(--red); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; text-transform: uppercase; letter-spacing: 0.05em; }
+    .add-btn:hover { background: var(--red-dark); }
 
-    /* CALL CTA — Variant B, shown when selected */
-    #call-cta { display: none; background: linear-gradient(135deg, #7f1d1d, #b91c1c); color: #fff; padding: 3rem 2rem; text-align: center; }
-    #call-cta.pulse-highlight { animation: cta-banner-glow 0.6s ease-in-out 4; }
-    @keyframes cta-banner-glow { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.6); } }
+    .featured { background: #1a0800; color: #fff; }
+    .featured .section-title { color: #f5c842; }
+    .featured-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+    @media (max-width: 700px) { .featured-layout { grid-template-columns: 1fr; gap: 2rem; } }
+    .featured-visual { border-radius: 8px; overflow: hidden; height: 420px; border: 1px solid #ffffff15; }
+    .featured-visual img { width: 100%; height: 100%; object-fit: cover; }
+    .featured-content h2 { font-size: 2rem; font-weight: normal; margin-bottom: 1rem; line-height: 1.3; }
+    .featured-content h2 em { font-style: italic; color: #f5c842; }
+    .featured-content p { color: #c09080; margin-bottom: 1.5rem; line-height: 1.7; }
+    .featured-price { font-size: 1.6rem; font-weight: bold; color: #f5c842; margin-bottom: 1.5rem; }
+    .featured-notes { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 2rem; }
+    .note { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #c09080; }
+    .note-dot { width: 6px; height: 6px; background: var(--red-light); border-radius: 50%; flex-shrink: 0; }
 
-    /* SIMPLE CONTACT — shown after Pulse fix */
-    #simple-contact { display: none; background: var(--red); color: #fff; padding: 4rem 2rem; text-align: center; }
-    #simple-contact h2 { font-size: 2rem; margin-bottom: 0.5rem; }
-    #simple-contact p { color: #fecaca; margin-bottom: 2rem; }
-    .simple-form { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
-    .simple-form input { border: none; border-radius: 8px; padding: 0.9rem 1.2rem; font-size: 1rem; background: rgba(255,255,255,0.15); color: #fff; width: 100%; }
-    .simple-form input::placeholder { color: rgba(255,255,255,0.6); }
-    .simple-form button { background: #fbbf24; color: var(--dark-red); border: none; border-radius: 8px; padding: 0.9rem; font-size: 1rem; font-weight: bold; cursor: pointer; }
-    #simple-contact.pulse-highlight { outline: 3px solid #fbbf24; outline-offset: -3px; animation: contact-glow 0.6s ease-in-out 4; }
-    @keyframes contact-glow { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 30px rgba(251,191,36,0.5); } }
+    #testimonials { display: none; background: #fff; padding: 5rem 2rem; }
+    #testimonials.pulse-highlight { outline: 3px solid #7c3aed; outline-offset: -3px; animation: pulse-glow 0.6s ease-in-out 4; border-radius: 4px; }
+    @keyframes pulse-glow { 0%,100% { outline-color: #7c3aed; box-shadow: none; } 50% { outline-color: #a855f7; box-shadow: 0 0 24px 6px rgba(168,85,247,0.35); } }
+    .testi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; }
+    .testi-card { background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); padding: 2rem; }
+    .stars { color: #e8a230; font-size: 1rem; margin-bottom: 0.75rem; }
+    .testi-text { color: var(--text-mid); font-style: italic; margin-bottom: 1.25rem; line-height: 1.7; }
+    .testi-author { display: flex; align-items: center; gap: 0.75rem; }
+    .testi-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--red); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: bold; }
+    .testi-name { font-weight: bold; color: var(--text-dark); font-size: 0.95rem; }
+    .testi-location { font-size: 0.8rem; color: var(--text-light); }
 
-    /* FOOTER */
-    footer { background: var(--text-dark); color: #c8a880; padding: 3rem 2rem 1.5rem; }
-    .footer-inner { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 2rem; max-width: 900px; margin: 0 auto 2rem; }
-    .footer-brand { font-size: 1.2rem; font-weight: bold; color: #fff; margin-bottom: 0.75rem; }
-    .footer-desc { font-size: 0.85rem; line-height: 1.6; }
-    .footer-col h4 { color: #fff; margin-bottom: 0.75rem; font-size: 0.9rem; }
-    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; }
-    .footer-col li { font-size: 0.85rem; }
-    .footer-bottom { text-align: center; font-size: 0.8rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; margin-top: 1rem; }
+    .specials-strip { background: var(--tan); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 3.5rem 2rem; }
+    .specials-row { display: flex; gap: 1.5rem; overflow-x: auto; padding-bottom: 0.5rem; }
+    .special-card { flex: 0 0 180px; background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
+    .special-img { height: 130px; overflow: hidden; }
+    .special-img img { width: 100%; height: 100%; object-fit: cover; }
+    .special-info { padding: 0.75rem; }
+    .special-name { font-weight: bold; font-size: 0.85rem; color: var(--text-dark); margin-bottom: 0.2rem; }
+    .special-price { font-size: 0.82rem; color: var(--red); font-weight: bold; }
+
+    .newsletter { background: var(--red-dark); text-align: center; padding: 5rem 2rem; }
+    .newsletter h2 { font-size: 2rem; font-weight: normal; margin-bottom: 0.75rem; color: #fff; }
+    .newsletter p { color: rgba(255,255,255,0.7); margin-bottom: 2rem; }
+    .newsletter-form { display: flex; max-width: 420px; margin: 0 auto; box-shadow: 0 4px 20px #0004; overflow: hidden; border-radius: 4px; }
+    .newsletter-form input { flex: 1; padding: 0.9rem 1.5rem; border: none; outline: none; font-size: 0.95rem; }
+    .newsletter-form button { background: #1a0800; color: #fff; border: none; padding: 0.9rem 1.5rem; font-size: 0.9rem; cursor: pointer; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; transition: background 0.2s; }
+    .newsletter-form button:hover { background: #000; }
+
+    footer { background: #0e0400; color: #9b6050; padding: 3.5rem 2rem 2rem; }
+    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; max-width: 1100px; margin: 0 auto 3rem; }
+    @media (max-width: 700px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 2rem; } }
+    .footer-brand { font-size: 1.3rem; color: #fff; margin-bottom: 1rem; }
+    .footer-desc { font-size: 0.85rem; line-height: 1.7; }
+    .footer-col h4 { color: var(--red-light); font-size: 0.78rem; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 1rem; }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+    .footer-col a { color: #9b6050; text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-col a:hover { color: var(--red-light); }
+    .footer-bottom { border-top: 1px solid #2a0a00; padding-top: 1.5rem; text-align: center; font-size: 0.8rem; color: #5a2010; max-width: 1100px; margin: 0 auto; }
   </style>
 </head>
 <body>
 
   <nav>
-    <div class="nav-brand">🍕 Marco's Pizza</div>
-    <div class="nav-links">
-      <a href="#">Menu</a>
-      <a href="#">Story</a>
-      <a href="#">Hours</a>
-      <a href="#">Contact</a>
+    <div class="logo">
+      🍕 Marco's
+      <span class="logo-sub">Authentic Neapolitan Pizza</span>
     </div>
+    <ul class="nav-links">
+      <li><a href="#">Menu</a></li>
+      <li><a href="#">Specials</a></li>
+      <li><a href="#">Catering</a></li>
+      <li><a href="#">Locations</a></li>
+    </ul>
+    <button class="nav-cta">Order Online</button>
   </nav>
 
-  <section class="hero">
-    <div class="hero-badge">Authentic Neapolitan · Wood-Fired Oven</div>
-    <h1>Pizza the Way<br><span>Napoli Intended.</span></h1>
-    <p>Hand-stretched dough, San Marzano tomatoes, and fior di latte mozzarella — fired in 90 seconds at 900°F.</p>
-  </section>
+  <div class="ribbon">🚚 Free delivery on orders over $35 · Use code <strong>MARCO10</strong> for 10% off your first order</div>
 
-  <!-- CALL CTA — Variant B, hidden until selected -->
-  <div id="call-cta">
-    <div style="font-size:2.5rem; margin-bottom:0.5rem;">📞</div>
-    <h2 style="font-size:1.75rem; margin-bottom:0.5rem;">Ready to Order?</h2>
-    <p style="color:#fecaca; margin-bottom:1.5rem; max-width:440px; margin-left:auto; margin-right:auto; line-height:1.6;">We pick up fast. No hold music, no apps — just great pizza on its way to you.</p>
-    <a href="tel:5125550192" style="display:inline-block; background:#fbbf24; color:#7f1d1d; border-radius:30px; padding:0.85rem 2.25rem; font-size:1.05rem; font-weight:bold; text-decoration:none;">📞 Call (512) 555-0192</a>
+  <div class="hero">
+    <img class="hero-bg" src="https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1400&q=80" alt="Wood-fired pizza" onerror="this.remove(); document.querySelector('.hero').style.background='linear-gradient(135deg,#1a0800,#5a1208)'" />
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <p class="hero-eyebrow">🔥 Wood-fired since 1987 · Chicago, IL</p>
+      <h1>Pizza the way <em>Napoli</em> intended</h1>
+      <p>Hand-stretched dough, San Marzano tomatoes, and fior di latte mozzarella — cooked in an 800°F wood-fired oven for 90 seconds of perfection.</p>
+      <div class="hero-actions">
+        <button class="btn-primary">Order Now</button>
+        <button class="btn-ghost">View Full Menu →</button>
+      </div>
+      <div class="hero-badges">
+        <div class="badge-item"><span class="badge-dot"></span>800°F wood-fired oven</div>
+        <div class="badge-item"><span class="badge-dot"></span>DOP San Marzano tomatoes</div>
+        <div class="badge-item"><span class="badge-dot"></span>48-hour cold-fermented dough</div>
+      </div>
+    </div>
   </div>
 
-  <!-- MENU -->
-  <section class="menu" id="menu">
-    <h2 class="section-title">Our Menu</h2>
-    <p class="section-sub">Made to order, never pre-made. Served in 12 minutes or less.</p>
-    <div class="menu-grid">
-      <div class="menu-card">
-        <div class="menu-img">🍕</div>
-        <div class="menu-info">
-          <div class="menu-name">Margherita</div>
-          <div class="menu-desc">San Marzano tomatoes, fior di latte, fresh basil, extra-virgin olive oil.</div>
-          <div class="menu-price">$18</div>
-        </div>
+  <section class="menu">
+    <div class="container">
+      <p class="section-eyebrow">The Menu</p>
+      <h2 class="section-title">Made from scratch, every order</h2>
+      <p class="section-sub">Classic Neapolitan recipes with the freshest local ingredients</p>
+      <div class="menu-tabs">
+        <div class="tab active">🍕 Pizzas</div>
+        <div class="tab">🍝 Pasta</div>
+        <div class="tab">🥗 Starters</div>
+        <div class="tab">🍮 Desserts</div>
+        <div class="tab">🍷 Drinks</div>
       </div>
-      <div class="menu-card">
-        <div class="menu-img">🧄</div>
-        <div class="menu-info">
-          <div class="menu-name">Diavola</div>
-          <div class="menu-desc">Spicy Calabrian sausage, smoked mozzarella, chili oil, honey drizzle.</div>
-          <div class="menu-price">$22</div>
+      <div class="product-grid">
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=500&h=440&q=80" alt="Margherita" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff8e1,#ffe0b2)';this.remove();" />
+            <span class="product-badge chef">Chef's Pick</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Margherita Classica</div>
+            <div class="product-tags"><span class="tag">Vegetarian</span><span class="tag">Wood-fired</span></div>
+            <div class="product-desc">San Marzano tomato, fior di latte, fresh basil, extra virgin olive oil. The original. The best.</div>
+            <div class="product-footer">
+              <div class="product-price">$17</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="menu-card">
-        <div class="menu-img">🌿</div>
-        <div class="menu-info">
-          <div class="menu-name">Quattro Formaggi</div>
-          <div class="menu-desc">Fior di latte, gorgonzola, aged pecorino, smoked scamorza.</div>
-          <div class="menu-price">$21</div>
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=500&h=440&q=80" alt="Pepperoni" onerror="this.parentElement.style.background='linear-gradient(135deg,#fce4ec,#f8bbd0)';this.remove();" />
+            <span class="product-badge">Best Seller</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Marco's Pepperoni</div>
+            <div class="product-tags"><span class="tag">Spicy</span><span class="tag">Wood-fired</span></div>
+            <div class="product-desc">Cup-and-char pepperoni, mozzarella, San Marzano sauce. Crispy edges, pooled in the center.</div>
+            <div class="product-footer">
+              <div class="product-price">$19</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
         </div>
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=500&h=440&q=80" alt="Quattro Formaggi" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff9c4,#fff3e0)';this.remove();" />
+          </div>
+          <div class="product-body">
+            <div class="product-name">Quattro Formaggi</div>
+            <div class="product-tags"><span class="tag">Vegetarian</span><span class="tag">Rich</span></div>
+            <div class="product-desc">Mozzarella, gorgonzola, fontina, parmigiano-reggiano. White base, drizzled with honey and walnuts.</div>
+            <div class="product-footer">
+              <div class="product-price">$21</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1551183053-bf91798d7cb2?auto=format&fit=crop&w=500&h=440&q=80" alt="Pasta Carbonara" onerror="this.parentElement.style.background='linear-gradient(135deg,#fdf6e3,#f5e6c8)';this.remove();" />
+            <span class="product-badge chef">Chef's Pick</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Spaghetti alla Carbonara</div>
+            <div class="product-tags"><span class="tag">Pasta</span><span class="tag">Classic</span></div>
+            <div class="product-desc">Guanciale, Pecorino Romano, egg yolk, black pepper. No cream, never. Made the Roman way.</div>
+            <div class="product-footer">
+              <div class="product-price">$18</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1471393836499-3635b78d0fab?auto=format&fit=crop&w=500&h=440&q=80" alt="Tiramisu" onerror="this.parentElement.style.background='linear-gradient(135deg,#d7ccc8,#efebe9)';this.remove();" />
+          </div>
+          <div class="product-body">
+            <div class="product-name">Tiramisù della Casa</div>
+            <div class="product-tags"><span class="tag">Dessert</span><span class="tag">Gluten-free option</span></div>
+            <div class="product-desc">House-made with mascarpone, espresso-soaked ladyfingers, and a dusting of Valrhona cocoa.</div>
+            <div class="product-footer">
+              <div class="product-price">$9</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="product-card">
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1620374645498-af6bd681a0bd?auto=format&fit=crop&w=500&h=440&q=80" alt="Arancini" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff8e1,#fff3e0)';this.remove();" />
+            <span class="product-badge">Popular</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">Arancini al Ragù (3pc)</div>
+            <div class="product-tags"><span class="tag">Starter</span><span class="tag">Fried</span></div>
+            <div class="product-desc">Crispy risotto balls filled with slow-cooked beef ragù and mozzarella. Served with pomodoro dipping sauce.</div>
+            <div class="product-footer">
+              <div class="product-price">$12</div>
+              <button class="add-btn">Order</button>
+            </div>
+          </div>
+        </div>
+
       </div>
-      <div class="menu-card">
-        <div class="menu-img">🥩</div>
-        <div class="menu-info">
-          <div class="menu-name">Marco's Special</div>
-          <div class="menu-desc">Prosciutto di Parma, arugula, shaved parmigiano, lemon zest.</div>
-          <div class="menu-price">$24</div>
+    </div>
+  </section>
+
+  <section class="featured">
+    <div class="container">
+      <div class="featured-layout">
+        <div class="featured-visual">
+          <img src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=700&h=840&q=85" alt="Marco's Restaurant" onerror="this.parentElement.style.background='#ffffff10'; this.remove();" />
+        </div>
+        <div class="featured-content">
+          <p class="section-eyebrow" style="text-align:left; margin-bottom:0.5rem;">Our Story</p>
+          <h2><em>Three generations</em> of the same recipe</h2>
+          <p>Marco Russo brought this recipe from Naples in 1987. The dough is still fermented for 48 hours. The oven still burns oak and cherry wood. Nothing has changed — because nothing needed to.</p>
+          <div class="featured-price">In Chicago since 1987</div>
+          <div class="featured-notes">
+            <div class="note"><span class="note-dot"></span>48-hour cold-fermented dough</div>
+            <div class="note"><span class="note-dot"></span>800°F oak and cherry wood oven</div>
+            <div class="note"><span class="note-dot"></span>DOP certified San Marzano tomatoes</div>
+            <div class="note"><span class="note-dot"></span>Imported Italian fior di latte mozzarella</div>
+          </div>
+          <button class="btn-primary">See the Full Menu</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- STORY -->
-  <section class="story">
-    <h2>From Naples to Your Table</h2>
-    <p>Marco De Luca grew up in Napoli, where pizza is a religion. His grandfather ran a pizzeria near the Spaccanapoli for 40 years. When Marco moved to Austin in 2014, he brought the family recipes — and a 1,200-lb Stefano Ferrara oven.</p>
-    <p>Everything is made in-house: the dough ferments for 48 hours, the sauce is uncooked San Marzano, and the cheese comes directly from a caseificio in Campania. There are no shortcuts here.</p>
-  </section>
-
-  <!-- GALLERY -->
-  <section class="gallery">
-    <h2>Straight From the Oven</h2>
-    <div class="gallery-grid">
-      <div class="gallery-item">🍕</div>
-      <div class="gallery-item">🔥</div>
-      <div class="gallery-item">🫙</div>
-      <div class="gallery-item">🍷</div>
-    </div>
-  </section>
-
-  <!-- HOURS -->
-  <section class="hours">
-    <h2>When We're Open</h2>
-    <div class="hours-grid">
-      <div class="hours-block">
-        <h3>Lunch</h3>
-        <p>Tue–Fri<br>11:30am – 2:30pm</p>
-      </div>
-      <div class="hours-block">
-        <h3>Dinner</h3>
-        <p>Tue–Sun<br>5:00pm – 10:00pm</p>
-      </div>
-      <div class="hours-block">
-        <h3>Closed</h3>
-        <p>Mondays<br>All day</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- CONTACT — complex and buried (the problem) -->
-  <section class="contact" id="contact">
-    <h2>Get in Touch</h2>
-    <p class="contact-sub">Reservations, catering, private events, and general inquiries</p>
-    <div class="contact-form">
-      <div class="form-row">
-        <div class="form-group">
-          <label>First Name *</label>
-          <input type="text" placeholder="First name" />
+  <section id="testimonials">
+    <div class="container">
+      <h2 class="section-title">What Our Guests Say</h2>
+      <p class="section-sub">Real reviews from real pizza lovers</p>
+      <div class="testi-grid">
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"Best pizza in Chicago, full stop. The Margherita is transcendent — the char on the crust, the freshness of the basil. I've been coming here every Friday for 4 years."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">RB</div>
+            <div><div class="testi-name">Roberto B.</div><div class="testi-location">Chicago, IL</div></div>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Last Name *</label>
-          <input type="text" placeholder="Last name" />
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"The carbonara brought me to tears. No cream, no shortcuts — just the real thing. Marco's is the only Italian restaurant in this city that actually respects the tradition."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">LM</div>
+            <div><div class="testi-name">Laura M.</div><div class="testi-location">Naperville, IL</div></div>
+          </div>
+        </div>
+        <div class="testi-card">
+          <div class="stars">★★★★★</div>
+          <p class="testi-text">"Catered our company dinner for 60 people. Every pizza arrived hot and perfectly charred. The arancini were gone in minutes. Highly recommend for any event."</p>
+          <div class="testi-author">
+            <div class="testi-avatar">JH</div>
+            <div><div class="testi-name">James H.</div><div class="testi-location">Evanston, IL</div></div>
+          </div>
         </div>
       </div>
-      <div class="form-group">
-        <label>Email Address *</label>
-        <input type="email" placeholder="your@email.com" />
-        <span class="form-note">We'll reply within 1–2 business days</span>
-      </div>
-      <div class="form-group">
-        <label>Phone Number</label>
-        <input type="tel" placeholder="(512) 000-0000" />
-      </div>
-      <div class="form-group">
-        <label>Inquiry Type *</label>
-        <select>
-          <option value="">Select a reason…</option>
-          <option>Reservation</option>
-          <option>Private Event / Buyout</option>
-          <option>Catering</option>
-          <option>Media / Press</option>
-          <option>Wholesale / B2B</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Party Size (if reservation)</label>
-        <input type="number" placeholder="Number of guests" min="1" max="50" />
-      </div>
-      <div class="form-group">
-        <label>Your Message *</label>
-        <textarea placeholder="Tell us more about your request…"></textarea>
-      </div>
-      <button class="form-submit">Send Message</button>
     </div>
   </section>
 
-  <!-- SIMPLE CONTACT — shown after Pulse fix -->
-  <div id="simple-contact">
-    <h2>Let's Talk</h2>
-    <p>Drop your name and number — we'll call you back same day.</p>
-    <div class="simple-form">
-      <input type="text" placeholder="Your name" />
-      <input type="tel" placeholder="Phone number" />
-      <button>Call Me Back →</button>
+  <div class="specials-strip">
+    <div class="container">
+      <p class="section-eyebrow">Today Only</p>
+      <h2 class="section-title" style="margin-bottom:2rem;">Daily Specials</h2>
+      <div class="specials-row">
+        <div class="special-card">
+          <div class="special-img"><img src="https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?auto=format&fit=crop&w=320&h=260&q=80" alt="Calzone" onerror="this.parentElement.innerHTML='🫓'" /></div>
+          <div class="special-info"><div class="special-name">Prosciutto Calzone</div><div class="special-price">$16</div></div>
+        </div>
+        <div class="special-card">
+          <div class="special-img"><img src="https://images.unsplash.com/photo-1498654896293-37aacf113fd9?auto=format&fit=crop&w=320&h=260&q=80" alt="Bruschetta" onerror="this.parentElement.innerHTML='🥖'" /></div>
+          <div class="special-info"><div class="special-name">Bruschetta al Pomodoro</div><div class="special-price">$8</div></div>
+        </div>
+        <div class="special-card">
+          <div class="special-img"><img src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=320&h=260&q=80" alt="Pasta" onerror="this.parentElement.innerHTML='🍝'" /></div>
+          <div class="special-info"><div class="special-name">Penne all'Arrabbiata</div><div class="special-price">$15</div></div>
+        </div>
+        <div class="special-card">
+          <div class="special-img"><img src="https://images.unsplash.com/photo-1541014741259-de529411b96a?auto=format&fit=crop&w=320&h=260&q=80" alt="Gelato" onerror="this.parentElement.innerHTML='🍦'" /></div>
+          <div class="special-info"><div class="special-name">Stracciatella Gelato</div><div class="special-price">$6</div></div>
+        </div>
+        <div class="special-card">
+          <div class="special-img"><img src="https://images.unsplash.com/photo-1506459225024-1428097a7e18?auto=format&fit=crop&w=320&h=260&q=80" alt="Negroni" onerror="this.parentElement.innerHTML='🍹'" /></div>
+          <div class="special-info"><div class="special-name">Negroni Sbagliato</div><div class="special-price">$11</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="newsletter">
+    <h2>Join the Marco's Family</h2>
+    <p>Get exclusive deals, weekly specials, and 10% off your next order.</p>
+    <div class="newsletter-form">
+      <input type="email" placeholder="your@email.com" />
+      <button>Subscribe</button>
     </div>
   </div>
 
   <footer>
-    <div class="footer-inner">
+    <div class="footer-grid">
       <div>
         <div class="footer-brand">🍕 Marco's Pizza</div>
-        <p class="footer-desc">Authentic Neapolitan pizza baked in a wood-fired oven in Austin, TX. 48-hour dough, imported ingredients, and 12-minute service.</p>
+        <p class="footer-desc">Authentic Neapolitan pizza since 1987. Three locations in Chicago. Wood-fired, hand-stretched, always fresh.</p>
       </div>
       <div class="footer-col">
-        <h4>Visit Us</h4>
+        <h4>Order</h4>
         <ul>
-          <li>1847 E Cesar Chavez</li>
-          <li>Austin, TX 78702</li>
-          <li>Tue–Sun</li>
-          <li>(512) 555-0192</li>
-        </ul>
-      </div>
-      <div class="footer-col">
-        <h4>More</h4>
-        <ul>
-          <li><a href="#">Full Menu</a></li>
+          <li><a href="#">Order Online</a></li>
+          <li><a href="#">Pickup</a></li>
+          <li><a href="#">Delivery</a></li>
           <li><a href="#">Catering</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Locations</h4>
+        <ul>
+          <li><a href="#">Wicker Park</a></li>
+          <li><a href="#">Logan Square</a></li>
+          <li><a href="#">River North</a></li>
+          <li><a href="#">Hours</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Info</h4>
+        <ul>
+          <li><a href="#">Our Story</a></li>
+          <li><a href="#">Allergens</a></li>
           <li><a href="#">Gift Cards</a></li>
-          <li><a href="#">Instagram</a></li>
+          <li><a href="#">Contact</a></li>
         </ul>
       </div>
     </div>
-    <div class="footer-bottom">
-      © 2026 Marco's Pizza · Proudly Neapolitan, Proudly Austinite
-    </div>
+    <div class="footer-bottom">© 2026 Marco's Pizza · Authentic Neapolitan since 1987 · Chicago, IL</div>
   </footer>
 
-  <!-- VARIANT PICKER PANEL -->
-  <div id="variant-picker" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:rgba(10,5,20,0.93); backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.1); padding:1.25rem 1.5rem 1.5rem; box-shadow:0 -10px 40px rgba(0,0,0,0.5);">
-    <div style="max-width:640px; margin:0 auto;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
-        <span style="color:#fff; font-weight:bold; font-size:0.95rem; display:flex; align-items:center; gap:0.5rem;">
-          <span style="background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; font-size:0.7rem; padding:0.2rem 0.6rem; border-radius:10px; letter-spacing:0.05em;">PULSE</span>
-          Pick your style
-        </span>
-        <button onclick="document.getElementById('variant-picker').style.display='none'" style="background:none; border:none; color:rgba(255,255,255,0.4); font-size:1.1rem; cursor:pointer; padding:0.25rem 0.5rem; border-radius:6px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">✕</button>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-        <!-- Option A: Simplify form -->
-        <div id="opt-a" onclick="selectVariant('a')" onmouseenter="previewVariant('a')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
-          <div style="background:#c0392b; border-radius:8px; padding:0.75rem; height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.45rem;">
-            <div style="width:80%; background:rgba(255,255,255,0.25); border-radius:5px; height:20px;"></div>
-            <div style="width:80%; background:rgba(255,255,255,0.25); border-radius:5px; height:20px;"></div>
-            <div style="width:80%; background:#fbbf24; border-radius:5px; height:18px; display:flex; align-items:center; justify-content:center;"><span style="color:#7f1d1d; font-size:0.62rem; font-weight:bold;">Call Me Back →</span></div>
-          </div>
-          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">Simplify form</div>
-          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">Name + phone — done in 5 seconds</div>
-          <button onclick="event.stopPropagation(); selectVariant('a')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
-        </div>
-        <!-- Option B: Move form higher -->
-        <div id="opt-b" onclick="selectVariant('b')" onmouseenter="previewVariant('b')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
-          <div style="background:linear-gradient(135deg,#7f1d1d,#b91c1c); border-radius:8px; padding:0.75rem; height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.4rem;">
-            <div style="font-size:1.4rem;">📞</div>
-            <div style="background:#fbbf24; color:#7f1d1d; border-radius:20px; padding:0.35rem 0.85rem; font-size:0.72rem; font-weight:bold;">Call Us Now</div>
-            <div style="color:#fecaca; font-size:0.6rem;">Right at the top of the page</div>
-          </div>
-          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">Move form higher</div>
-          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">Phone CTA right below the hero</div>
-          <button onclick="event.stopPropagation(); selectVariant('b')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script>
-    var confirmedVariant = null;
-
-    function previewVariant(v) {
-      if (confirmedVariant) return;
-      var complex = document.getElementById('contact');
-      var simple = document.getElementById('simple-contact');
-      var callCta = document.getElementById('call-cta');
-      var optA = document.getElementById('opt-a');
-      var optB = document.getElementById('opt-b');
-      if (v === 'a') {
-        if (complex) complex.style.display = 'none';
-        if (simple) simple.style.display = 'block';
-        if (callCta) callCta.style.display = 'none';
-        if (simple) simple.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        optA.style.borderColor = 'rgba(124,58,237,0.8)';
-        optA.style.background = 'rgba(124,58,237,0.12)';
-        optB.style.borderColor = 'rgba(255,255,255,0.12)';
-        optB.style.background = 'rgba(255,255,255,0.06)';
-      } else {
-        if (complex) complex.style.display = 'block';
-        if (simple) simple.style.display = 'none';
-        if (callCta) callCta.style.display = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        optB.style.borderColor = 'rgba(124,58,237,0.8)';
-        optB.style.background = 'rgba(124,58,237,0.12)';
-        optA.style.borderColor = 'rgba(255,255,255,0.12)';
-        optA.style.background = 'rgba(255,255,255,0.06)';
-      }
-    }
-
-    function clearPreview() {
-      if (confirmedVariant) return;
-      var complex = document.getElementById('contact');
-      var simple = document.getElementById('simple-contact');
-      var callCta = document.getElementById('call-cta');
-      if (complex) complex.style.display = 'block';
-      if (simple) simple.style.display = 'none';
-      if (callCta) callCta.style.display = 'none';
-      ['opt-a','opt-b'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) { el.style.borderColor = 'rgba(255,255,255,0.12)'; el.style.background = 'rgba(255,255,255,0.06)'; }
-      });
-    }
-
-    function selectVariant(v) {
-      confirmedVariant = v;
-      var picker = document.getElementById('variant-picker');
-      if (picker) picker.style.display = 'none';
-      if (v === 'a') {
-        var complex = document.getElementById('contact');
-        if (complex) complex.style.display = 'none';
-        var simple = document.getElementById('simple-contact');
-        if (simple) {
-          simple.style.display = 'block';
-          simple.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          simple.classList.add('pulse-highlight');
-          setTimeout(function() { simple.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Simplify form' }, '*');
-      } else {
-        var callCta = document.getElementById('call-cta');
-        if (callCta) {
-          callCta.style.display = 'block';
-          callCta.classList.add('pulse-highlight');
-          setTimeout(function() { callCta.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Move form higher' }, '*');
-      }
-    }
-
     window.addEventListener('message', function(e) {
       if (!e.data) return;
-      if (e.data.type === 'pulse_scroll_preview') {
-        var contact = document.getElementById('contact');
-        if (contact) contact.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      if (e.data.type === 'pulse_show_variants') {
-        confirmedVariant = null;
-        var contact = document.getElementById('contact');
-        if (contact) contact.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setTimeout(function() {
-          var picker = document.getElementById('variant-picker');
-          if (picker) picker.style.display = 'block';
-        }, 500);
-      }
-      if (e.data.type === 'pulse_highlight') {
-        if (confirmedVariant === 'a') {
-          var complex = document.getElementById('contact');
-          if (complex) complex.style.display = 'none';
-          var simple = document.getElementById('simple-contact');
-          if (simple) {
-            simple.style.display = 'block';
-            simple.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            simple.classList.add('pulse-highlight');
-            setTimeout(function() { simple.classList.remove('pulse-highlight'); }, 2800);
-          }
-        } else {
-          var callCta = document.getElementById('call-cta');
-          if (callCta) {
-            callCta.style.display = 'block';
-            callCta.classList.add('pulse-highlight');
-            setTimeout(function() { callCta.classList.remove('pulse-highlight'); }, 2800);
-          }
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (e.data.type === 'pulse_fix' || e.data.type === 'pulse_highlight') {
+        var testi = document.getElementById('testimonials');
+        if (testi) {
+          testi.style.display = 'block';
+          testi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          testi.classList.add('pulse-highlight');
+          setTimeout(function() { testi.classList.remove('pulse-highlight'); }, 2800);
         }
       }
     });

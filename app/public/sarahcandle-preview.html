@@ -19,7 +19,7 @@
       --border: #e8d5bc;
     }
 
-    html, body { height: 100%; }
+    html { scroll-behavior: smooth; }
 
     body {
       font-family: 'Georgia', 'Times New Roman', serif;
@@ -176,7 +176,8 @@
       border-radius: 12px;
       border: 1px solid var(--border);
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s;
+      will-change: transform;
     }
     .cat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px #0001; }
     .cat-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
@@ -195,17 +196,23 @@
       border-radius: 16px;
       border: 1px solid var(--border);
       overflow: hidden;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s;
+      will-change: transform;
     }
     .product-card:hover { transform: translateY(-5px); box-shadow: 0 12px 30px #0002; }
     .product-img {
-      height: 200px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 5rem;
+      height: 220px;
       position: relative;
+      overflow: hidden;
     }
+    .product-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.4s ease;
+    }
+    .product-card:hover .product-img img { transform: scale(1.05); }
     .product-badge {
       position: absolute;
       top: 12px;
@@ -248,12 +255,16 @@
     }
     @media (max-width: 700px) { .featured-layout { grid-template-columns: 1fr; gap: 2rem; } }
     .featured-visual {
-      font-size: 8rem;
-      text-align: center;
-      background: #ffffff15;
       border-radius: 20px;
-      padding: 2rem;
+      overflow: hidden;
       border: 1px solid #ffffff20;
+      height: 380px;
+    }
+    .featured-visual img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
     .featured-content h2 { font-size: 2rem; font-weight: normal; margin-bottom: 1rem; }
     .featured-content h2 em { font-style: italic; color: var(--accent); }
@@ -446,8 +457,8 @@
       <div class="product-grid">
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #fff3e0, #ffe0b2);">
-            🕯️
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=500&h=440&q=80" alt="Warm Vanilla loading="eager" Sandalwood Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff3e0,#ffe0b2)';this.remove();" />
             <span class="product-badge">Best Seller</span>
           </div>
           <div class="product-body">
@@ -461,8 +472,8 @@
         </div>
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #e8f5e9, #c8e6c9);">
-            🌿
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1600538827439-7f3d5e8f1c9c?auto=format&fit=crop&w=500&h=440&q=80" alt="Fresh Eucalyptus Mint Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#e8f5e9,#c8e6c9)';this.remove();" />
             <span class="product-badge">New</span>
           </div>
           <div class="product-body">
@@ -476,8 +487,8 @@
         </div>
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #fce4ec, #f8bbd0);">
-            🌸
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1602178506-5c4f-4e2b-9891-da0b26bc3e30?auto=format&fit=crop&w=500&h=440&q=80" alt="Peony Rose Garden Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#fce4ec,#f8bbd0)';this.remove();" />
           </div>
           <div class="product-body">
             <div class="product-name">Peony & Rose Garden</div>
@@ -490,8 +501,8 @@
         </div>
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #fff8e1, #ffecb3);">
-            🍯
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1543967964-21bc44e84490?auto=format&fit=crop&w=500&h=440&q=80" alt="Honey Amber Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff8e1,#ffecb3)';this.remove();" />
             <span class="product-badge">Limited</span>
           </div>
           <div class="product-body">
@@ -505,8 +516,8 @@
         </div>
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #e8eaf6, #c5cae9);">
-            🌙
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1567446537708-ac4aa75c9c28?auto=format&fit=crop&w=500&h=440&q=80" alt="Midnight Lavender Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#e8eaf6,#c5cae9)';this.remove();" />
           </div>
           <div class="product-body">
             <div class="product-name">Midnight Lavender</div>
@@ -519,8 +530,8 @@
         </div>
 
         <div class="product-card">
-          <div class="product-img" style="background: linear-gradient(135deg, #efebe9, #d7ccc8);">
-            🌲
+          <div class="product-img">
+            <img src="https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=500&h=440&q=80" alt="Cedar Pine Forest Candle" onerror="this.parentElement.style.background='linear-gradient(135deg,#efebe9,#d7ccc8)';this.remove();" />
           </div>
           <div class="product-body">
             <div class="product-name">Cedar & Pine Forest</div>
@@ -540,7 +551,9 @@
   <section class="featured">
     <div class="container">
       <div class="featured-layout">
-        <div class="featured-visual">🕯️</div>
+        <div class="featured-visual">
+          <img src="https://images.unsplash.com/photo-1587017539504-67cfbddac569?auto=format&fit=crop&w=700&h=760&q=85" alt="Signature Gift Set" onerror="this.parentElement.innerHTML='🕯️'; this.parentElement.style.cssText='font-size:8rem;text-align:center;background:#ffffff15;border-radius:20px;padding:2rem;'" />
+        </div>
         <div class="featured-content">
           <h2>The <em>Signature Collection</em> Gift Set</h2>
           <p>Curated for gifting — five of our best-selling scents in beautiful 4 oz tins, nestled in an heirloom-quality keepsake box. The perfect gift for any occasion.</p>
@@ -676,7 +689,7 @@
   </footer>
 
   <!-- VARIANT PICKER PANEL -->
-  <div id="variant-picker" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:rgba(10,5,20,0.93); backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.1); padding:1.25rem 1.5rem 1.5rem; box-shadow:0 -10px 40px rgba(0,0,0,0.5);">
+  <div id="variant-picker" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:#0d0818; border-top:1px solid rgba(255,255,255,0.1); padding:1.25rem 1.5rem 1.5rem; box-shadow:0 -10px 40px rgba(0,0,0,0.5);">
     <div style="max-width:640px; margin:0 auto;">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
         <span style="color:#fff; font-weight:bold; font-size:0.95rem; display:flex; align-items:center; gap:0.5rem;">
