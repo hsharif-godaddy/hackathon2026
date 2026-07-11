@@ -470,12 +470,18 @@ export const useServerPollingStore = create<ServerPollingStore>()(
       // In mock-login mode, skip the dev-supervisor health poll entirely and
       // immediately mark the server as ready pointing at the hardcoded preview.
       if (process.env.NEXT_PUBLIC_USE_MOCK_LOGIN === 'true') {
+        const mockPreviewUrls: Record<string, string> = {
+          sarahcandle01: '/sarahcandle-preview.html',
+          benbakery01: '/benbakery-preview.html',
+          marcospizza01: '/marcospizza-preview.html',
+        }
+        const previewUrl: string = mockPreviewUrls[appId] ?? '/sarahcandle-preview.html'
         set((state) => {
           state.servers.set(appId, {
             server: {
               appId,
               port: null,
-              url: '/sarahcandle-preview.html',
+              url: previewUrl,
               status: 'running',
               isReady: true,
               healthCheckPassed: true,

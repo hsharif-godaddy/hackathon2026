@@ -526,7 +526,7 @@ agent. Build the screenshot pipeline for Phase 2 variants.
 
 **Tasks:**
 
-- [ ] Create `app/src/lib/pulse/fix-strategies.ts`
+- [ ] Create `app/src/lib/pulse/fix-strategies.ts`ww
       Pre-defined option pairs for each problem type (see Fix Strategies section above)
 
 - [ ] Create `agents/src/skills/pulse/skill.md`

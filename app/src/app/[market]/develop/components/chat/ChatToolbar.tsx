@@ -184,6 +184,7 @@ export default function ChatToolbar({
       {/* TOOLS mode: Chat, Media, and Settings (History/Analytics on desktop only) */}
       {showToolsMode && (
         <>
+          <div className="flex items-center gap-1">
           <ButtonGroup
             value={toolbarGroupValue}
             onChange={(value) => {
@@ -226,8 +227,8 @@ export default function ChatToolbar({
             )}
             <SettingsMenu ref={settingsMenuRef} />
           </ButtonGroup>
-
           {!isMobile && <PulseButton />}
+        </div>
 
           {isMobile && (
             <Box orientation="horizontal" gap="sm">

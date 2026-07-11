@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ben's Bakery — Artisan Breads & Pastries</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cream: #fdf6ec;
+      --warm-brown: #8b5e3c;
+      --dark-brown: #3d2008;
+      --accent: #c8813a;
+      --text-mid: #5a3e28;
+      --text-dark: #2c1a0e;
+      --border: #e8d5bb;
+      --card-bg: #fff9f2;
+    }
+    body { font-family: 'Georgia', serif; background: var(--cream); color: var(--text-dark); }
+    a { color: inherit; text-decoration: none; }
+
+    /* NAV */
+    nav { background: var(--dark-brown); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .nav-brand { color: #fff; font-size: 1.3rem; font-weight: bold; letter-spacing: 0.5px; }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a { color: #e8c99a; font-size: 0.9rem; }
+
+    /* HERO — lots of story text, CTA intentionally missing */
+    .hero { background: linear-gradient(135deg, #3d2008 0%, #6b3e20 100%); color: #fff; padding: 5rem 2rem 4rem; text-align: center; }
+    .hero-badge { display: inline-block; background: rgba(200,129,58,0.3); color: #e8c99a; font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; padding: 0.4rem 1rem; border-radius: 20px; margin-bottom: 1.5rem; border: 1px solid rgba(200,129,58,0.4); }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin-bottom: 1rem; line-height: 1.2; }
+    .hero h1 span { color: var(--accent); }
+    .hero p { font-size: 1.1rem; color: #d4b896; max-width: 540px; margin: 0 auto 1.5rem; line-height: 1.7; }
+    .hero-story { max-width: 600px; margin: 0 auto; font-size: 0.95rem; color: #c8a880; line-height: 1.8; }
+
+    /* ABOUT SECTION (pushes CTA below fold) */
+    .about { background: #fff; padding: 5rem 2rem; text-align: center; }
+    .about h2 { font-size: 2rem; color: var(--dark-brown); margin-bottom: 1rem; }
+    .about p { max-width: 680px; margin: 0 auto 1.5rem; color: var(--text-mid); line-height: 1.8; font-size: 1rem; }
+
+    /* AWARDS */
+    .awards { background: var(--cream); padding: 3rem 2rem; text-align: center; }
+    .awards h3 { font-size: 1.1rem; color: var(--text-mid); margin-bottom: 1.5rem; }
+    .award-row { display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap; }
+    .award { font-size: 0.85rem; color: var(--accent); font-weight: bold; }
+
+    /* PROCESS */
+    .process { background: var(--card-bg); padding: 5rem 2rem; text-align: center; }
+    .process h2 { font-size: 2rem; color: var(--dark-brown); margin-bottom: 0.75rem; }
+    .process-sub { color: var(--text-mid); margin-bottom: 3rem; }
+    .process-steps { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 2rem; max-width: 900px; margin: 0 auto; }
+    .step { text-align: center; }
+    .step-num { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; margin: 0 auto 0.75rem; }
+    .step-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .step h3 { font-size: 1rem; color: var(--dark-brown); margin-bottom: 0.4rem; }
+    .step p { font-size: 0.85rem; color: var(--text-mid); line-height: 1.6; }
+
+    /* CTA SECTION — deliberately buried after lots of scrolling */
+    .cta-section { background: linear-gradient(135deg, #6b3e20, #3d2008); padding: 5rem 2rem; text-align: center; }
+    .cta-section h2 { font-size: 2rem; color: #fff; margin-bottom: 1rem; }
+    .cta-section p { color: #d4b896; margin-bottom: 2.5rem; max-width: 480px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+    .cta-btn { display: inline-block; background: var(--accent); color: #fff; padding: 1rem 2.5rem; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; border: none; transition: background 0.2s; }
+    .cta-btn:hover { background: #b8702a; }
+    .cta-btn.hero-cta { display: none; }
+
+    /* PRODUCTS */
+    .products { background: #fff; padding: 5rem 2rem; text-align: center; }
+    .products h2 { font-size: 2rem; color: var(--dark-brown); margin-bottom: 0.75rem; }
+    .products-sub { color: var(--text-mid); margin-bottom: 3rem; }
+    .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto; }
+    .product-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
+    .product-img { height: 160px; display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, #f5e6d0, #ead4b0); }
+    .product-info { padding: 1.25rem; text-align: left; }
+    .product-name { font-weight: bold; color: var(--dark-brown); margin-bottom: 0.3rem; }
+    .product-desc { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 0.75rem; line-height: 1.5; }
+    .product-price { font-size: 1.1rem; color: var(--accent); font-weight: bold; }
+
+    /* STICKY ORDER BUTTON — shown after pulse fix */
+    #sticky-cta { display: none; position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 200; }
+    #sticky-cta button { background: var(--accent); color: #fff; border: none; border-radius: 50px; padding: 0.9rem 1.75rem; font-size: 1rem; font-weight: bold; box-shadow: 0 4px 20px rgba(0,0,0,0.25); cursor: pointer; }
+    #sticky-cta.pulse-highlight button { animation: cta-pop 0.5s ease-out 3; box-shadow: 0 0 0 4px rgba(200,129,58,0.4); }
+    @keyframes cta-pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+
+    /* FOOTER */
+    footer { background: var(--dark-brown); color: #c8a880; padding: 3rem 2rem 1.5rem; }
+    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 2rem; max-width: 900px; margin: 0 auto 2rem; }
+    .footer-brand { font-size: 1.2rem; font-weight: bold; color: #fff; margin-bottom: 0.75rem; }
+    .footer-desc { font-size: 0.85rem; line-height: 1.6; }
+    .footer-col h4 { color: #fff; margin-bottom: 0.75rem; font-size: 0.9rem; }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; }
+    .footer-col li { font-size: 0.85rem; }
+    .footer-bottom { text-align: center; font-size: 0.8rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-brand">🍞 Ben's Bakery</div>
+    <div class="nav-links">
+      <a href="#">Menu</a>
+      <a href="#">About</a>
+      <a href="#">Events</a>
+      <a href="#">Contact</a>
+    </div>
+  </nav>
+
+  <!-- HERO — no CTA button here (the problem) -->
+  <section class="hero">
+    <div class="hero-badge">Est. 2011 · Austin, TX</div>
+    <h1>Baked Fresh.<br><span>Every Single Morning.</span></h1>
+    <p>Sourdoughs, croissants, and hand-crafted pastries made with locally sourced ingredients and 12 years of passion.</p>
+    <p class="hero-story">
+      Ben's Bakery started as a weekend project in a tiny apartment kitchen. Today, we bake over 200 loaves a day using the same slow-fermentation recipes Ben perfected over a decade. Every loaf is shaped by hand, proofed overnight, and baked in our stone-deck oven starting at 4am.
+    </p>
+
+    <!-- CTA shown after Pulse fix -->
+    <div style="margin-top:2rem;">
+      <button class="cta-btn hero-cta" id="hero-cta-btn">Order Now →</button>
+    </div>
+  </section>
+
+  <!-- ABOUT — more scrolling before the CTA -->
+  <section class="about">
+    <h2>Our Story</h2>
+    <p>Ben Kowalski learned to bake from his grandmother in Kraków, Poland. Her sourdough starter — now over 80 years old — lives in our kitchen and goes into every loaf we make.</p>
+    <p>We believe great bread takes time. Our doughs ferment for 18–24 hours before they ever see the oven. That slow process develops flavor, texture, and the kind of crust you can hear across the room when you break it.</p>
+    <p>Every ingredient is sourced within 150 miles of Austin: whole-grain flour from Hill Country mills, local honey, Texas pecans, and seasonal fruit from our neighbors at the farmers market.</p>
+  </section>
+
+  <!-- AWARDS -->
+  <section class="awards">
+    <h3>Recognized by</h3>
+    <div class="award-row">
+      <div class="award">🏆 Austin Chronicle<br>Best Bakery 2024</div>
+      <div class="award">⭐ Texas Monthly<br>Top 10 Bakeries</div>
+      <div class="award">🥐 Eater Austin<br>Essential Restaurants</div>
+    </div>
+  </section>
+
+  <!-- PROCESS -->
+  <section class="process">
+    <h2>How We Bake</h2>
+    <p class="process-sub">Small batches. No shortcuts. Ever.</p>
+    <div class="process-steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-icon">🌾</div>
+        <h3>Stone-Milled Flour</h3>
+        <p>Whole-grain flours milled fresh weekly from Texas wheat farms.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-icon">🧫</div>
+        <h3>Wild Fermentation</h3>
+        <p>Our 80-year-old starter gives every loaf its unique tang and chew.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-icon">✋</div>
+        <h3>Hand Shaped</h3>
+        <p>Every loaf shaped by our bakers at 3am — no machines, no molds.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-icon">🔥</div>
+        <h3>Stone-Deck Oven</h3>
+        <p>Baked at 480°F for a crackling crust and perfectly open crumb.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="products" id="menu">
+    <h2>Fresh From the Oven</h2>
+    <p class="products-sub">Available daily until sold out — we open at 7am</p>
+    <div class="products-grid">
+      <div class="product-card">
+        <div class="product-img">🍞</div>
+        <div class="product-info">
+          <div class="product-name">Country Sourdough</div>
+          <div class="product-desc">18-hour ferment, stone-deck baked, crispy ear on every loaf.</div>
+          <div class="product-price">$11</div>
+        </div>
+      </div>
+      <div class="product-card">
+        <div class="product-img">🥐</div>
+        <div class="product-info">
+          <div class="product-name">Butter Croissant</div>
+          <div class="product-desc">72 layers of laminated dough, European butter, baked golden.</div>
+          <div class="product-price">$5</div>
+        </div>
+      </div>
+      <div class="product-card">
+        <div class="product-img">🫓</div>
+        <div class="product-info">
+          <div class="product-name">Seeded Rye</div>
+          <div class="product-desc">Dark rye with caraway, sunflower, and pumpkin seeds.</div>
+          <div class="product-price">$13</div>
+        </div>
+      </div>
+      <div class="product-card">
+        <div class="product-img">🧁</div>
+        <div class="product-info">
+          <div class="product-name">Morning Box</div>
+          <div class="product-desc">2 croissants, 1 sourdough, and your choice of seasonal pastry.</div>
+          <div class="product-price">$28</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA SECTION — buried here, below the fold -->
+  <section class="cta-section" id="order">
+    <h2>Ready to Order?</h2>
+    <p>Pre-order online and skip the line. We'll have your loaves ready for pickup when you arrive.</p>
+    <button class="cta-btn" id="main-cta-btn">Order Now →</button>
+  </section>
+
+  <!-- STICKY CTA — shown after Pulse fix -->
+  <div id="sticky-cta">
+    <button>🛒 Order Now</button>
+  </div>
+
+  <footer>
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">🍞 Ben's Bakery</div>
+        <p class="footer-desc">Artisan breads and pastries baked fresh every morning in Austin, TX. Sourdough, croissants, and seasonal specials — never frozen, never rushed.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Visit</h4>
+        <ul>
+          <li>2341 S Lamar Blvd</li>
+          <li>Austin, TX 78704</li>
+          <li>Mon–Sat 7am–2pm</li>
+          <li>Sun 8am–1pm</li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Order</h4>
+        <ul>
+          <li><a href="#">Online Pre-Order</a></li>
+          <li><a href="#">Wholesale</a></li>
+          <li><a href="#">Catering</a></li>
+          <li><a href="#">Gift Cards</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2026 Ben's Bakery · Baked with love in Austin, TX
+    </div>
+  </footer>
+
+  <!-- VARIANT PICKER PANEL -->
+  <div id="variant-picker" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:rgba(10,5,20,0.93); backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.1); padding:1.25rem 1.5rem 1.5rem; box-shadow:0 -10px 40px rgba(0,0,0,0.5);">
+    <div style="max-width:640px; margin:0 auto;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+        <span style="color:#fff; font-weight:bold; font-size:0.95rem; display:flex; align-items:center; gap:0.5rem;">
+          <span style="background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; font-size:0.7rem; padding:0.2rem 0.6rem; border-radius:10px; letter-spacing:0.05em;">PULSE</span>
+          Pick your style
+        </span>
+        <button onclick="document.getElementById('variant-picker').style.display='none'" style="background:none; border:none; color:rgba(255,255,255,0.4); font-size:1.1rem; cursor:pointer; padding:0.25rem 0.5rem; border-radius:6px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">✕</button>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+        <!-- Option A: CTA in hero -->
+        <div id="opt-a" onclick="selectVariant('a')" onmouseenter="previewVariant('a')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
+          <div style="background:linear-gradient(135deg,#3d2008,#6b3e20); border-radius:8px; padding:0.6rem; height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.6rem; overflow:hidden;">
+            <div style="color:#d4b896; font-size:0.8rem; font-style:italic; text-align:center; line-height:1.3;">Baked Fresh.<br>Every Morning.</div>
+            <div style="background:#c8813a; color:#fff; border-radius:20px; padding:0.4rem 1.1rem; font-size:0.8rem; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.3);">Order Now →</div>
+          </div>
+          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">CTA in hero</div>
+          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">Order button front and center</div>
+          <button onclick="event.stopPropagation(); selectVariant('a')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
+        </div>
+        <!-- Option B: Sticky button -->
+        <div id="opt-b" onclick="selectVariant('b')" onmouseenter="previewVariant('b')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
+          <div style="background:linear-gradient(135deg,#3d2008,#6b3e20); border-radius:8px; padding:0.6rem; height:90px; position:relative; overflow:hidden;">
+            <div style="color:#a0887a; font-size:0.65rem; line-height:1.6; padding:0.2rem;">Our Story<br>Our Bread<br>Our Process<br>Our Menu...</div>
+            <div style="position:absolute; bottom:0.5rem; right:0.5rem; background:#c8813a; color:#fff; border-radius:24px; padding:0.35rem 0.7rem; font-size:0.7rem; font-weight:bold; box-shadow:0 2px 10px rgba(0,0,0,0.4); white-space:nowrap;">🛒 Order Now</div>
+          </div>
+          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">Sticky button</div>
+          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">Floating button follows the scroll</div>
+          <button onclick="event.stopPropagation(); selectVariant('b')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var confirmedVariant = null;
+
+    function previewVariant(v) {
+      if (confirmedVariant) return;
+      var heroBtn = document.getElementById('hero-cta-btn');
+      var sticky = document.getElementById('sticky-cta');
+      var optA = document.getElementById('opt-a');
+      var optB = document.getElementById('opt-b');
+      if (v === 'a') {
+        if (heroBtn) heroBtn.style.display = 'inline-block';
+        if (sticky) sticky.style.display = 'none';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        optA.style.borderColor = 'rgba(124,58,237,0.8)';
+        optA.style.background = 'rgba(124,58,237,0.12)';
+        optB.style.borderColor = 'rgba(255,255,255,0.12)';
+        optB.style.background = 'rgba(255,255,255,0.06)';
+      } else {
+        if (sticky) sticky.style.display = 'block';
+        if (heroBtn) heroBtn.style.display = 'none';
+        optB.style.borderColor = 'rgba(124,58,237,0.8)';
+        optB.style.background = 'rgba(124,58,237,0.12)';
+        optA.style.borderColor = 'rgba(255,255,255,0.12)';
+        optA.style.background = 'rgba(255,255,255,0.06)';
+      }
+    }
+
+    function clearPreview() {
+      if (confirmedVariant) return;
+      var heroBtn = document.getElementById('hero-cta-btn');
+      var sticky = document.getElementById('sticky-cta');
+      if (heroBtn) heroBtn.style.display = 'none';
+      if (sticky) sticky.style.display = 'none';
+      ['opt-a','opt-b'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.style.borderColor = 'rgba(255,255,255,0.12)'; el.style.background = 'rgba(255,255,255,0.06)'; }
+      });
+    }
+
+    function selectVariant(v) {
+      confirmedVariant = v;
+      var picker = document.getElementById('variant-picker');
+      if (picker) picker.style.display = 'none';
+      if (v === 'a') {
+        var heroBtn = document.getElementById('hero-cta-btn');
+        if (heroBtn) {
+          heroBtn.style.display = 'inline-block';
+          heroBtn.style.outline = '3px solid #c8813a';
+          heroBtn.style.boxShadow = '0 0 24px rgba(200,129,58,0.6)';
+          setTimeout(function() { heroBtn.style.outline = ''; heroBtn.style.boxShadow = ''; }, 2800);
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'CTA in hero' }, '*');
+      } else {
+        var sticky = document.getElementById('sticky-cta');
+        if (sticky) {
+          sticky.style.display = 'block';
+          sticky.classList.add('pulse-highlight');
+          setTimeout(function() { sticky.classList.remove('pulse-highlight'); }, 2000);
+        }
+        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Sticky button' }, '*');
+      }
+    }
+
+    window.addEventListener('message', function(e) {
+      if (!e.data) return;
+      if (e.data.type === 'pulse_scroll_preview') {
+        var cta = document.getElementById('order');
+        if (cta) cta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      if (e.data.type === 'pulse_show_variants') {
+        confirmedVariant = null;
+        var cta = document.getElementById('order');
+        if (cta) cta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function() {
+          var picker = document.getElementById('variant-picker');
+          if (picker) picker.style.display = 'block';
+        }, 500);
+      }
+      if (e.data.type === 'pulse_highlight') {
+        if (confirmedVariant === 'a') {
+          var heroBtn = document.getElementById('hero-cta-btn');
+          if (heroBtn) {
+            heroBtn.style.display = 'inline-block';
+            heroBtn.style.outline = '3px solid #c8813a';
+            heroBtn.style.boxShadow = '0 0 24px rgba(200,129,58,0.6)';
+            setTimeout(function() { heroBtn.style.outline = ''; heroBtn.style.boxShadow = ''; }, 2800);
+          }
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          var sticky = document.getElementById('sticky-cta');
+          if (sticky) {
+            sticky.style.display = 'block';
+            sticky.classList.add('pulse-highlight');
+            setTimeout(function() { sticky.classList.remove('pulse-highlight'); }, 2000);
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>

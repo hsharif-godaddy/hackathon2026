@@ -29,11 +29,11 @@ export default function HomeContent({ serverFeatures }: HomeContentProps) {
     if (!isFeatureEnabled.mockLogin()) return
     const authState = mockAuthManager.getState()
     if (authState.isAuthenticated) {
-      router.replace(`/${params.market}/develop/sarahcandle01`)
+      router.replace(`/apps`)
     }
     return mockAuthManager.subscribe((state) => {
       if (state.isAuthenticated) {
-        router.replace(`/${params.market}/develop/sarahcandle01`)
+        router.replace(`/apps`)
       }
     })
   }, [router, params.market])

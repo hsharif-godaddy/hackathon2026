@@ -1,11 +1,11 @@
 'use client'
 
-import Button from '@ux/button'
-import LightningBoltIcon from '@ux/icon/lightning-bolt'
+// import LightningBoltIcon from '@ux/icon/lightning-bolt'
 import Spinner from '@ux/spinner'
 
 import { usePulseAnalysis } from '@/hooks/usePulseAnalysis'
 import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
+import { cn } from '@/lib/utils'
 import { PulseInsightCard } from './PulseInsightCard'
 
 export function PulseButton() {
@@ -28,19 +28,23 @@ export function PulseButton() {
   return (
     <Popover open={hasInsight} onOpenChange={(open) => { if (!open) dismiss() }}>
       <PopoverTrigger asChild>
-        <Button
-          design="secondary"
-          size="small"
+        <button
+          type="button"
+          aria-label="Pulse"
           disabled={isDisabled}
           onClick={handleClick}
           title={disabledTitle}
-          className="flex items-center gap-1"
+          className={cn(
+            'relative flex items-center gap-1 px-1.5 py-1 rounded-xmd shrink-0 transition-colors duration-200 text-sm font-medium whitespace-nowrap cursor-pointer',
+            hasInsight
+              ? 'bg-[#7c3aed] text-white shadow-md'
+              : 'bg-intents-ux-boxLowContrast-backgroundColor',
+            isDisabled && 'opacity-25 pointer-events-none'
+          )}
         >
-          {isLoading
-            ? <Spinner size="sm" />
-            : <LightningBoltIcon className="size-3" />}
-          <span>Pulse</span>
-        </Button>
+          {isLoading && <Spinner size="sm" />}
+          <span>⚡ Pulse</span>
+        </button>
       </PopoverTrigger>
       {state.status === 'insight' && (
         <PopoverContent side="bottom" align="end" className="p-0 shadow-none border-0 w-auto">

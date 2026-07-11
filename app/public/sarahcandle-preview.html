@@ -265,6 +265,13 @@
 
     /* TESTIMONIALS — hidden until Pulse fix is applied */
     #testimonials { display: none; background: #fff; padding: 5rem 2rem; }
+    #testimonials.pulse-highlight { outline: 3px solid #7c3aed; outline-offset: -3px; animation: pulse-glow 0.6s ease-in-out 4; border-radius: 4px; }
+    @keyframes pulse-glow { 0%,100% { outline-color: #7c3aed; box-shadow: none; } 50% { outline-color: #a855f7; box-shadow: 0 0 24px 6px rgba(168,85,247,0.35); } }
+
+    /* STAR BADGE — Variant B, hidden until selected */
+    #star-badge { display: none; margin-top: 2rem; justify-content: center; }
+    #star-badge.pulse-highlight { animation: badge-glow 0.6s ease-in-out 4; border-radius: 30px; }
+    @keyframes badge-glow { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 30px 8px rgba(232,162,48,0.6); } }
     .testi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem; }
     .testi-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--border); padding: 2rem; }
     .stars { color: #e8a230; font-size: 1rem; margin-bottom: 0.75rem; }
@@ -382,6 +389,17 @@
       <div class="badge"><div class="badge-num">100%</div><div class="badge-lbl">Soy Wax</div></div>
       <div class="badge"><div class="badge-num">30+</div><div class="badge-lbl">Unique Scents</div></div>
       <div class="badge"><div class="badge-num">48h</div><div class="badge-lbl">Cure Time</div></div>
+    </div>
+
+    <!-- STAR BADGE — Variant B -->
+    <div id="star-badge">
+      <div style="background:rgba(232,162,48,0.15); border:1px solid rgba(232,162,48,0.5); border-radius:30px; padding:0.6rem 1.5rem; display:inline-flex; align-items:center; gap:0.75rem;">
+        <span style="color:#e8a230; font-size:1.3rem; letter-spacing:2px;">★★★★★</span>
+        <div style="text-align:left; line-height:1.3;">
+          <div style="color:#fff; font-weight:bold; font-size:0.95rem;">4.9 / 5</div>
+          <div style="color:#c0a080; font-size:0.75rem;">127 verified reviews</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -657,11 +675,143 @@
     </div>
   </footer>
 
+  <!-- VARIANT PICKER PANEL -->
+  <div id="variant-picker" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999; background:rgba(10,5,20,0.93); backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.1); padding:1.25rem 1.5rem 1.5rem; box-shadow:0 -10px 40px rgba(0,0,0,0.5);">
+    <div style="max-width:640px; margin:0 auto;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+        <span style="color:#fff; font-weight:bold; font-size:0.95rem; display:flex; align-items:center; gap:0.5rem;">
+          <span style="background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; font-size:0.7rem; padding:0.2rem 0.6rem; border-radius:10px; letter-spacing:0.05em;">PULSE</span>
+          Pick your style
+        </span>
+        <button onclick="document.getElementById('variant-picker').style.display='none'" style="background:none; border:none; color:rgba(255,255,255,0.4); font-size:1.1rem; cursor:pointer; padding:0.25rem 0.5rem; border-radius:6px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,0.4)'">✕</button>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+        <!-- Option A: Testimonials section -->
+        <div id="opt-a" onclick="selectVariant('a')" onmouseenter="previewVariant('a')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
+          <div style="background:#f8f4ef; border-radius:8px; padding:0.6rem; height:90px; display:flex; gap:0.4rem; align-items:center; overflow:hidden;">
+            <div style="flex:1; height:68px; background:#fff; border-radius:6px; border:1px solid #e8d5bc; padding:0.4rem; font-size:7.5px; line-height:1.35; color:#5a3e2b; overflow:hidden;"><span style="color:#e8a230; font-size:7px;">★★★★★</span><br>"Absolutely amazing candles!"<br><span style="color:#a0522d; font-size:6.5px;">— Jessica M.</span></div>
+            <div style="flex:1; height:68px; background:#fff; border-radius:6px; border:1px solid #e8d5bc; padding:0.4rem; font-size:7.5px; line-height:1.35; color:#5a3e2b; overflow:hidden;"><span style="color:#e8a230; font-size:7px;">★★★★★</span><br>"Perfect gift, beautiful packaging"<br><span style="color:#a0522d; font-size:6.5px;">— Thomas R.</span></div>
+            <div style="flex:1; height:68px; background:#fff; border-radius:6px; border:1px solid #e8d5bc; padding:0.4rem; font-size:7.5px; line-height:1.35; color:#5a3e2b; overflow:hidden;"><span style="color:#e8a230; font-size:7px;">★★★★★</span><br>"Will never buy elsewhere"<br><span style="color:#a0522d; font-size:6.5px;">— Amanda B.</span></div>
+          </div>
+          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">Testimonials section</div>
+          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">3 five-star reviews below your hero</div>
+          <button onclick="event.stopPropagation(); selectVariant('a')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
+        </div>
+        <!-- Option B: Star rating badge -->
+        <div id="opt-b" onclick="selectVariant('b')" onmouseenter="previewVariant('b')" onmouseleave="clearPreview()" style="background:rgba(255,255,255,0.06); border:2px solid rgba(255,255,255,0.12); border-radius:12px; padding:0.9rem; cursor:pointer; transition:all 0.2s; user-select:none;">
+          <div style="background:linear-gradient(135deg,#5a2d0c,#8b4513); border-radius:8px; padding:0.6rem; height:90px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem;">
+            <div style="background:rgba(232,162,48,0.2); border:1px solid rgba(232,162,48,0.5); border-radius:20px; padding:0.4rem 0.9rem; display:inline-flex; align-items:center; gap:0.5rem;">
+              <span style="color:#e8a230; font-size:1rem; letter-spacing:1px;">★★★★★</span>
+              <span style="color:#fff; font-size:0.8rem; font-weight:bold;">4.9 / 5</span>
+            </div>
+            <div style="color:#c0a080; font-size:0.65rem;">127 verified reviews</div>
+          </div>
+          <div style="color:#fff; font-weight:600; font-size:0.85rem; margin-top:0.75rem; margin-bottom:0.2rem;">Star rating badge</div>
+          <div style="color:rgba(255,255,255,0.45); font-size:0.75rem; margin-bottom:0.75rem;">⭐ 4.9/5 trust badge in the hero</div>
+          <button onclick="event.stopPropagation(); selectVariant('b')" style="width:100%; background:#7c3aed; border:none; color:#fff; padding:0.55rem; border-radius:8px; cursor:pointer; font-size:0.8rem; font-weight:bold;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Apply this →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
+    var confirmedVariant = null;
+
+    function previewVariant(v) {
+      if (confirmedVariant) return;
+      var testi = document.getElementById('testimonials');
+      var badge = document.getElementById('star-badge');
+      var optA = document.getElementById('opt-a');
+      var optB = document.getElementById('opt-b');
+      if (v === 'a') {
+        if (testi) testi.style.display = 'block';
+        if (badge) badge.style.display = 'none';
+        if (testi) testi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        optA.style.borderColor = 'rgba(124,58,237,0.8)';
+        optA.style.background = 'rgba(124,58,237,0.12)';
+        optB.style.borderColor = 'rgba(255,255,255,0.12)';
+        optB.style.background = 'rgba(255,255,255,0.06)';
+      } else {
+        if (badge) badge.style.display = 'flex';
+        if (testi) testi.style.display = 'none';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        optB.style.borderColor = 'rgba(124,58,237,0.8)';
+        optB.style.background = 'rgba(124,58,237,0.12)';
+        optA.style.borderColor = 'rgba(255,255,255,0.12)';
+        optA.style.background = 'rgba(255,255,255,0.06)';
+      }
+    }
+
+    function clearPreview() {
+      if (confirmedVariant) return;
+      var testi = document.getElementById('testimonials');
+      var badge = document.getElementById('star-badge');
+      if (testi) testi.style.display = 'none';
+      if (badge) badge.style.display = 'none';
+      ['opt-a','opt-b'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.style.borderColor = 'rgba(255,255,255,0.12)'; el.style.background = 'rgba(255,255,255,0.06)'; }
+      });
+    }
+
+    function selectVariant(v) {
+      confirmedVariant = v;
+      var picker = document.getElementById('variant-picker');
+      if (picker) picker.style.display = 'none';
+      if (v === 'a') {
+        var testi = document.getElementById('testimonials');
+        if (testi) {
+          testi.style.display = 'block';
+          testi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          testi.classList.add('pulse-highlight');
+          setTimeout(function() { testi.classList.remove('pulse-highlight'); }, 2800);
+        }
+        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Testimonials section' }, '*');
+      } else {
+        var badge = document.getElementById('star-badge');
+        if (badge) {
+          badge.style.display = 'flex';
+          badge.classList.add('pulse-highlight');
+          setTimeout(function() { badge.classList.remove('pulse-highlight'); }, 2800);
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Star rating badge' }, '*');
+      }
+    }
+
     window.addEventListener('message', function(e) {
-      if (e.data && e.data.type === 'pulse_fix') {
-        var t = document.getElementById('testimonials');
-        if (t) t.style.display = 'block';
+      if (!e.data) return;
+      if (e.data.type === 'pulse_scroll_preview') {
+        var process = document.querySelector('.process');
+        if (process) process.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (e.data.type === 'pulse_show_variants') {
+        confirmedVariant = null;
+        var process = document.querySelector('.process');
+        if (process) process.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setTimeout(function() {
+          var picker = document.getElementById('variant-picker');
+          if (picker) picker.style.display = 'block';
+        }, 500);
+      }
+      if (e.data.type === 'pulse_highlight') {
+        if (confirmedVariant === 'a' || !confirmedVariant) {
+          var testi = document.getElementById('testimonials');
+          if (testi) {
+            testi.style.display = 'block';
+            testi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            testi.classList.add('pulse-highlight');
+            setTimeout(function() { testi.classList.remove('pulse-highlight'); }, 2800);
+          }
+        } else {
+          var badge = document.getElementById('star-badge');
+          if (badge) {
+            badge.style.display = 'flex';
+            badge.classList.add('pulse-highlight');
+            setTimeout(function() { badge.classList.remove('pulse-highlight'); }, 2800);
+          }
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       }
     });
   </script>

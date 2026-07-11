@@ -30,7 +30,33 @@ export const POST = withCustomerAuth(
       }
 
       if (process.env.AUTH_TYPE === 'mock') {
-        return NextResponse.json({
+        const mockInsights: Record<string, PulseAnalyzeResponse> = {
+          benbakery01: {
+            status: 'insight',
+            insight: {
+              problemType: 'cta_buried',
+              headline: '48 people visited this week. Only 2 placed an order.',
+              description: "Your 'Order Now' button doesn't appear until visitors scroll past a wall of text. Most people leave without ever seeing it — you're losing orders before they have a chance to happen.",
+              suggestedFix: "Move the 'Order Now' button into the hero section so it's the first thing visitors see.",
+              confidence: 0.88,
+              screenshotBase64: '',
+              filesRead: ['src/pages/index.tsx'],
+            },
+          },
+          marcospizza01: {
+            status: 'insight',
+            insight: {
+              problemType: 'contact_hidden',
+              headline: '62 people visited this week. Only 3 reached out.',
+              description: "Your contact form asks for 6 fields and is buried 4 scrolls down the page. The friction is too high — most people give up before they ever find it.",
+              suggestedFix: 'Simplify the contact form to just name and phone number, and surface it above the fold.',
+              confidence: 0.94,
+              screenshotBase64: '',
+              filesRead: ['src/pages/index.tsx'],
+            },
+          },
+        }
+        const mockResponse: PulseAnalyzeResponse = mockInsights[appId] ?? {
           status: 'insight',
           insight: {
             problemType: 'no_social_proof',
@@ -41,7 +67,8 @@ export const POST = withCustomerAuth(
             screenshotBase64: '',
             filesRead: ['src/pages/index.tsx'],
           },
-        } satisfies PulseAnalyzeResponse)
+        }
+        return NextResponse.json(mockResponse satisfies PulseAnalyzeResponse)
       }
 
       const adapter = getControlPlaneAdapter()
