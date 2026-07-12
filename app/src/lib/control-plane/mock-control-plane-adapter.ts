@@ -33,6 +33,7 @@ const MOCK_SITES: SiteInfo[] = [
     created_at: NOW,
     updated_at: NOW,
     variants: ['preview', 'publish'],
+    screenshots: { publish: { desktop: '/images/sarahcandle-thumb.png' } },
   },
   {
     id: 'benbakery01',
@@ -49,6 +50,7 @@ const MOCK_SITES: SiteInfo[] = [
     created_at: NOW,
     updated_at: NOW,
     variants: ['preview', 'publish'],
+    screenshots: { publish: { desktop: '/images/benbakery-thumb.png' } },
   },
   {
     id: 'marcospizza01',
@@ -65,6 +67,7 @@ const MOCK_SITES: SiteInfo[] = [
     created_at: NOW,
     updated_at: NOW,
     variants: ['preview', 'publish'],
+    screenshots: { publish: { desktop: '/images/marcospizza-thumb.png' } },
   },
 ];
 
