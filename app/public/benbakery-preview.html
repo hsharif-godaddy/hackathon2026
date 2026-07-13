@@ -69,7 +69,9 @@
     .products-sub { color: var(--text-mid); margin-bottom: 3rem; }
     .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto; }
     .product-card { background: var(--card-bg); border-radius: 14px; border: 1px solid var(--border); overflow: hidden; }
-    .product-img { height: 160px; display: flex; align-items: center; justify-content: center; font-size: 4rem; background: linear-gradient(135deg, #f5e6d0, #ead4b0); }
+    .product-img { height: 160px; position: relative; overflow: hidden; background: linear-gradient(135deg, #f5e6d0, #ead4b0); }
+    .product-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease; }
+    .product-card:hover .product-img img { transform: scale(1.05); }
     .product-info { padding: 1.25rem; text-align: left; }
     .product-name { font-weight: bold; color: var(--dark-brown); margin-bottom: 0.3rem; }
     .product-desc { font-size: 0.85rem; color: var(--text-mid); margin-bottom: 0.75rem; line-height: 1.5; }
@@ -175,7 +177,7 @@
     <p class="products-sub">Available daily until sold out — we open at 7am</p>
     <div class="products-grid">
       <div class="product-card">
-        <div class="product-img">🍞</div>
+        <div class="product-img"><img src="https://images.unsplash.com/photo-1559811814-e2c57b5e69df?auto=format&fit=crop&w=500&h=440&q=80" alt="Country Sourdough" onerror="this.parentElement.style.background='linear-gradient(135deg,#f5e6d0,#ead4b0)';this.remove();" /></div>
         <div class="product-info">
           <div class="product-name">Country Sourdough</div>
           <div class="product-desc">18-hour ferment, stone-deck baked, crispy ear on every loaf.</div>
@@ -183,7 +185,7 @@
         </div>
       </div>
       <div class="product-card">
-        <div class="product-img">🥐</div>
+        <div class="product-img"><img src="https://images.unsplash.com/photo-1623334044303-241021148842?auto=format&fit=crop&w=500&h=440&q=80" alt="Butter Croissant" onerror="this.parentElement.style.background='linear-gradient(135deg,#fff8e1,#ffecb3)';this.remove();" /></div>
         <div class="product-info">
           <div class="product-name">Butter Croissant</div>
           <div class="product-desc">72 layers of laminated dough, European butter, baked golden.</div>
@@ -191,7 +193,7 @@
         </div>
       </div>
       <div class="product-card">
-        <div class="product-img">🫓</div>
+        <div class="product-img"><img src="https://images.unsplash.com/photo-1534620808146-d33bb39128b2?auto=format&fit=crop&w=500&h=440&q=80" alt="Seeded Rye Bread" onerror="this.parentElement.style.background='linear-gradient(135deg,#efebe9,#d7ccc8)';this.remove();" /></div>
         <div class="product-info">
           <div class="product-name">Seeded Rye</div>
           <div class="product-desc">Dark rye with caraway, sunflower, and pumpkin seeds.</div>
@@ -199,7 +201,7 @@
         </div>
       </div>
       <div class="product-card">
-        <div class="product-img">🧁</div>
+        <div class="product-img"><img src="https://images.unsplash.com/photo-1622467827417-bbe2237067a9?auto=format&fit=crop&w=500&h=440&q=80" alt="Morning Box" onerror="this.parentElement.style.background='linear-gradient(135deg,#f5e6d0,#ead4b0)';this.remove();" /></div>
         <div class="product-info">
           <div class="product-name">Morning Box</div>
           <div class="product-desc">2 croissants, 1 sourdough, and your choice of seasonal pastry.</div>
