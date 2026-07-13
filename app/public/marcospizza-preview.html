@@ -585,25 +585,13 @@
       confirmedVariant = v;
       var picker = document.getElementById('variant-picker');
       if (picker) picker.style.display = 'none';
-      if (v === 'a') {
-        var qc = document.getElementById('quick-contact');
-        if (qc) {
-          qc.style.display = 'block';
-          qc.classList.add('pulse-highlight');
-          setTimeout(function() { qc.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Simplify form' }, '*');
-      } else {
-        var hcb = document.getElementById('hero-call-btn');
-        if (hcb) {
-          hcb.style.display = 'block';
-          hcb.classList.add('pulse-highlight');
-          setTimeout(function() { hcb.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Move form higher' }, '*');
-      }
+      // Hide any hover-previewed elements — actual reveal happens on pulse_highlight
+      var qc = document.getElementById('quick-contact');
+      var hcb = document.getElementById('hero-call-btn');
+      if (qc) qc.style.display = 'none';
+      if (hcb) hcb.style.display = 'none';
+      var label = v === 'a' ? 'Simplify form' : 'Move form higher';
+      window.parent.postMessage({ type: 'pulse_variant_selected', label: label }, '*');
     }
 
     window.addEventListener('message', function(e) {

@@ -771,25 +771,13 @@
       confirmedVariant = v;
       var picker = document.getElementById('variant-picker');
       if (picker) picker.style.display = 'none';
-      if (v === 'a') {
-        var testi = document.getElementById('testimonials');
-        if (testi) {
-          testi.style.display = 'block';
-          testi.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          testi.classList.add('pulse-highlight');
-          setTimeout(function() { testi.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Testimonials section' }, '*');
-      } else {
-        var badge = document.getElementById('star-badge');
-        if (badge) {
-          badge.style.display = 'flex';
-          badge.classList.add('pulse-highlight');
-          setTimeout(function() { badge.classList.remove('pulse-highlight'); }, 2800);
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Star rating badge' }, '*');
-      }
+      // Hide any hover-previewed elements — the real reveal happens on pulse_highlight
+      var testi = document.getElementById('testimonials');
+      var badge = document.getElementById('star-badge');
+      if (testi) testi.style.display = 'none';
+      if (badge) badge.style.display = 'none';
+      var label = v === 'a' ? 'Testimonials section' : 'Star rating badge';
+      window.parent.postMessage({ type: 'pulse_variant_selected', label: label }, '*');
     }
 
     window.addEventListener('message', function(e) {

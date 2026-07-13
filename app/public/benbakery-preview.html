@@ -331,25 +331,13 @@
       confirmedVariant = v;
       var picker = document.getElementById('variant-picker');
       if (picker) picker.style.display = 'none';
-      if (v === 'a') {
-        var heroBtn = document.getElementById('hero-cta-btn');
-        if (heroBtn) {
-          heroBtn.style.display = 'inline-block';
-          heroBtn.style.outline = '3px solid #c8813a';
-          heroBtn.style.boxShadow = '0 0 24px rgba(200,129,58,0.6)';
-          setTimeout(function() { heroBtn.style.outline = ''; heroBtn.style.boxShadow = ''; }, 2800);
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'CTA in hero' }, '*');
-      } else {
-        var sticky = document.getElementById('sticky-cta');
-        if (sticky) {
-          sticky.style.display = 'block';
-          sticky.classList.add('pulse-highlight');
-          setTimeout(function() { sticky.classList.remove('pulse-highlight'); }, 2000);
-        }
-        window.parent.postMessage({ type: 'pulse_variant_selected', label: 'Sticky button' }, '*');
-      }
+      // Hide any hover-previewed elements — actual reveal happens on pulse_highlight
+      var heroBtn = document.getElementById('hero-cta-btn');
+      var sticky = document.getElementById('sticky-cta');
+      if (heroBtn) heroBtn.style.display = 'none';
+      if (sticky) sticky.style.display = 'none';
+      var label = v === 'a' ? 'CTA in hero' : 'Sticky button';
+      window.parent.postMessage({ type: 'pulse_variant_selected', label: label }, '*');
     }
 
     window.addEventListener('message', function(e) {

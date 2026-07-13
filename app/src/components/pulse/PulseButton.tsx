@@ -4,7 +4,7 @@
 import Spinner from '@ux/spinner'
 
 import { usePulseAnalysis } from '@/hooks/usePulseAnalysis'
-import { Popover, PopoverContent, PopoverTrigger } from '@/lib/shadcn/popover'
+import { Popover, PopoverAnchor, PopoverContent } from '@/lib/shadcn/popover'
 import { cn } from '@/lib/utils'
 import { PulseInsightCard } from './PulseInsightCard'
 
@@ -16,6 +16,10 @@ export function PulseButton() {
   const isDisabled: boolean = !publishedUrl || isLoading
 
   const handleClick = (): void => {
+    if (state.status === 'insight') {
+      dismiss()
+      return
+    }
     if (state.status === 'idle' || state.status === 'error' || state.status === 'healthy') {
       void trigger()
     }
@@ -27,7 +31,7 @@ export function PulseButton() {
 
   return (
     <Popover open={hasInsight} onOpenChange={(open) => { if (!open) dismiss() }}>
-      <PopoverTrigger asChild>
+      <PopoverAnchor asChild>
         <button
           type="button"
           aria-label="Pulse"
@@ -45,7 +49,7 @@ export function PulseButton() {
           {isLoading && <Spinner size="sm" />}
           <span>⚡ Pulse</span>
         </button>
-      </PopoverTrigger>
+      </PopoverAnchor>
       {state.status === 'insight' && (
         <PopoverContent side="bottom" align="end" className="p-0 shadow-none border-0 w-auto">
           <PulseInsightCard

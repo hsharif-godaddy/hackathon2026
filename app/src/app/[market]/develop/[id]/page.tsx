@@ -125,6 +125,7 @@ import {
   readFormatOverrideCommitId,
 } from './formatOverrideBridge'
 import { useInstrumentationPrimer } from '../hooks/useInstrumentationPrimer'
+import { useMockChatSeeder } from '@/hooks/useMockChatSeeder'
 
 registerTrackEventBus()
 
@@ -597,6 +598,8 @@ function DevelopPageContent({ layout: layoutProp }: { layout?: BuilderLayout }) 
       JourneyTracker.setAppId(appId)
     }
   }, [appId])
+
+  useMockChatSeeder(appId)
 
   // Local state (only what's not in stores)
   const isEditModeEnabled = useDevelopPageStore((state) => state.isEditModeEnabled)
