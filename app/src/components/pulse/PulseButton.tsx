@@ -42,13 +42,13 @@ export function PulseButton() {
             'relative flex items-center gap-1 px-1.5 py-1 rounded-xmd shrink-0 transition-colors duration-200 text-sm font-medium whitespace-nowrap cursor-pointer',
             hasInsight
               ? 'bg-[#7c3aed] text-white shadow-md'
-              : 'bg-intents-ux-boxLowContrast-backgroundColor',
+              : 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.15)]',
             isDisabled && 'opacity-25 pointer-events-none'
           )}
         >
           {isLoading && <Spinner size="sm" />}
-          <span>⚡ Pulse</span>
-        </button>
+          <span className="text-yellow-400">⚡</span><span className={hasInsight ? 'text-white' : 'text-[#7c3aed]'}>Pulse</span>
+        </button> 
       </PopoverAnchor>
       {state.status === 'insight' && (
         <PopoverContent side="bottom" align="end" className="p-0 shadow-none border-0 w-auto">
