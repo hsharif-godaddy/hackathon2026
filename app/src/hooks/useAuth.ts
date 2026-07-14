@@ -148,7 +148,8 @@ export function useAuth(options: UseAuthOptions = {}) {
     }
 
     if (isMockAuth) {
-      mockAuth.logout();
+      await mockAuth.logout();
+      window.location.href = '/?mockLogin=true';
       return;
     }
 

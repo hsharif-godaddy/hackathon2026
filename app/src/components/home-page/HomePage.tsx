@@ -1,6 +1,8 @@
 'use client'
 
 import clsx from 'clsx'
+import { useSearchParams } from 'next/navigation'
+import { useEffect } from 'react'
 
 import HelpSection from '@/app/[market]/components/HelpSection'
 import InfraSection from '@/app/[market]/components/InfraSection'
@@ -26,7 +28,18 @@ interface HomeContentProps {
 export function HomePage({ serverFeatures }: HomeContentProps) {
   const t = useTranslations()
   const hp = useHomepageSubmission()
+  const searchParams = useSearchParams()
   usePaywallDeeplinkWithStore()
+
+  useEffect(() => {
+    if (isFeatureEnabled.mockLogin() && searchParams.get('mockLogin') === 'true') {
+      hp.setShowMockLogin(true)
+      const url = new URL(window.location.href)
+      url.searchParams.delete('mockLogin')
+      window.history.replaceState({}, '', url.toString())
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <>
