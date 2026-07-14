@@ -69,6 +69,7 @@ import { useDomainConnectCallbackConsumer } from '@/hooks/useDomainConnectCallba
 import { useGitHistoryQuery } from '@/hooks/useGitHistory'
 import { useImageReadiness } from '@/hooks/useImageReadiness'
 import { useInboxAccount } from '@/hooks/useInboxAccount'
+import { useMockChatSeeder } from '@/hooks/useMockChatSeeder'
 import { usePaywallDeeplinkWithStore } from '@/hooks/usePaywallDeeplinkWithStore'
 import { useSettingsNotifications } from '@/hooks/useSettingsNotifications'
 import { prefetchSubscription, useSubscription } from '@/hooks/useSubscription'
@@ -125,7 +126,6 @@ import {
   readFormatOverrideCommitId,
 } from './formatOverrideBridge'
 import { useInstrumentationPrimer } from '../hooks/useInstrumentationPrimer'
-import { useMockChatSeeder } from '@/hooks/useMockChatSeeder'
 
 registerTrackEventBus()
 
