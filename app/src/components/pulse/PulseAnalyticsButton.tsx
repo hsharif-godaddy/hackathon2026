@@ -26,10 +26,10 @@ const ANALYTICS: Record<string, AnalyticsData> = {
     fix: 'Testimonials section',
     fixDesc: 'Adding social proof below your hero is converting first-time visitors. 14 days of A/B data shows the variant winning.',
     metrics: [
-      { name: 'Conversion Rate',  before: '2.1%', after: '2.6%', bp: 42, ap: 52, lift: '+23%' },
-      { name: 'Add-to-cart Rate', before: '3.1%', after: '4.1%', bp: 38, ap: 50, lift: '+31%' },
-      { name: 'Avg Order Value',  before: '$42',  after: '$50',  bp: 42, ap: 50, lift: '+19%' },
-      { name: 'Bounce Rate',      before: '38%',  after: '31%',  bp: 76, ap: 62, lift: '−18%' },
+      { name: 'Checkout Completions', before: '1.3%', after: '2.4%', bp: 26, ap: 48, lift: '+84%' },
+      { name: 'Email Sign-ups',       before: '4.2%', after: '7.8%', bp: 21, ap: 39, lift: '+86%' },
+      { name: 'Avg Session Time',     before: '1:24', after: '2:51', bp: 28, ap: 57, lift: '+104%' },
+      { name: 'Bounce Rate',          before: '54%',  after: '37%',  bp: 81, ap: 55, lift: '−31%' },
     ],
   },
   pizza: {
