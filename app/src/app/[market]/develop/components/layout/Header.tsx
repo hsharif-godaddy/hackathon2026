@@ -43,6 +43,7 @@ import AppPublish from '@/components/layout/AppPublish';
 import HeaderUpgradeButton from '@/components/layout/HeaderUpgradeButton';
 import IframeCloseButton from '@/components/layout/IframeCloseButton';
 import UserMenu from '@/components/layout/UserMenu';
+import { PulseAnalyticsButton } from '@/components/pulse/PulseAnalyticsButton'
 import { SWITCHBOARD_APPBUILDER_MEDIA_CANVAS } from '@/config/switchboard-flags';
 import { useHeadUndoAction } from '@/hooks/useHeadUndoAction';
 import { usePaywallModal } from '@/hooks/usePaywallModal';
@@ -325,6 +326,8 @@ export default function DevelopHeader({
               )}
               {(viewMode === ViewMode.PREVIEW || viewMode === ViewMode.EDIT) && (
                 <>
+                  <PulseAnalyticsButton />
+
                   <IconButton
                     data-testid="header-refresh-button"
                     icon={<RefreshIcon className="size-2.5" />}

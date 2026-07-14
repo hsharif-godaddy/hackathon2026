@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airo App Builder — Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; height: 100vh; overflow: hidden; }
+
+  /* ── GLOBAL HEADER ── */
+  .app-header {
+    height: 44px; background: #1a0a3b; display: flex; align-items: center;
+    padding: 0 16px; gap: 12px; position: relative; z-index: 100;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .app-header .logo-badge {
+    background: #e03c31; color: #fff; font-size: 11px; font-weight: 700;
+    padding: 3px 8px; border-radius: 4px; letter-spacing: 0.03em;
+  }
+  .app-header .breadcrumb {
+    color: rgba(255,255,255,0.5); font-size: 13px; display: flex; align-items: center; gap: 6px;
+  }
+  .app-header .breadcrumb span { color: rgba(255,255,255,0.85); }
+  .app-header .right-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .app-header .icon-btn {
+    width: 30px; height: 30px; border-radius: 6px; background: rgba(255,255,255,0.07);
+    border: none; cursor: pointer; color: rgba(255,255,255,0.6); display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .app-header .projects-btn {
+    color: rgba(255,255,255,0.8); font-size: 13px; background: rgba(255,255,255,0.07);
+    border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+
+  /* ── VIEWS ── */
+  #view-projects { height: calc(100vh - 44px); display: flex; flex-direction: column; }
+  #view-builder  { height: calc(100vh - 44px); display: none; flex-direction: column; }
+
+  /* ── PROJECTS PAGE ── */
+  .projects-subheader {
+    background: #fff; border-bottom: 1px solid #e5e5e5; padding: 10px 24px;
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: #888;
+  }
+  .projects-subheader .warning-icon { color: #f59e0b; }
+  .projects-main {
+    flex: 1; overflow-y: auto; padding: 28px 32px; background: #fff;
+  }
+  .projects-toolbar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
+  }
+  .projects-title { font-size: 22px; font-weight: 700; color: #111; margin-right: auto; }
+  .projects-title sup { font-size: 12px; color: #888; font-weight: 400; margin-left: 4px; }
+  .btn-stop-all {
+    background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 6px 12px;
+    border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .btn-delete-all {
+    background: #e03c31; border: none; color: #fff; padding: 6px 12px;
+    border-radius: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; font-weight: 600;
+  }
+  .btn-create {
+    background: #5b21b6; border: none; color: #fff; padding: 7px 14px;
+    border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .btn-transfer {
+    background: #fff; border: 1px solid #d1d5db; color: #374151; padding: 6px 12px;
+    border-radius: 6px; font-size: 13px; cursor: pointer;
+  }
+  .projects-filters {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 24px;
+  }
+  .search-box {
+    display: flex; align-items: center; gap: 6px; background: #f9fafb;
+    border: 1px solid #e5e7eb; border-radius: 6px; padding: 6px 10px;
+    font-size: 13px; color: #9ca3af; width: 200px;
+  }
+  .filter-select {
+    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;
+    padding: 6px 10px; font-size: 13px; color: #374151; cursor: pointer;
+  }
+  .view-toggle { display: flex; margin-left: auto; gap: 4px; }
+  .view-toggle button {
+    width: 28px; height: 28px; border: 1px solid #e5e7eb; background: #fff;
+    border-radius: 4px; cursor: pointer; color: #6b7280; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* project card */
+  .projects-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+  .project-card {
+    width: 180px; cursor: pointer; border-radius: 10px; overflow: hidden;
+    border: 1px solid #e5e7eb; background: #fff;
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  .project-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); }
+  .card-thumb {
+    width: 100%; height: 110px; background: #f3f4f6;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    overflow: hidden;
+  }
+  .card-thumb .status-badge {
+    position: absolute; top: 8px; left: 8px; background: #22c55e; color: #fff;
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+    letter-spacing: 0.04em;
+  }
+  .card-thumb .thumb-icon { font-size: 28px; opacity: 0.3; }
+  .card-info { padding: 10px 10px 8px; }
+  .card-name { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 3px; }
+  .card-date { font-size: 11px; color: #9ca3af; }
+  .card-actions { display: flex; gap: 4px; margin-top: 6px; }
+  .card-action-btn {
+    border: none; background: none; cursor: pointer; color: #9ca3af; font-size: 13px;
+    padding: 3px 5px; border-radius: 4px;
+  }
+  .card-action-btn:hover { background: #f3f4f6; color: #374151; }
+  .card-link { font-size: 11px; color: #6b7280; text-decoration: none; }
+
+  /* ── BUILDER PAGE ── */
+  .builder-body {
+    flex: 1; display: flex; overflow: hidden;
+  }
+  /* LEFT: chat pane */
+  .chat-pane {
+    width: 380px; min-width: 340px; display: flex; flex-direction: column;
+    border-right: 1px solid #e5e7eb; background: #fff;
+  }
+  .chat-header {
+    padding: 12px 16px 0; border-bottom: 1px solid #f0f0f0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .chat-header-top {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .back-btn {
+    border: none; background: none; cursor: pointer; color: #6b7280;
+    font-size: 16px; padding: 2px 4px; border-radius: 4px;
+  }
+  .back-btn:hover { background: #f3f4f6; }
+  .app-name { font-size: 14px; font-weight: 600; color: #111; flex: 1; }
+  .header-actions { display: flex; gap: 6px; }
+  .header-action-btn {
+    border: 1px solid #e5e7eb; background: #fff; cursor: pointer; color: #374151;
+    font-size: 12px; padding: 4px 10px; border-radius: 6px; font-weight: 500;
+  }
+  .header-action-btn.publish {
+    background: #5b21b6; color: #fff; border-color: #5b21b6;
+  }
+  /* chat tabs toolbar */
+  .chat-toolbar {
+    display: flex; align-items: center; padding: 8px 12px 10px;
+    gap: 6px;
+  }
+  .tab-group { display: flex; background: #f3f4f6; border-radius: 8px; padding: 2px; gap: 1px; }
+  .tab-btn {
+    border: none; background: none; cursor: pointer; font-size: 12px; color: #6b7280;
+    padding: 5px 10px; border-radius: 6px; font-weight: 500;
+    display: flex; align-items: center; gap: 4px; transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .tab-btn.active { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .tab-btn:hover:not(.active) { color: #374151; }
+  .tab-icon { font-size: 11px; }
+  /* pulse button */
+  .pulse-btn {
+    margin-left: auto; background: #f3f4f6; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 7px;
+    color: #374151; display: flex; align-items: center; gap-4px;
+    transition: all 0.2s; position: relative; white-space: nowrap;
+  }
+  .pulse-btn:hover { background: #e9e9f0; }
+  .pulse-btn.active { background: #7c3aed; color: #fff; box-shadow: 0 2px 8px rgba(124,58,237,0.4); }
+  .pulse-btn .pulse-spinner {
+    width: 12px; height: 12px; border: 2px solid rgba(124,58,237,0.3);
+    border-top-color: #7c3aed; border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: none;
+  }
+  .pulse-btn.loading .pulse-spinner { display: block; }
+  .pulse-btn.loading .pulse-label { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* messages */
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .msg { display: flex; gap: 10px; }
+  .msg.user { flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+    background: #7c3aed; color: #fff; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 700; margin-top: 2px;
+  }
+  .msg.user .msg-avatar { background: #e5e7eb; color: #374151; }
+  .msg-bubble {
+    max-width: 270px; padding: 10px 12px; border-radius: 12px;
+    font-size: 13px; line-height: 1.5; color: #111;
+    background: #f3f4f6;
+  }
+  .msg.user .msg-bubble { background: #7c3aed; color: #fff; border-radius: 12px 4px 12px 12px; }
+  .msg.ai .msg-bubble { border-radius: 4px 12px 12px 12px; }
+  .typing-dots { display: flex; gap: 4px; padding: 4px 2px; }
+  .typing-dots span {
+    width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
+    animation: bounce 1.2s infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-5px)} }
+
+  /* chat input */
+  .chat-input-area {
+    padding: 10px 12px; border-top: 1px solid #f0f0f0;
+  }
+  .chat-input-box {
+    display: flex; align-items: center; gap: 8px; background: #f9fafb;
+    border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px;
+  }
+  .chat-input-box input {
+    flex: 1; border: none; background: none; font-size: 13px; color: #111; outline: none;
+  }
+  .chat-input-box input::placeholder { color: #9ca3af; }
+  .send-btn {
+    width: 28px; height: 28px; border-radius: 7px; background: #7c3aed;
+    border: none; cursor: pointer; color: #fff; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* RIGHT: preview pane */
+  .preview-pane {
+    flex: 1; display: flex; flex-direction: column; background: #e8e8ee;
+    position: relative;
+  }
+  .preview-header {
+    background: #fff; border-bottom: 1px solid #e5e7eb;
+    padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .preview-url-bar {
+    flex: 1; background: #f3f4f6; border: 1px solid #e5e7eb;
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #6b7280;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .preview-url-bar .lock-icon { color: #22c55e; font-size: 11px; }
+  .preview-actions { display: flex; gap: 6px; }
+  .preview-action-btn {
+    border: 1px solid #e5e7eb; background: #fff; cursor: pointer; color: #374151;
+    font-size: 11px; padding: 4px 10px; border-radius: 6px;
+  }
+  .preview-frame-wrap {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex; align-items: stretch; justify-content: stretch;
+  }
+  .preview-frame-wrap iframe {
+    width: 100%; height: 100%; border: none;
+  }
+
+  /* ── ANALYTICS PANEL ── */
+  .analytics-panel {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 340px;
+    background: #fff; border-left: 1px solid #e5e7eb;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    z-index: 50; overflow: hidden;
+  }
+  .analytics-panel.open { transform: translateX(0); }
+  .analytics-header {
+    padding: 14px 16px; border-bottom: 1px solid #f3f4f6;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .analytics-title { font-size: 14px; font-weight: 700; color: #111; display: flex; align-items: center; gap: 6px; }
+  .analytics-close { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+  .analytics-close:hover { background: #f3f4f6; color: #374151; }
+  .analytics-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .ab-badge {
+    background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 20px;
+    padding: 4px 10px; font-size: 11px; color: #15803d; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px; margin-bottom: 16px;
+  }
+  .analytics-section-title {
+    font-size: 10px; font-weight: 700; color: #9ca3af;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;
+  }
+  .metric-card { background: #f9fafb; border-radius: 8px; padding: 11px; margin-bottom: 8px; }
+  .metric-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+  .metric-name { font-size: 12px; color: #374151; font-weight: 500; }
+  .metric-lift { font-size: 12px; font-weight: 700; color: #16a34a; display: flex; align-items: center; gap: 2px; }
+  .metric-bars { display: flex; flex-direction: column; gap: 5px; }
+  .bar-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #6b7280; }
+  .bar-label { width: 38px; text-align: right; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; }
+  .bar-fill.before { background: #d1d5db; }
+  .bar-fill.after { background: #22c55e; }
+  .bar-value { width: 40px; flex-shrink: 0; font-weight: 600; color: #374151; font-size: 11px; }
+  .analytics-divider { height: 1px; background: #f3f4f6; margin: 14px 0; }
+  .fix-box {
+    background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+    border: 1px solid #ddd6fe; border-radius: 10px; padding: 12px;
+  }
+  .fix-label { font-size: 10px; font-weight: 700; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .fix-name { font-size: 13px; font-weight: 600; color: #1e1b4b; margin-bottom: 4px; }
+  .fix-desc { font-size: 11px; color: #6b7280; line-height: 1.5; }
+  .confidence-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .confidence-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; flex-shrink: 0; }
+  .confidence-text { font-size: 11px; color: #374151; font-weight: 500; }
+  .analytics-footer { padding: 14px 16px; border-top: 1px solid #f3f4f6; flex-shrink: 0; }
+  .apply-live-btn {
+    width: 100%; background: #7c3aed; border: none; color: #fff;
+    padding: 12px; border-radius: 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer; line-height: 1.5; text-align: center;
+  }
+  .apply-live-btn:hover { background: #6d28d9; }
+  .apply-live-sub { text-align: center; font-size: 10px; color: #9ca3af; margin-top: 5px; }
+  .preview-action-btn.analytics-btn { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; font-weight: 600; }
+  .preview-action-btn.analytics-btn.active { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+
+  /* ── PULSE INSIGHT CARD ── */
+  .pulse-popover {
+    position: absolute; bottom: 70px; left: 12px;
+    width: 320px; border-radius: 14px; overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18); z-index: 200;
+    background: #fff; border: 1px solid #e5e7eb;
+    display: none; animation: slideUp 0.2s ease;
+  }
+  .pulse-popover.visible { display: block; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  .pulse-popover-inner { padding: 16px; }
+  .pulse-label-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+  }
+  .pulse-tag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #7c3aed;
+  }
+  .pulse-headline {
+    font-size: 14px; font-weight: 700; color: #111; margin-bottom: 6px; line-height: 1.35;
+  }
+  .pulse-description {
+    font-size: 13px; color: #374151; line-height: 1.55; margin-bottom: 12px;
+  }
+  .pulse-fix-box {
+    background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; color: #374151; margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .pulse-fix-box strong { color: #111; }
+  .pulse-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .pulse-dismiss-btn {
+    border: 1px solid #e5e7eb; background: #fff; color: #6b7280;
+    padding: 6px 14px; border-radius: 7px; font-size: 13px; cursor: pointer;
+  }
+  .pulse-dismiss-btn:hover { background: #f9fafb; }
+  .pulse-fix-btn {
+    background: #7c3aed; color: #fff; border: none;
+    padding: 6px 14px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .pulse-fix-btn:hover { background: #6d28d9; }
+</style>
+</head>
+<body>
+
+<!-- ── GLOBAL HEADER ── -->
+<header class="app-header">
+  <div class="logo-badge">Airo</div>
+  <div class="breadcrumb" id="breadcrumb">
+    <span>Projects</span>
+  </div>
+  <div class="right-actions">
+    <button class="icon-btn" title="Share">⬆</button>
+    <button class="icon-btn" title="People">👤</button>
+    <button class="icon-btn" title="Bell">🔔</button>
+    <button class="projects-btn" onclick="showProjects()">Projects ▾</button>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════
+     VIEW: PROJECTS
+════════════════════════════════════════════ -->
+<div id="view-projects">
+  <div class="projects-subheader">
+    <span class="warning-icon">⚠</span>
+    <span>Disconnected status — Your instance is still running but not syncing.</span>
+  </div>
+
+  <div class="projects-main">
+    <div class="projects-toolbar">
+      <h1 class="projects-title">Projects <sup>3</sup></h1>
+      <button class="btn-stop-all">⏸ Stop All (3)</button>
+      <button class="btn-delete-all">🗑 Delete All (3)</button>
+    </div>
+    <p style="font-size:13px;color:#888;margin-bottom:18px;">Manage your AI-powered projects</p>
+
+    <div class="projects-filters">
+      <div class="search-box">🔍 Search for projects…</div>
+      <select class="filter-select"><option>Last edited ▾</option></select>
+      <div class="view-toggle">
+        <button>⊞</button>
+        <button>☰</button>
+      </div>
+    </div>
+
+    <div class="projects-grid">
+      <!-- Sarah's Candle Shop -->
+      <div class="project-card" onclick="showBuilder('candle')">
+        <div class="card-thumb" style="background:linear-gradient(135deg,#f5e6d0,#c8813a);">
+          <span class="status-badge">Live</span>
+          <span style="font-size:32px;">🕯</span>
+        </div>
+        <div class="card-info">
+          <div class="card-name">Sarah's Candle Shop</div>
+          <div class="card-date">Updated Jul 11, 2026, 10:22</div>
+          <div class="card-actions">
+            <button class="card-action-btn" title="Edit">✏️</button>
+            <button class="card-action-btn" title="More">•••</button>
+            <a href="#" class="card-link">↗</a>
+          </div>
+        </div>
+      </div>
+      <!-- Marco's Pizza -->
+      <div class="project-card" onclick="showBuilder('pizza')">
+        <div class="card-thumb" style="background:linear-gradient(135deg,#1a0800,#c0392b);">
+          <span class="status-badge" style="background:#f59e0b;">Building</span>
+          <span style="font-size:32px;">🍕</span>
+        </div>
+        <div class="card-info">
+          <div class="card-name">Marco's Pizza</div>
+          <div class="card-date">Updated Jul 10, 2026, 14:05</div>
+          <div class="card-actions">
+            <button class="card-action-btn" title="Edit">✏️</button>
+            <button class="card-action-btn" title="More">•••</button>
+            <a href="#" class="card-link">↗</a>
+          </div>
+        </div>
+      </div>
+      <!-- Ben's Bakery -->
+      <div class="project-card" onclick="showBuilder('bakery')">
+        <div class="card-thumb" style="background:linear-gradient(135deg,#3d2008,#8b5e3c);">
+          <span class="status-badge">Live</span>
+          <span style="font-size:32px;">🍞</span>
+        </div>
+        <div class="card-info">
+          <div class="card-name">Ben's Bakery</div>
+          <div class="card-date">Updated Jul 12, 2026, 08:47</div>
+          <div class="card-actions">
+            <button class="card-action-btn" title="Edit">✏️</button>
+            <button class="card-action-btn" title="More">•••</button>
+            <a href="#" class="card-link">↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     VIEW: BUILDER
+════════════════════════════════════════════ -->
+<div id="view-builder">
+  <div class="builder-body">
+
+    <!-- LEFT: chat pane -->
+    <div class="chat-pane">
+      <div class="chat-header">
+        <div class="chat-header-top">
+          <button class="back-btn" onclick="showProjects()" title="Back to Projects">←</button>
+          <span class="app-name">Sarah's Candle Shop</span>
+          <div class="header-actions">
+            <button class="header-action-btn">Share</button>
+            <button class="header-action-btn publish">Publish</button>
+          </div>
+        </div>
+        <div class="chat-toolbar">
+          <div class="tab-group">
+            <button class="tab-btn active"><span class="tab-icon">💬</span> Chat</button>
+            <button class="tab-btn"><span class="tab-icon">🖼</span> Media</button>
+            <button class="tab-btn"><span class="tab-icon">🕐</span> History</button>
+            <button class="tab-btn"><span class="tab-icon">⚙</span> Settings</button>
+          </div>
+          <button class="pulse-btn" id="pulseBtn" onclick="handlePulseClick()">
+            <div class="pulse-spinner" id="pulseSpinner"></div>
+            <span class="pulse-label">⚡ Pulse</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg ai">
+          <div class="msg-avatar">A</div>
+          <div class="msg-bubble">
+            Hi! I've set up your candle shop website. It's looking beautiful — warm amber tones with a clean layout. What would you like to change?
+          </div>
+        </div>
+        <div class="msg user">
+          <div class="msg-avatar">S</div>
+          <div class="msg-bubble">Can you add a newsletter signup section?</div>
+        </div>
+        <div class="msg ai">
+          <div class="msg-avatar">A</div>
+          <div class="msg-bubble">Done! I've added a newsletter section near the footer with an email input and a "Get 10% off your first order" incentive. Let me know if you'd like a different placement.</div>
+        </div>
+        <div class="msg user">
+          <div class="msg-avatar">S</div>
+          <div class="msg-bubble">Looks good! Make the hero text a bit bigger.</div>
+        </div>
+        <div class="msg ai">
+          <div class="msg-avatar">A</div>
+          <div class="msg-bubble">Updated the hero headline to 56px and the subtext to 20px — more commanding on the page. Check the preview!</div>
+        </div>
+      </div>
+
+      <div class="chat-input-area">
+        <div class="chat-input-box">
+          <input type="text" placeholder="Ask Airo to change something…" id="chatInput" onkeydown="handleChatKey(event)" />
+          <button class="send-btn" onclick="handleSend()">↑</button>
+        </div>
+      </div>
+
+      <!-- Pulse insight popover (anchored to chat pane bottom) -->
+      <div class="pulse-popover" id="pulsePopover">
+        <div class="pulse-popover-inner">
+          <div class="pulse-label-row">
+            <span class="pulse-tag">⚡ Pulse · No social proof</span>
+          </div>
+          <p class="pulse-headline">31 people visited this week. Only 1 contacted you.</p>
+          <p class="pulse-description">Your candle shop has no customer reviews visible anywhere. First-time visitors need to see that real people have bought from you before they'll reach out — without that trust signal, most leave quietly.</p>
+          <div class="pulse-fix-box">
+            <strong>Suggested fix:</strong> Add a testimonials section with 3 customer reviews to your homepage.
+          </div>
+          <div class="pulse-actions">
+            <button class="pulse-dismiss-btn" onclick="dismissPulse()">Not now</button>
+            <button class="pulse-fix-btn" onclick="handleFixIt()">Fix it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: preview pane -->
+    <div class="preview-pane">
+      <div class="preview-header">
+        <div class="preview-url-bar">
+          <span class="lock-icon">🔒</span>
+          sarahscandleshop.com
+        </div>
+        <div class="preview-actions">
+          <button class="preview-action-btn">📱 Mobile</button>
+          <button class="preview-action-btn">🖥 Desktop</button>
+          <button class="preview-action-btn analytics-btn" id="analyticsBtn" onclick="toggleAnalytics()">📊 Analytics</button>
+          <button class="preview-action-btn">🔄 Refresh</button>
+        </div>
+      </div>
+      <div class="preview-frame-wrap">
+        <iframe id="previewFrame" src="sarahcandle-preview.html" title="Preview"></iframe>
+
+        <!-- ANALYTICS PANEL -->
+        <div class="analytics-panel" id="analyticsPanel">
+          <div class="analytics-header">
+            <div class="analytics-title">📊 Pulse Analytics</div>
+            <button class="analytics-close" onclick="toggleAnalytics()">✕</button>
+          </div>
+          <div class="analytics-body">
+            <div class="ab-badge">🧪 A/B Test · Running 14 days · 94% confidence</div>
+            <div class="analytics-section-title">Key Metrics</div>
+            <div id="analyticsMetrics"></div>
+            <div class="analytics-divider"></div>
+            <div class="fix-box">
+              <div class="fix-label">⚡ Suggested Fix</div>
+              <div class="fix-name" id="analyticsFix"></div>
+              <div class="fix-desc" id="analyticsFixDesc"></div>
+              <div class="confidence-row">
+                <div class="confidence-dot"></div>
+                <div class="confidence-text">94% statistical confidence · Variant B leading</div>
+              </div>
+            </div>
+          </div>
+          <div class="analytics-footer">
+            <button class="apply-live-btn" onclick="handleApplyLive()">
+              This is showing positive growth —<br>apply this change to your live site →
+            </button>
+            <div class="apply-live-sub">Changes go live after you publish</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ── site data ──
+  const SITE_CONFIG = {
+    candle: { src: 'sarahcandle-preview.html', url: 'sarahscandleshop.com', name: "Sarah's Candle Shop", avatar: 'S',
+      pulse: { tag: 'No social proof', headline: '31 people visited this week. Only 1 contacted you.', description: "Your candle shop has no customer reviews visible anywhere. First-time visitors need to see that real people have bought from you before they'll reach out — without that trust signal, most leave quietly.", fix: 'Add a testimonials section with 3 customer reviews to your homepage.' },
+    },
+    pizza: { src: 'marcospizza-preview.html', url: 'marcospizzaaustin.com', name: "Marco's Pizza", avatar: 'M',
+      pulse: { tag: 'Contact friction', headline: '48 people visited this week. Only 2 made a reservation.', description: "Your contact form is buried at the bottom of the page. Most visitors leave before they ever see it — they want to book a table but can't find how.", fix: 'Move the contact form above the fold and simplify it to name + phone.' },
+    },
+    bakery: { src: 'benbakery-preview.html', url: 'bensbakery.com', name: "Ben's Bakery", avatar: 'B',
+      pulse: { tag: 'CTA placement', headline: '62 people visited this week. Only 3 placed a pre-order.', description: "Your 'Order Now' button is buried below three sections of content. By the time visitors scroll to it, most have already left the page.", fix: "Move the 'Order Now' button into the hero section so it's visible on landing." },
+    },
+  };
+
+  const ANALYTICS_DATA = {
+    candle: {
+      fix: 'Testimonials section',
+      fixDesc: 'Adding social proof below your hero is converting first-time visitors. 14 days of A/B data shows the variant winning.',
+      metrics: [
+        { name: 'Conversion Rate',   before: '2.1%', after: '2.6%', bp: 42, ap: 52, lift: '+23%' },
+        { name: 'Add-to-cart Rate',  before: '3.1%', after: '4.1%', bp: 38, ap: 50, lift: '+31%' },
+        { name: 'Avg Order Value',   before: '$42',  after: '$50',  bp: 42, ap: 50, lift: '+19%' },
+        { name: 'Bounce Rate',       before: '38%',  after: '31%',  bp: 76, ap: 62, lift: '−18%' },
+      ],
+    },
+    pizza: {
+      fix: 'Move form higher',
+      fixDesc: 'Putting the contact CTA in the hero means visitors reach you before scrolling away.',
+      metrics: [
+        { name: 'Reservation Requests', before: '4/day',  after: '6.7/day', bp: 40, ap: 67, lift: '+67%' },
+        { name: 'Form Submissions',     before: '2.8%',   after: '3.9%',    bp: 28, ap: 39, lift: '+41%' },
+        { name: 'Phone Call Clicks',    before: '1.8%',   after: '2.3%',    bp: 36, ap: 46, lift: '+28%' },
+        { name: 'Bounce Rate',          before: '52%',    after: '39%',     bp: 78, ap: 59, lift: '−25%' },
+      ],
+    },
+    bakery: {
+      fix: 'CTA in hero',
+      fixDesc: "Moving the order button to the hero means customers act the moment they land.",
+      metrics: [
+        { name: 'Order Button Clicks',  before: '1.2%', after: '2.3%', bp: 24, ap: 46, lift: '+89%' },
+        { name: 'Pre-order Rate',       before: '0.8%', after: '1.2%', bp: 16, ap: 24, lift: '+52%' },
+        { name: 'Hero Click-Through',   before: '3.1%', after: '5.5%', bp: 31, ap: 55, lift: '+78%' },
+        { name: 'Bounce Rate',          before: '44%',  after: '34%',  bp: 66, ap: 51, lift: '−22%' },
+      ],
+    },
+  };
+
+  let currentSite = 'candle';
+
+  // ── analytics panel ──
+  function toggleAnalytics() {
+    const panel = document.getElementById('analyticsPanel');
+    const btn = document.getElementById('analyticsBtn');
+    const isOpen = panel.classList.toggle('open');
+    btn.classList.toggle('active', isOpen);
+    if (isOpen) renderAnalytics();
+  }
+
+  function renderAnalytics() {
+    const data = ANALYTICS_DATA[currentSite];
+    document.getElementById('analyticsFix').textContent = data.fix;
+    document.getElementById('analyticsFixDesc').textContent = data.fixDesc;
+    document.getElementById('analyticsMetrics').innerHTML = data.metrics.map(m => `
+      <div class="metric-card">
+        <div class="metric-row">
+          <div class="metric-name">${m.name}</div>
+          <div class="metric-lift">${m.lift.startsWith('−') ? '↓' : '↑'} ${m.lift}</div>
+        </div>
+        <div class="metric-bars">
+          <div class="bar-row">
+            <div class="bar-label">Before</div>
+            <div class="bar-track"><div class="bar-fill before" style="width:${m.bp}%"></div></div>
+            <div class="bar-value">${m.before}</div>
+          </div>
+          <div class="bar-row">
+            <div class="bar-label">After</div>
+            <div class="bar-track"><div class="bar-fill after" style="width:${m.ap}%"></div></div>
+            <div class="bar-value">${m.after}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  function handleApplyLive() {
+    toggleAnalytics();
+    handleFixIt();
+  }
+
+  // ── view switching ──
+  function showProjects() {
+    document.getElementById('view-projects').style.display = 'flex';
+    document.getElementById('view-builder').style.display = 'none';
+    document.getElementById('breadcrumb').innerHTML = '<span>Projects</span>';
+  }
+
+  function showBuilder(site) {
+    site = site || 'candle';
+    currentSite = site;
+    const cfg = SITE_CONFIG[site];
+
+    // close analytics if open
+    document.getElementById('analyticsPanel').classList.remove('open');
+    document.getElementById('analyticsBtn').classList.remove('active');
+
+    document.getElementById('view-projects').style.display = 'none';
+    const builder = document.getElementById('view-builder');
+    builder.style.display = 'flex';
+    builder.style.flexDirection = 'column';
+    document.getElementById('breadcrumb').innerHTML =
+      `<span style="opacity:0.5;cursor:pointer" onclick="showProjects()">Projects</span> <span style="opacity:0.4">/</span> <span>${cfg.name}</span>`;
+
+    document.getElementById('previewFrame').src = cfg.src;
+    document.querySelector('.preview-url-bar').innerHTML = `<span class="lock-icon">🔒</span> ${cfg.url}`;
+    document.querySelector('.app-name').textContent = cfg.name;
+
+    // update pulse popover text
+    const p = cfg.pulse;
+    document.querySelector('.pulse-tag').textContent = `⚡ Pulse · ${p.tag}`;
+    document.querySelector('.pulse-headline').textContent = p.headline;
+    document.querySelector('.pulse-description').textContent = p.description;
+    document.querySelector('.pulse-fix-box').innerHTML = `<strong>Suggested fix:</strong> ${p.fix}`;
+
+    // reset pulse state
+    pulseState = 'idle';
+    const btn = document.getElementById('pulseBtn');
+    btn.classList.remove('loading', 'active');
+    btn.disabled = false;
+    document.getElementById('pulsePopover').classList.remove('visible');
+  }
+
+  // ── pulse flow ──
+  let pulseState = 'idle'; // idle | loading | insight | dismissed
+
+  function handlePulseClick() {
+    if (pulseState === 'loading' || pulseState === 'insight') return;
+
+    pulseState = 'loading';
+    const btn = document.getElementById('pulseBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+
+    setTimeout(() => {
+      pulseState = 'insight';
+      btn.classList.remove('loading');
+      btn.classList.add('active');
+      btn.disabled = false;
+      document.getElementById('pulsePopover').classList.add('visible');
+
+      // scroll the preview to section with social proof area
+      const iframe = document.getElementById('previewFrame');
+      try { iframe.contentWindow.postMessage({ type: 'pulse_scroll_preview' }, '*'); } catch(e) {}
+    }, 2200);
+  }
+
+  function dismissPulse() {
+    pulseState = 'dismissed';
+    document.getElementById('pulsePopover').classList.remove('visible');
+    const btn = document.getElementById('pulseBtn');
+    btn.classList.remove('active');
+  }
+
+  function handleFixIt() {
+    dismissPulse();
+    pulseState = 'idle';
+
+    // tell preview to show variant picker
+    const iframe = document.getElementById('previewFrame');
+    try { iframe.contentWindow.postMessage({ type: 'pulse_show_variants' }, '*'); } catch(e) {}
+
+    // show typing indicator in chat
+    addTypingIndicator();
+  }
+
+  function addTypingIndicator() {
+    const messages = document.getElementById('chatMessages');
+    const typing = document.createElement('div');
+    typing.className = 'msg ai';
+    typing.id = 'typingIndicator';
+    typing.innerHTML = `
+      <div class="msg-avatar">A</div>
+      <div class="msg-bubble">
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      </div>`;
+    messages.appendChild(typing);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  // ── chat helpers ──
+  function handleChatKey(e) { if (e.key === 'Enter') handleSend(); }
+
+  function handleSend() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    const messages = document.getElementById('chatMessages');
+    const userMsg = document.createElement('div');
+    userMsg.className = 'msg user';
+    userMsg.innerHTML = `<div class="msg-avatar">S</div><div class="msg-bubble">${text}</div>`;
+    messages.appendChild(userMsg);
+    messages.scrollTop = messages.scrollHeight;
+    // mock reply after 1.5s
+    addTypingIndicator();
+    setTimeout(() => {
+      const t = document.getElementById('typingIndicator');
+      if (t) t.remove();
+      const aiMsg = document.createElement('div');
+      aiMsg.className = 'msg ai';
+      aiMsg.innerHTML = `<div class="msg-avatar">A</div><div class="msg-bubble">Done! I've applied that change to your site. Let me know what else you'd like to update.</div>`;
+      messages.appendChild(aiMsg);
+      messages.scrollTop = messages.scrollHeight;
+    }, 1800);
+  }
+
+  // ── listen for variant selection from iframe ──
+  window.addEventListener('message', function(e) {
+    if (!e.data || !e.data.type) return;
+
+    if (e.data.type === 'pulse_variant_selected') {
+      const variantLabel = e.data.label || 'Testimonials section';
+      // replace typing indicator with user message
+      const messages = document.getElementById('chatMessages');
+      const typing = document.getElementById('typingIndicator');
+      if (typing) typing.remove();
+
+      const userMsg = document.createElement('div');
+      userMsg.className = 'msg user';
+      userMsg.innerHTML = `<div class="msg-avatar">S</div><div class="msg-bubble">Apply "${variantLabel}"</div>`;
+      messages.appendChild(userMsg);
+      messages.scrollTop = messages.scrollHeight;
+      addTypingIndicator();
+
+      // AI response after 5s
+      setTimeout(() => {
+        const t = document.getElementById('typingIndicator');
+        if (t) t.remove();
+        const responses = {
+          'Testimonials section': "Done! I've added a testimonials section with 3 five-star customer reviews right below your hero. Social proof like this typically lifts conversion rates by 15–30%. Ready to publish?",
+          'Star rating badge': "Done! I've added a ⭐ 4.9/5 rating badge right next to your 'Shop All Candles' button. Shoppers see the trust signal the instant they land — that alone can boost click-through by 20%+. Ready to publish?",
+        };
+        const aiMsg = document.createElement('div');
+        aiMsg.className = 'msg ai';
+        aiMsg.innerHTML = `<div class="msg-avatar">A</div><div class="msg-bubble">${responses[variantLabel] || "Done! The fix has been applied. Ready to publish?"}</div>`;
+        messages.appendChild(aiMsg);
+        messages.scrollTop = messages.scrollHeight;
+
+        // highlight in preview
+        const iframe = document.getElementById('previewFrame');
+        try { iframe.contentWindow.postMessage({ type: 'pulse_highlight' }, '*'); } catch(e) {}
+      }, 5000);
+    }
+  });
+</script>
+</body>
+</html>
