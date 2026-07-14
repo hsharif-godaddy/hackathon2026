@@ -15,7 +15,9 @@ import type {
 } from './types';
 import { SiteStatus } from './types';
 
-const NOW = new Date('2026-01-01T00:00:00Z');
+const NOW_SARAH = new Date('2026-01-01T02:00:00Z');
+const NOW_BEN   = new Date('2026-01-01T01:00:00Z');
+const NOW_MARCO = new Date('2026-01-01T00:00:00Z');
 
 const MOCK_SITES: SiteInfo[] = [
   {
@@ -30,8 +32,8 @@ const MOCK_SITES: SiteInfo[] = [
     published_url: 'http://localhost:3000/sarahcandle-preview.html',
     system_id: 'mock-system-01',
     subscription_id: 'mock-subscription-01',
-    created_at: NOW,
-    updated_at: NOW,
+    created_at: NOW_SARAH,
+    updated_at: NOW_SARAH,
     variants: ['preview', 'publish'],
     screenshots: { publish: { desktop: '/images/sarahcandle-thumb.png' } },
   },
@@ -47,8 +49,8 @@ const MOCK_SITES: SiteInfo[] = [
     published_url: 'http://localhost:3000/benbakery-preview.html',
     system_id: 'mock-system-02',
     subscription_id: 'mock-subscription-02',
-    created_at: NOW,
-    updated_at: NOW,
+    created_at: NOW_BEN,
+    updated_at: NOW_BEN,
     variants: ['preview', 'publish'],
     screenshots: { publish: { desktop: '/images/benbakery-thumb.png' } },
   },
@@ -64,8 +66,8 @@ const MOCK_SITES: SiteInfo[] = [
     published_url: 'http://localhost:3000/marcospizza-preview.html',
     system_id: 'mock-system-03',
     subscription_id: 'mock-subscription-03',
-    created_at: NOW,
-    updated_at: NOW,
+    created_at: NOW_MARCO,
+    updated_at: NOW_MARCO,
     variants: ['preview', 'publish'],
     screenshots: { publish: { desktop: '/images/marcospizza-thumb.png' } },
   },

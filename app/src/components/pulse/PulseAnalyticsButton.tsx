@@ -57,13 +57,10 @@ const ANALYTICS: Record<string, AnalyticsData> = {
 const DATASET_KEYS: ReadonlyArray<string> = ['candle', 'pizza', 'bakery'] as const
 
 function pickDataset(name: string | undefined, url: string | undefined, appId: string | null): AnalyticsData {
-  const haystack = `${name ?? ''} ${url ?? ''}`.toLowerCase()
+  const haystack = `${name ?? ''} ${url ?? ''} ${appId ?? ''}`.toLowerCase()
+  if (haystack.includes('candle') || haystack.includes('sarah')) return ANALYTICS.candle
   if (haystack.includes('pizza') || haystack.includes('marco')) return ANALYTICS.pizza
   if (haystack.includes('baker') || haystack.includes('bread') || haystack.includes('ben')) return ANALYTICS.bakery
-  if (appId) {
-    const idx: number = appId.charCodeAt(appId.length - 1) % 3
-    return ANALYTICS[DATASET_KEYS[idx]]
-  }
   return ANALYTICS.candle
 }
 
