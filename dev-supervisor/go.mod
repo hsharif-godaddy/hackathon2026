@@ -6,7 +6,7 @@ toolchain go1.25.7
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/emersion/go-smtp v0.24.0
+	github.com/emersion/go-smtp v0.25.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/mux v1.8.1
