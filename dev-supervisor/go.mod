@@ -1,8 +1,6 @@
 module github.com/airo-ai-builder/dev-supervisor
 
-go 1.25.0
-
-toolchain go1.25.7
+go 1.26.0
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
@@ -14,7 +12,7 @@ require (
 	github.com/rs/cors v1.11.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.56.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/sync v0.23.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/term v0.44.0
 )
