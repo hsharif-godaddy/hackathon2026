@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Artifactory Token
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        uses: jfrog/setup-jfrog-cli@eb77328bc74211c6c65cada8d5f6c0e156a51440 # v4.11.0
         env:
           JF_URL: ${{ vars.JF_URL }}
         with:
@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Artifactory Token
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        uses: jfrog/setup-jfrog-cli@eb77328bc74211c6c65cada8d5f6c0e156a51440 # v4.11.0
         env:
           JF_URL: ${{ vars.JF_URL }}
         with:
@@ -150,7 +150,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Get Artifactory Token
         id: jfrog
-        uses: jfrog/setup-jfrog-cli@1641575d87647fb969c0545f0b6a76873e328b7c # v5.0.0
+        uses: jfrog/setup-jfrog-cli@eb77328bc74211c6c65cada8d5f6c0e156a51440 # v4.11.0
         env:
           JF_URL: ${{ vars.JF_URL }}
         with:
